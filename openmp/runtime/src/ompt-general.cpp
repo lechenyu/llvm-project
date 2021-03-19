@@ -125,6 +125,25 @@ OMPT_API_ROUTINE ompt_data_t *ompt_get_thread_data(void);
 typedef ompt_start_tool_result_t *(*ompt_start_tool_t)(unsigned int,
                                                        const char *);
 
+_OMP_EXTERN OMPT_WEAK_ATTRIBUTE bool libomptarget_start_tool(ompt_target_callbacks_active_t *libomptarget_ompt_enabled,
+                                                             ompt_target_callbacks_internal_t *libomptarget_ompt_callbacks) {
+  if (!TCR_4(__kmp_init_middle)) {
+    __kmp_middle_initialize();
+  }
+  bool ret = false;
+  libomptarget_ompt_enabled->enabled = ompt_enabled.enabled;
+  if (ompt_enabled.enabled) {
+    ret = true;
+#define ompt_event_macro(event_name, callback_type, event_id)                                             \
+    libomptarget_ompt_enabled->event_name = ompt_enabled.event_name;                                      \
+    libomptarget_ompt_callbacks->ompt_callback(event_name) = ompt_callbacks.ompt_callback(event_name);
+
+    FOREACH_OMPT_TARGET_EVENT(ompt_event_macro)
+#undef ompt_event_macro
+  }
+  return ret;
+}
+
 #if KMP_OS_DARWIN
 
 // While Darwin supports weak symbols, the library that wishes to provide a new
