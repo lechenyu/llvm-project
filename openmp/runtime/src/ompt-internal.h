@@ -26,6 +26,14 @@
 
 #define ompt_callback(e) e##_callback
 
+#define ompt_emi_callback(e) e##_emi_callback
+
+#define ompt_emi_callback_type(e) e##_emi_t
+
+#define ompt_emi_wrapper(e) e##_emi_wrapper
+
+#define ompt_emi_event(e) e##_emi
+
 /* Struct to collect host callback pointers */
 typedef struct ompt_callbacks_internal_s {
 #define ompt_event_macro(event, callback, eventid)                             \
