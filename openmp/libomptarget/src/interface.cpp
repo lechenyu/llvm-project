@@ -12,15 +12,21 @@
 //===----------------------------------------------------------------------===//
 
 #include "device.h"
-#include "omptarget.h"
 #include "private.h"
 #include "rtl.h"
+#include "omptarget.h"
+#if OMPT_SUPPORT
+#include "ompt-target.h"
+#endif
 
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <mutex>
 
+#if OMPT_SUPPORT
+THREAD_LOCAL ompt_tls tls;
+#endif
 ////////////////////////////////////////////////////////////////////////////////
 /// adds requires flags
 EXTERN void __tgt_register_requires(int64_t flags) {
@@ -280,6 +286,9 @@ EXTERN int __tgt_target_nowait(int64_t device_id, void *host_ptr,
   if (depNum + noAliasDepNum > 0)
     __kmpc_omp_taskwait(NULL, __kmpc_global_thread_num(NULL));
 
+#if OMPT_SUPPORT
+  tls.nowait = true;
+#endif
   return __tgt_target_mapper(nullptr, device_id, host_ptr, arg_num, args_base,
                              args, arg_sizes, arg_types, nullptr, nullptr);
 }
@@ -310,7 +319,28 @@ EXTERN int __tgt_target_mapper(ident_t *loc, int64_t device_id, void *host_ptr,
 #endif
 
 #if OMPT_SUPPORT
+  if (ompt_target_enabled.enabled) {
+    if (ompt_target_enabled.ompt_callback_target_emi) {
+      ompt_target_t kind = ompt_target;
+      ompt_data_t *task_data, *target_task_data;
+      ompt_data_t target_data = ompt_data_none;
+      void *codeptr_ra;
+      ompt_target_entry_points.ompt_get_task_info(0, NULL, &task_data, NULL, NULL, NULL);
 
+      // __tgt_target_mapper may be invoked by __tgt_target,__tgt_target_nowait, __tgt_target_nowait_wrapper,
+      // or directly invoked by the OpenMP application. To correctly mark whether the nowait clause is enabled
+      // in all four cases, tls.nowait is only set to 'true' when __tgt_target_nowait or __tgt_target_nowait_wrapper
+      // invokes __tgt_target_mapper.
+      if (tls.nowait) {
+        tls.nowait = false;
+        kind = ompt_target_nowait;
+      }
+      //TODO: do we need to consider nowait target region now?
+
+      ompt_target_callbacks.ompt_callback(ompt_callback_target_emi)(kind, ompt_scope_begin, device_id, task_data, target_task_data, &target_data, codeptr_ra);
+    }
+
+  }
 #endif
   DeviceTy &Device = PM->Devices[device_id];
   AsyncInfoTy AsyncInfo(Device);
@@ -332,6 +362,9 @@ EXTERN int __tgt_target_nowait_mapper(
   if (depNum + noAliasDepNum > 0)
     __kmpc_omp_taskwait(loc, __kmpc_global_thread_num(loc));
 
+#if OMPT_SUPPORT
+  tls.nowait = true;
+#endif
   return __tgt_target_mapper(loc, device_id, host_ptr, arg_num, args_base, args,
                              arg_sizes, arg_types, arg_names, arg_mappers);
 }
