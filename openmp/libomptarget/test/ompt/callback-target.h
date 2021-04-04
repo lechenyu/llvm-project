@@ -107,7 +107,6 @@ int ompt_initialize(
   target_kind_to_str[ompt_target_update_nowait] = "ompt_target_update_nowait";
 
 
-
   // Register target-constructs-related callbacks
   register_ompt_callback_t(ompt_callback_target_emi, ompt_callback_target_emi_t);
   return 1; //success

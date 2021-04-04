@@ -147,6 +147,7 @@ _OMP_EXTERN OMPT_WEAK_ATTRIBUTE bool libomp_start_tool(
       FOREACH_OMPT_51_TARGET_EVENT(ompt_event_macro)
 #undef ompt_event_macro
       libomptarget_ompt_entry_points->ompt_get_task_info = __ompt_get_task_info_internal;
+      libomptarget_ompt_entry_points->ompt_get_team_info = __ompt_get_teaminfo;
 
   }
   return ret;
@@ -163,12 +164,11 @@ void ompt_callback_target_data_op_emi_wrapper(ompt_scope_endpoint_t endpoint,
                                           int dest_device_num,
                                           size_t bytes,
                                           const void *codeptr_ra) {
-  if (endpoint == ompt_scope_end) {
-    int gtid = __kmpc_global_thread_num(NULL);
-    kmp_info_t *thr = __kmp_threads[gtid];
-    ompt_id_t target_id = thr->th.ompt_thread_info.target_id;
-    int op_id = __ompt_get_unique_id_internal();
-    ompt_callbacks_noemi.ompt_callback(ompt_callback_target_data_op)(target_id, op_id, optype, src_addr, src_device_num, dest_addr, dest_device_num, bytes, codeptr_ra);
+  if (endpoint == ompt_scope_begin || endpoint == ompt_scope_beginend) {
+    *host_op_id = __ompt_get_unique_id_internal();
+  }
+  if (endpoint == ompt_scope_end || endpoint == ompt_scope_beginend) {
+    ompt_callbacks_noemi.ompt_callback(ompt_callback_target_data_op)(target_data->value, *host_op_id, optype, src_addr, src_device_num, dest_addr, dest_device_num, bytes, codeptr_ra);
   }
 
 }
@@ -180,17 +180,10 @@ void ompt_callback_target_emi_wrapper(ompt_target_t kind,
                                   ompt_data_t *target_task_data,
                                   ompt_data_t *target_data,
                                   const void *codeptr_ra) {
-  int gtid = __kmpc_global_thread_num(NULL);
-  kmp_info_t *thr = __kmp_threads[gtid];
-  ompt_id_t target_id;
-  if (endpoint == ompt_scope_begin) {
-    //TODO: Shall we use a map instead of a int for target id
-    target_id = __ompt_get_unique_id_internal();
-    thr->th.ompt_thread_info.target_id = target_id;
-  } else {
-    target_id = thr->th.ompt_thread_info.target_id;
+  if (endpoint == ompt_scope_begin || endpoint == ompt_scope_beginend) {
+    target_data->value = __ompt_get_unique_id_internal();
   }
-  ompt_callbacks_noemi.ompt_callback(ompt_callback_target)(kind, endpoint, device_num, task_data, target_id, codeptr_ra);
+  ompt_callbacks_noemi.ompt_callback(ompt_callback_target)(kind, endpoint, device_num, task_data, target_data->value, codeptr_ra);
 }
 
 void ompt_callback_target_map_emi_wrapper(ompt_data_t *target_data,
@@ -201,10 +194,7 @@ void ompt_callback_target_map_emi_wrapper(ompt_data_t *target_data,
                                       unsigned int *mapping_flags,
                                       const void *codeptr_ra
 ) {
-  int gtid = __kmpc_global_thread_num(NULL);
-  kmp_info_t *thr = __kmp_threads[gtid];
-  ompt_id_t target_id = thr->th.ompt_thread_info.target_id;
-  ompt_callbacks_noemi.ompt_callback(ompt_callback_target_map)(target_id, nitems, host_addr, device_addr, bytes, mapping_flags, codeptr_ra);
+  ompt_callbacks_noemi.ompt_callback(ompt_callback_target_map)(target_data->value, nitems, host_addr, device_addr, bytes, mapping_flags, codeptr_ra);
 }
 
 void ompt_callback_target_submit_emi_wrapper(ompt_scope_endpoint_t endpoint,
@@ -212,12 +202,9 @@ void ompt_callback_target_submit_emi_wrapper(ompt_scope_endpoint_t endpoint,
                                          ompt_id_t *host_op_id,
                                          unsigned int requested_num_teams
 ) {
-  if (endpoint == ompt_scope_begin) {
-    int gtid = __kmpc_global_thread_num(NULL);
-    kmp_info_t *thr = __kmp_threads[gtid];
-    ompt_id_t target_id = thr->th.ompt_thread_info.target_id;
-    int op_id = __ompt_get_unique_id_internal();
-    ompt_callbacks_noemi.ompt_callback(ompt_callback_target_submit)(target_id, op_id, requested_num_teams);
+  if (endpoint == ompt_scope_begin || endpoint == ompt_scope_beginend) {
+    ompt_id_t op_id = __ompt_get_unique_id_internal();
+    ompt_callbacks_noemi.ompt_callback(ompt_callback_target_submit)(target_data->value, op_id, requested_num_teams);
   }
 
 }

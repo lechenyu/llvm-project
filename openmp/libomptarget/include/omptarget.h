@@ -303,7 +303,15 @@ int __tgt_target_nowait_mapper(ident_t *loc, int64_t device_id, void *host_ptr,
                                map_var_info_t *arg_names, void **arg_mappers,
                                int32_t depNum, void *depList,
                                int32_t noAliasDepNum, void *noAliasDepList);
-
+int __tgt_target_internal(ident_t *loc, int64_t device_id, void *host_ptr,
+                          int32_t arg_num, void **args_base, void **args,
+                          int64_t *arg_sizes, int64_t *arg_types,
+                          map_var_info_t *arg_names, void **arg_mappers
+#if OMPT_SUPPORT
+                          ,
+                          bool nowait, void* codeptr
+#endif
+                          );
 int __tgt_target_teams(int64_t device_id, void *host_ptr, int32_t arg_num,
                        void **args_base, void **args, int64_t *arg_sizes,
                        int64_t *arg_types, int32_t num_teams,

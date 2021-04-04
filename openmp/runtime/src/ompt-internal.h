@@ -84,11 +84,6 @@ typedef struct ompt_target_callbacks_active_s {
 #undef ompt_event_macro
 } ompt_target_callbacks_active_t;
 
-/* Struct to collect necessary entry point*/
-typedef struct ompt_target_entry_point_s {
-    ompt_get_task_info_t ompt_get_task_info;
-} ompt_target_entry_point_t;
-
 #define TASK_TYPE_DETAILS_FORMAT(info)                                         \
   ((info->td_flags.task_serial || info->td_flags.tasking_ser)                  \
        ? ompt_task_undeferred                                                  \
@@ -126,7 +121,6 @@ typedef struct {
   int ompt_task_yielded;
   int parallel_flags; // information for the last parallel region invoked
   void *idle_frame;
-  ompt_id_t target_id;
 } ompt_thread_info_t;
 
 extern ompt_callbacks_internal_t ompt_callbacks;
@@ -158,6 +152,14 @@ int __kmp_control_tool(uint64_t command, uint64_t modifier, void *arg);
 
 extern ompt_callbacks_active_t ompt_enabled;
 extern ompt_target_callbacks_active_t ompt_target_enabled;
+
+typedef ompt_team_info_t *(*ompt_get_teaminfo)(int depth, int *size);
+
+/* Struct to collect necessary entry point*/
+typedef struct ompt_target_entry_point_s {
+    ompt_get_task_info_t ompt_get_task_info;
+    ompt_get_teaminfo ompt_get_team_info;
+} ompt_target_entry_point_t;
 
 #if KMP_OS_WINDOWS
 #define UNLIKELY(x) (x)
