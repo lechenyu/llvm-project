@@ -31,7 +31,7 @@ static ompt_enumerate_mutex_impls_t ompt_enumerate_mutex_impls;
 
 char **target_kind_to_str;
 
-static void on_ompt_callback_target_emi() {
+static void on_ompt_callback_target_emi(
   ompt_target_t kind,
   ompt_scope_endpoint_t endpoint,
   int device_num,
@@ -39,7 +39,7 @@ static void on_ompt_callback_target_emi() {
   ompt_data_t *target_task_data,
   ompt_data_t *target_data,
   const void *codeptr_ra
-} {
+ ) {
 
   switch(endpoint)
   {
@@ -55,13 +55,14 @@ static void on_ompt_callback_target_emi() {
              ", kind=%s" ", codeptr_ra=%p" "\n", ompt_get_thread_data()->value, target_data->value,
              target_task_data ? target_task_data->value : 0, task_data->value, device_num,
              target_kind_to_str[kind], codeptr_ra);
+      break;
     case ompt_scope_end:
       printf("%" PRIu64 ":" _TOOL_PREFIX " ompt_event_target_emi_end: target_id=%" PRIu64
              ", target_task_id=%" PRIu64 ", task_id=%" PRIu64 ", device_num=%" PRIu32
              ", kind=%s" ", codeptr_ra=%p" "\n", ompt_get_thread_data()->value, target_data->value,
              target_task_data ? target_task_data->value : 0, task_data->value, device_num,
              target_kind_to_str[kind], codeptr_ra);
-
+      break;
     case ompt_scope_beginend:
       printf("ompt_scope_beginend should never be passed to %s\n", __func__);
       exit(-1);
@@ -108,7 +109,7 @@ int ompt_initialize(
 
 
   // Register target-constructs-related callbacks
-  register_ompt_callback_t(ompt_callback_target_emi, ompt_callback_target_t);
+  register_ompt_callback_t(ompt_callback_target_emi, ompt_callback_target_emi_t);
   return 1; //success
 }
 
