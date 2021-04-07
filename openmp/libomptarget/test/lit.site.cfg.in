@@ -15,6 +15,7 @@ config.libomptarget_system_targets = "@LIBOMPTARGET_SYSTEM_TARGETS@".split()
 config.libomptarget_filecheck = "@OPENMP_FILECHECK_EXECUTABLE@"
 config.libomptarget_not = "@OPENMP_NOT_EXECUTABLE@"
 config.libomptarget_debug = @LIBOMPTARGET_DEBUG@
+config.has_ompt = @LIBOMP_OMPT_SUPPORT_IN_LIBOMPTARGET@
 
 # Let the main config do the real work.
 lit_config.load_config(config, "@CMAKE_CURRENT_SOURCE_DIR@/lit.cfg")

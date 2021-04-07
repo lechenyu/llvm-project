@@ -1,4 +1,4 @@
-// RUN: %libomptarget-compile-and-run | FileCheck %s
+// RUN: %libomptarget-compile-and-run-x86_64-pc-linux-gnu | FileCheck %s
 // REQUIRES: ompt
 
 #include "callback-target.h"

@@ -12,6 +12,7 @@ else()
   set(LIBOMPTARGET_DEBUG False)
 endif()
 
+pythonize_bool(LIBOMP_OMPT_SUPPORT_IN_LIBOMPTARGET)
 add_openmp_testsuite(check-libomptarget "Running libomptarget tests" ${CMAKE_CURRENT_BINARY_DIR} DEPENDS omptarget omp ${LIBOMPTARGET_TESTED_PLUGINS})
 
 # Configure the lit.site.cfg.in file

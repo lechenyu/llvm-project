@@ -217,3 +217,11 @@ function(construct_check_openmp_target)
   # We already added the testsuites themselves, no need to do that again.
   add_openmp_testsuite(check-openmp "Running OpenMP tests" ${OPENMP_LIT_TESTSUITES} EXCLUDE_FROM_CHECK_ALL DEPENDS ${OPENMP_LIT_DEPENDS})
 endfunction()
+
+macro(pythonize_bool var)
+  if (${var})
+    set(${var} True)
+  else()
+    set(${var} False)
+  endif()
+endmacro()
