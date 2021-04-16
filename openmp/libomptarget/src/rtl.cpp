@@ -194,7 +194,8 @@ void RTLsTy::LoadRTLs() {
     if (libomp_start_tool) {
       DP("Retrieve libomp_start_tool successfully\n");
       if (!libomp_start_tool(&ompt_target_enabled)) {
-        DP("Turn off OMPT in libomptarget because libomp_start_tool returns false\n");
+        DP("Turn off OMPT in libomptarget because libomp_start_tool returns "
+           "false\n");
         memset(&ompt_target_enabled, 0, sizeof(ompt_target_enabled));
       }
     }

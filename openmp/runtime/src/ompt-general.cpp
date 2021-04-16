@@ -131,8 +131,8 @@ OMPT_API_ROUTINE ompt_data_t *ompt_get_thread_data(void);
 typedef ompt_start_tool_result_t *(*ompt_start_tool_t)(unsigned int,
                                                        const char *);
 
-_OMP_EXTERN OMPT_WEAK_ATTRIBUTE bool libomp_start_tool(
-    ompt_target_callbacks_active_t *libomptarget_ompt_enabled) {
+_OMP_EXTERN OMPT_WEAK_ATTRIBUTE bool
+libomp_start_tool(ompt_target_callbacks_active_t *libomptarget_ompt_enabled) {
   if (!TCR_4(__kmp_init_middle)) {
     __kmp_middle_initialize();
   }
@@ -149,46 +149,30 @@ _OMP_EXTERN OMPT_WEAK_ATTRIBUTE bool libomp_start_tool(
   return ret;
 }
 
-void ompt_callback_target_data_op_emi_wrapper(ompt_scope_endpoint_t endpoint,
-                                          ompt_data_t *target_task_data,
-                                          ompt_data_t *target_data,
-                                          ompt_id_t *host_op_id,
-                                          ompt_target_data_op_t optype,
-                                          void *src_addr,
-                                          int src_device_num,
-                                          void *dest_addr,
-                                          int dest_device_num,
-                                          size_t bytes,
-                                          const void *codeptr_ra) {
-
-
-}
+void ompt_callback_target_data_op_emi_wrapper(
+    ompt_scope_endpoint_t endpoint, ompt_data_t *target_task_data,
+    ompt_data_t *target_data, ompt_id_t *host_op_id,
+    ompt_target_data_op_t optype, void *src_addr, int src_device_num,
+    void *dest_addr, int dest_device_num, size_t bytes,
+    const void *codeptr_ra) {}
 
 void ompt_callback_target_emi_wrapper(ompt_target_t kind,
-                                  ompt_scope_endpoint_t endpoint,
-                                  int device_num,
-                                  ompt_data_t *task_data,
-                                  ompt_data_t *target_task_data,
-                                  ompt_data_t *target_data,
-                                  const void *codeptr_ra) {
-}
+                                      ompt_scope_endpoint_t endpoint,
+                                      int device_num, ompt_data_t *task_data,
+                                      ompt_data_t *target_task_data,
+                                      ompt_data_t *target_data,
+                                      const void *codeptr_ra) {}
 
 void ompt_callback_target_map_emi_wrapper(ompt_data_t *target_data,
-                                      unsigned int nitems,
-                                      void **host_addr,
-                                      void **device_addr,
-                                      size_t *bytes,
-                                      unsigned int *mapping_flags,
-                                      const void *codeptr_ra
-) {
-
-}
+                                          unsigned int nitems, void **host_addr,
+                                          void **device_addr, size_t *bytes,
+                                          unsigned int *mapping_flags,
+                                          const void *codeptr_ra) {}
 
 void ompt_callback_target_submit_emi_wrapper(ompt_scope_endpoint_t endpoint,
-                                         ompt_data_t *target_data,
-                                         ompt_id_t *host_op_id,
-                                         unsigned int requested_num_teams
-) {
+                                             ompt_data_t *target_data,
+                                             ompt_id_t *host_op_id,
+                                             unsigned int requested_num_teams) {
 
 }
 
@@ -661,7 +645,7 @@ OMPT_API_ROUTINE ompt_set_result_t ompt_set_callback(ompt_callbacks_t which,
     ompt_target_enabled.ompt_emi_event(event_name) = (callback != 0);          \
     if (callback) {                                                            \
       ompt_target_callbacks.ompt_emi_callback(event_name) =                    \
-        (ompt_emi_callback_type(event_name))(&ompt_emi_wrapper(event_name));   \
+          (ompt_emi_callback_type(event_name))(&ompt_emi_wrapper(event_name)); \
       return ompt_event_implementation_status(event_name);                     \
     } else {                                                                   \
       ompt_target_callbacks.ompt_emi_callback(event_name) = NULL;              \
