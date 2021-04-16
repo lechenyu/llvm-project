@@ -7,6 +7,8 @@
 
 #define OMPT_WEAK_ATTRIBUTE __attribute__((weak))
 
+#define OMPT_GET_RETURN_ADDRESS(level) __builtin_return_address(level)
+
 // The following structs are used to pass target-related OMPT callbacks to libomptarget. The structs' definitions
 // should be in sync with the definitions in libomptarget/src/ompt_internal.h
 
@@ -24,5 +26,9 @@ extern ompt_target_callbacks_active_t ompt_target_enabled;
 
 _OMP_EXTERN OMPT_WEAK_ATTRIBUTE bool libomp_start_tool(
         ompt_target_callbacks_active_t *libomptarget_ompt_enabled);
+
+_OMP_EXTERN OMPT_WEAK_ATTRIBUTE void libomp_ompt_callback_target_emi(ompt_target_t kind,
+                                     ompt_scope_endpoint_t endpoint,
+                                     int device_num, void* codeptr);
 
 #endif // LIBOMPTARGET_OMPT_TARGET_H

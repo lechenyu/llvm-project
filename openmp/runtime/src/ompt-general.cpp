@@ -1022,3 +1022,40 @@ static ompt_interface_fn_t ompt_fn_lookup(const char *s) {
 
   return NULL;
 }
+
+/*****************************************************************************
+ * Delegation of target-related OMPT callbacks
+ ****************************************************************************/
+_OMP_EXTERN void libomp_ompt_callback_target_emi(ompt_target_t kind,
+                                     ompt_scope_endpoint_t endpoint,
+                                     int device_num, void* codeptr) {
+  ompt_data_t *task_data, *target_task_data, *target_data;
+  switch (kind) {
+    case ompt_target:
+      ompt_get_task_info(0, NULL, &task_data, NULL, NULL, NULL);
+      target_task_data = NULL;
+      break;
+    case ompt_target_nowait:
+      ompt_get_task_info(1, NULL, &task_data, NULL, NULL, NULL);
+      ompt_get_task_info(0, NULL, &target_task_data, NULL, NULL, NULL);
+      break;
+  }
+
+  kmp_info_t *thr = ompt_get_thread();
+  switch (endpoint) {
+    case ompt_scope_begin:
+      assert(thr->th.ompt_thread_info.target_data == NULL);
+      // TODO: shall we use __kmp_thread_malloc
+      target_data = (ompt_data_t *)malloc(sizeof(ompt_data_t));
+      *target_data = ompt_data_none;
+      thr->th.ompt_thread_info.target_data = target_data;
+      ompt_target_callbacks.ompt_callback(ompt_callback_target_emi)(kind, endpoint, device_num, task_data, target_task_data, target_data, codeptr);
+      break;
+    case ompt_scope_end:
+      target_data = thr->th.ompt_thread_info.target_data;
+      ompt_target_callbacks.ompt_callback(ompt_callback_target_emi)(kind, endpoint, device_num, task_data, target_task_data, target_data, codeptr);
+      thr->th.ompt_thread_info.target_data = NULL;
+      free(target_data);
+      break;
+  }
+}

@@ -121,6 +121,7 @@ typedef struct {
   int ompt_task_yielded;
   int parallel_flags; // information for the last parallel region invoked
   void *idle_frame;
+  ompt_data_t *target_data; // ompt_data for the latest encountered target region
 } ompt_thread_info_t;
 
 extern ompt_callbacks_internal_t ompt_callbacks;

@@ -24,9 +24,6 @@
 #include <cstdlib>
 #include <mutex>
 
-#if OMPT_SUPPORT
-THREAD_LOCAL ompt_tls tls;
-#endif
 ////////////////////////////////////////////////////////////////////////////////
 /// adds requires flags
 EXTERN void __tgt_register_requires(int64_t flags) {
@@ -349,24 +346,15 @@ EXTERN int __tgt_target_internal(ident_t *loc, int64_t device_id, void *host_ptr
 #endif
 
 #if OMPT_SUPPORT
-  ompt_target_t kind = ompt_target;
-  ompt_data_t *task_data, *target_task_data;
-  ompt_data_t target_data = ompt_data_none;
+  ompt_target_t kind;
+  if (nowait) {
+    kind = ompt_target_nowait;
+  } else {
+    kind = ompt_target;
+  }
   if (ompt_target_enabled.enabled) {
-    // __tgt_target_mapper may be invoked by __tgt_target,__tgt_target_nowait, __tgt_target_nowait_wrapper,
-    // or directly invoked by the OpenMP application. To correctly mark whether the nowait clause is enabled
-    // in all four cases, tls.nowait is only set to 'true' when __tgt_target_nowait or __tgt_target_nowait_wrapper
-    // invokes __tgt_target_mapper.
-    if (nowait) {
-      kind = ompt_target_nowait;
-      ompt_target_entry_points.ompt_get_task_info(1, NULL, &task_data, NULL, NULL, NULL);
-      ompt_target_entry_points.ompt_get_task_info(0, NULL, &target_task_data, NULL, NULL, NULL);
-    } else {
-      ompt_target_entry_points.ompt_get_task_info(0, NULL, &task_data, NULL, NULL, NULL);
-      target_task_data = NULL;
-    }
     if (ompt_target_enabled.ompt_callback_target_emi) {
-      ompt_target_callbacks.ompt_callback(ompt_callback_target_emi)(kind, ompt_scope_begin, device_id, task_data, target_task_data, &target_data, codeptr);
+      libomp_ompt_callback_target_emi(kind, ompt_scope_begin, device_id, codeptr);
     }
 
   }
@@ -379,7 +367,7 @@ EXTERN int __tgt_target_internal(ident_t *loc, int64_t device_id, void *host_ptr
 #if OMPT_SUPPORT
   if (ompt_target_enabled.enabled) {
     if (ompt_target_enabled.ompt_callback_target_emi) {
-      ompt_target_callbacks.ompt_callback(ompt_callback_target_emi)(kind, ompt_scope_end, device_id, task_data, target_task_data, &target_data, codeptr);
+      libomp_ompt_callback_target_emi(kind, ompt_scope_end, device_id, codeptr);
     }
   }
 #endif
