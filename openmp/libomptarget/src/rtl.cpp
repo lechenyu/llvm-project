@@ -44,9 +44,6 @@ static char *ProfileTraceFile = nullptr;
 
 #if OMPT_SUPPORT
 static bool ompt_initialized = false;
-
-typedef bool (*libomptarget_start_tool_t)(ompt_target_callbacks_active_t *libomptarget_ompt_enabled,
-                                          ompt_target_callbacks_internal_t *libomptarget_ompt_callbacks);
 #endif
 
 __attribute__((constructor(101))) void init() {
@@ -58,19 +55,6 @@ __attribute__((constructor(101))) void init() {
   // TODO: add a configuration option for time granularity
   if (ProfileTraceFile)
     llvm::timeTraceProfilerInitialize(500 /* us */, "libomptarget");
-#endif
-
-#if OMPT_SUPPORT
-  DP("OMPT_SUPPORT is enabled in libomptarget\n");
-  if (!ompt_initialized) {
-    DP("Init OMPT for libomptarget\n");
-    libomptarget_start_tool_t start_tool =
-            (libomptarget_start_tool_t)dlsym(RTLD_DEFAULT, "libomptarget_start_tool");
-    if (start_tool) {
-      DP("Retrieve libomptarget_start_tool successfully\n");
-    }
-    ompt_initialized = true;
-  }
 #endif
 }
 
@@ -202,6 +186,21 @@ void RTLsTy::LoadRTLs() {
     *((void **)&R.set_info_flag) =
         dlsym(dynlib_handle, "__tgt_rtl_set_info_flag");
   }
+
+#if OMPT_SUPPORT
+  DP("OMPT_SUPPORT is enabled in libomptarget\n");
+  if (!ompt_initialized) {
+    DP("Init OMPT for libomptarget\n");
+    if (libomp_start_tool) {
+      DP("Retrieve libomp_start_tool successfully\n");
+      if (!libomp_start_tool(&ompt_target_enabled)) {
+        DP("Turn off OMPT in libomptarget because libomp_start_tool returns false\n");
+        memset(&ompt_target_enabled, 0, sizeof(ompt_target_enabled));
+      }
+    }
+    ompt_initialized = true;
+  }
+#endif
 
   DP("RTLs loaded!\n");
 
