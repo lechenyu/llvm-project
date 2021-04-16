@@ -1,22 +1,14 @@
-#ifndef __OMPT_TARGET_H__
-#define __OMPT_TARGET_H__
+#ifndef LIBOMPTARGET_OMPT_TARGET_H
+#define LIBOMPTARGET_OMPT_TARGET_H
 
 #include "omp-tools.h"
 
-#define ompt_callback(e) e##_callback
+#define _OMP_EXTERN extern "C"
 
-// The following two types of structs are used to pass target-related OMPT callbacks to libomptarget. The structs' definitions
+#define OMPT_WEAK_ATTRIBUTE __attribute__((weak))
+
+// The following structs are used to pass target-related OMPT callbacks to libomptarget. The structs' definitions
 // should be in sync with the definitions in libomptarget/src/ompt_internal.h
-
-/* Struct to collect target callback pointers */
-typedef struct ompt_target_callbacks_internal_s {
-#define ompt_event_macro(event, callback, eventid)                             \
-  callback ompt_callback(event);
-
-    FOREACH_OMPT_51_TARGET_EVENT(ompt_event_macro)
-
-#undef ompt_event_macro
-} ompt_target_callbacks_internal_t;
 
 /* Bitmap to mark OpenMP 5.1 target events as registered*/
 typedef struct ompt_target_callbacks_active_s {
@@ -28,8 +20,9 @@ typedef struct ompt_target_callbacks_active_s {
 #undef ompt_event_macro
 } ompt_target_callbacks_active_t;
 
-extern ompt_target_callbacks_internal_t ompt_target_callbacks;
-
 extern ompt_target_callbacks_active_t ompt_target_enabled;
 
-#endif //__OMPT_TARGET_H__
+_OMP_EXTERN OMPT_WEAK_ATTRIBUTE bool libomp_start_tool(
+        ompt_target_callbacks_active_t *libomptarget_ompt_enabled);
+
+#endif // LIBOMPTARGET_OMPT_TARGET_H
