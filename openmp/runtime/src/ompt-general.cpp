@@ -146,8 +146,6 @@ _OMP_EXTERN OMPT_WEAK_ATTRIBUTE bool libomp_start_tool(
 
       FOREACH_OMPT_51_TARGET_EVENT(ompt_event_macro)
 #undef ompt_event_macro
-      libomptarget_ompt_entry_points->ompt_get_task_info = __ompt_get_task_info_internal;
-      libomptarget_ompt_entry_points->ompt_get_team_info = __ompt_get_teaminfo;
 
   }
   return ret;
