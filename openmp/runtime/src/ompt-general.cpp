@@ -132,8 +132,7 @@ OMPT_API_ROUTINE ompt_data_t *ompt_get_thread_data(void);
 typedef ompt_start_tool_result_t *(*ompt_start_tool_t)(unsigned int,
                                                        const char *);
 
-_OMP_EXTERN OMPT_WEAK_ATTRIBUTE bool libomp_start_tool(
-    ompt_target_callbacks_active_t *libomptarget_ompt_enabled) {
+_OMP_EXTERN bool libomp_start_tool(ompt_target_callbacks_active_t *libomptarget_ompt_enabled) {
   if (!TCR_4(__kmp_init_middle)) {
     __kmp_middle_initialize();
   }
