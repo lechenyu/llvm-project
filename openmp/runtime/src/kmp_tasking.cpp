@@ -1440,6 +1440,11 @@ kmp_task_t *__kmpc_omp_task_alloc(ident_t *loc_ref, kmp_int32 gtid,
 
   KA_TRACE(20, ("__kmpc_omp_task_alloc(exit): T#%d retval %p\n", gtid, retval));
 
+#if OMPT_SUPPORT
+  kmp_taskdata_t *task_data = KMP_TASK_TO_TASKDATA(retval);
+  task_data->ompt_task_info.target_data.value = initial_target_data_value;
+#endif
+
   return retval;
 }
 
