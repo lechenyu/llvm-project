@@ -13,6 +13,7 @@
 #include "device.h"
 #include "private.h"
 #include "rtl.h"
+#include "ompt-target.h"
 
 #include <cassert>
 #include <climits>
@@ -54,7 +55,7 @@ DeviceTy::~DeviceTy() {
   dumpTargetPointerMappings(&loc, *this);
 }
 
-int DeviceTy::associatePtr(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size) {
+int DeviceTy::associatePtr(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size OMPT_ARG(void *codeptr)) {
   DataMapMtx.lock();
 
   // Check if entry exists
@@ -75,6 +76,14 @@ int DeviceTy::associatePtr(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size) {
     }
   }
 
+#if OMPT_SUPPORT
+  if (ompt_target_enabled.enabled && ompt_target_enabled.ompt_callback_target_data_op_emi) {
+    libomp_ompt_callback_target_data_op_emi(ompt_scope_beginend, ompt_target_data_associate, HstPtrBegin,
+                                            host_device_num,
+                                            TgtPtrBegin, DeviceID, Size, codeptr);
+  }
+#endif
+
   // Mapping does not exist, allocate it with refCount=INF
   HostDataToTargetTy newEntry((uintptr_t)HstPtrBegin /*HstPtrBase*/,
                               (uintptr_t)HstPtrBegin /*HstPtrBegin*/,
@@ -93,13 +102,18 @@ int DeviceTy::associatePtr(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size) {
   return OFFLOAD_SUCCESS;
 }
 
-int DeviceTy::disassociatePtr(void *HstPtrBegin) {
+int DeviceTy::disassociatePtr(void *HstPtrBegin OMPT_ARG(void *codeptr)) {
   DataMapMtx.lock();
 
   auto search = HostDataToTargetMap.find(HstPtrBeginTy{(uintptr_t)HstPtrBegin});
   if (search != HostDataToTargetMap.end()) {
     // Mapping exists
     if (search->isRefCountInf()) {
+#if OMPT_SUPPORT
+      if (ompt_target_enabled.enabled && ompt_target_enabled.ompt_callback_target_data_op_emi)
+      libomp_ompt_callback_target_data_op_emi(ompt_scope_beginend, ompt_target_data_disassociate, HstPtrBegin, host_device_num,
+                                              nullptr, DeviceID, 0, codeptr);
+#endif
       DP("Association found, removing it\n");
       HostDataToTargetMap.erase(search);
       DataMapMtx.unlock();
@@ -197,7 +211,7 @@ void *DeviceTy::getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase,
                                  int64_t Size, map_var_info_t HstPtrName,
                                  bool &IsNew, bool &IsHostPtr, bool IsImplicit,
                                  bool UpdateRefCount, bool HasCloseModifier,
-                                 bool HasPresentModifier) {
+                                 bool HasPresentModifier OMPT_ARG(void *codeptr)) {
   void *rc = NULL;
   IsHostPtr = false;
   IsNew = false;
@@ -263,7 +277,7 @@ void *DeviceTy::getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase,
   } else if (Size) {
     // If it is not contained and Size > 0, we should create a new entry for it.
     IsNew = true;
-    uintptr_t tp = (uintptr_t)allocData(Size, HstPtrBegin);
+    uintptr_t tp = (uintptr_t)allocData(Size OMPT_ARG(codeptr), HstPtrBegin);
     INFO(OMP_INFOTYPE_MAPPING_CHANGED, DeviceID,
          "Creating new map entry with "
          "HstPtrBegin=" DPxMOD ", TgtPtrBegin=" DPxMOD ", Size=%ld, Name=%s\n",
@@ -335,7 +349,7 @@ void *DeviceTy::getTgtPtrBegin(void *HstPtrBegin, int64_t Size) {
   return NULL;
 }
 
-int DeviceTy::deallocTgtPtr(void *HstPtrBegin, int64_t Size, bool ForceDelete,
+int DeviceTy::deallocTgtPtr(void *HstPtrBegin, int64_t Size, bool ForceDelete OMPT_ARG(void *codeptr),
                             bool HasCloseModifier) {
   if (PM->RTLs.RequiresFlags & OMP_REQ_UNIFIED_SHARED_MEMORY &&
       !HasCloseModifier)
@@ -351,7 +365,7 @@ int DeviceTy::deallocTgtPtr(void *HstPtrBegin, int64_t Size, bool ForceDelete,
     if (HT.decRefCount() == 0) {
       DP("Deleting tgt data " DPxMOD " of size %" PRId64 "\n",
          DPxPTR(HT.TgtPtrBegin), Size);
-      deleteData((void *)HT.TgtPtrBegin);
+      deleteData((void *)HT.TgtPtrBegin OMPT_ARG(HstPtrBegin, Size, codeptr));
       INFO(OMP_INFOTYPE_MAPPING_CHANGED, DeviceID,
            "Removing%s map entry with HstPtrBegin=" DPxMOD
            ", TgtPtrBegin=" DPxMOD ", Size=%" PRId64 ", Name=%s\n",
@@ -409,37 +423,74 @@ __tgt_target_table *DeviceTy::load_binary(void *Img) {
   return rc;
 }
 
-void *DeviceTy::allocData(int64_t Size, void *HstPtr, int32_t Kind) {
-  return RTL->data_alloc(RTLDeviceID, Size, HstPtr, Kind);
+void *DeviceTy::allocData(int64_t Size OMPT_ARG(void *codeptr), void *HstPtr, int32_t Kind) {
+#if OMPT_SUPPORT
+    OmptTargetDataOp data_alloc{ompt_target_data_alloc, HstPtr, host_device_num, nullptr, DeviceID,
+                                (size_t) Size, codeptr};
+#endif
+  void *TgtPtr = RTL->data_alloc(RTLDeviceID, Size, HstPtr, Kind);
+#if OMPT_SUPPORT
+  data_alloc.set_dest_addr(TgtPtr);
+#endif
+  return TgtPtr;
 }
 
-int32_t DeviceTy::deleteData(void *TgtPtrBegin) {
+int32_t DeviceTy::deleteData(void *TgtPtrBegin OMPT_ARG(void *HstPtrBegin, int64_t Size, void *codeptr)) {
+#if OMPT_SUPPORT
+  OmptTargetDataOp data_delete{ompt_target_data_delete, HstPtrBegin, host_device_num, TgtPtrBegin, DeviceID,
+                               (size_t) Size, codeptr};
+#endif
   return RTL->data_delete(RTLDeviceID, TgtPtrBegin);
 }
 
 // Submit data to device
 int32_t DeviceTy::submitData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
-                             AsyncInfoTy &AsyncInfo) {
-  if (!AsyncInfo || !RTL->data_submit_async || !RTL->synchronize)
+                             AsyncInfoTy &AsyncInfo OMPT_ARG(void *codeptr)) {
+  if (!AsyncInfo || !RTL->data_submit_async || !RTL->synchronize) {
+#if OMPT_SUPPORT
+    OmptTargetDataOp data_submit{ompt_target_data_transfer_to_device, HstPtrBegin, host_device_num, TgtPtrBegin,
+                                 DeviceID,
+                                 (size_t) Size, codeptr};
+#endif
     return RTL->data_submit(RTLDeviceID, TgtPtrBegin, HstPtrBegin, Size);
-  else
+  } else {
+#if OMPT_SUPPORT
+    OmptTargetDataOp data_submit{ompt_target_data_transfer_to_device_async, HstPtrBegin, host_device_num, TgtPtrBegin, DeviceID,
+                                 (size_t) Size, codeptr};
+#endif
     return RTL->data_submit_async(RTLDeviceID, TgtPtrBegin, HstPtrBegin, Size,
                                   AsyncInfo);
+  }
 }
 
 // Retrieve data from device
 int32_t DeviceTy::retrieveData(void *HstPtrBegin, void *TgtPtrBegin,
-                               int64_t Size, AsyncInfoTy &AsyncInfo) {
-  if (!RTL->data_retrieve_async || !RTL->synchronize)
+                               int64_t Size, AsyncInfoTy &AsyncInfo OMPT_ARG(void *codeptr)) {
+  if (!RTL->data_retrieve_async || !RTL->synchronize) {
+#if OMPT_SUPPORT
+    OmptTargetDataOp data_retrieve{ompt_target_data_transfer_from_device, TgtPtrBegin, DeviceID, HstPtrBegin, host_device_num,
+                                   (size_t) Size, codeptr};
+#endif
     return RTL->data_retrieve(RTLDeviceID, HstPtrBegin, TgtPtrBegin, Size);
-  else
+  } else {
+#if OMPT_SUPPORT
+    OmptTargetDataOp data_retrieve{ompt_target_data_transfer_from_device_async, TgtPtrBegin, DeviceID, HstPtrBegin, host_device_num,
+                                   (size_t) Size, codeptr};
+#endif
     return RTL->data_retrieve_async(RTLDeviceID, HstPtrBegin, TgtPtrBegin, Size,
                                     AsyncInfo);
+  }
 }
 
 // Copy data from current device to destination device directly
 int32_t DeviceTy::dataExchange(void *SrcPtr, DeviceTy &DstDev, void *DstPtr,
-                               int64_t Size, AsyncInfoTy &AsyncInfo) {
+                               int64_t Size, AsyncInfoTy &AsyncInfo OMPT_ARG(void *codeptr)) {
+  //TODO: how to set optype for data exchange?
+#if OMPT_SUPPORT
+  OmptTargetDataOp data_exchange{ompt_target_data_transfer_to_device, SrcPtr, DeviceID, DstPtr, DstDev.DeviceID,
+                               (size_t) Size, codeptr};
+#endif
+
   if (!AsyncInfo || !RTL->data_exchange_async || !RTL->synchronize) {
     assert(RTL->data_exchange && "RTL->data_exchange is nullptr");
     return RTL->data_exchange(RTLDeviceID, SrcPtr, DstDev.RTLDeviceID, DstPtr,

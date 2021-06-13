@@ -13,10 +13,7 @@
 #include "rtl.h"
 #include "device.h"
 #include "private.h"
-
-#if OMPT_SUPPORT
 #include "ompt-target.h"
-#endif
 
 #include <cassert>
 #include <cstdlib>
@@ -197,6 +194,7 @@ void RTLsTy::LoadRTLs() {
       }
     }
     ompt_initialized = true;
+    host_device_num = omp_get_initial_device();
   }
 #endif
 
@@ -430,7 +428,7 @@ void RTLsTy::UnregisterLib(__tgt_bin_desc *desc) {
           for (auto &dtor : Device.PendingCtorsDtors[desc].PendingDtors) {
             int rc = target(nullptr, Device, dtor, 0, nullptr, nullptr, nullptr,
                             nullptr, nullptr, nullptr, 1, 1, true /*team*/,
-                            AsyncInfo);
+                            AsyncInfo OMPT_ARG(nullptr));
             if (rc != OFFLOAD_SUCCESS) {
               DP("Running destructor " DPxMOD " failed.\n", DPxPTR(dtor));
             }
