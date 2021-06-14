@@ -101,3 +101,16 @@ OmptTarget::~OmptTarget() {
     libomp_ompt_callback_target_emi(kind, ompt_scope_end, device_num, codeptr);
   }
 }
+
+OmptTargetSubmit::OmptTargetSubmit(unsigned int requested_num_teams) : requested_num_teams(requested_num_teams) {
+  this->active = ompt_target_enabled.enabled && ompt_target_enabled.ompt_callback_target_submit_emi;
+  if (active) {
+    libomp_ompt_callback_target_submit_emi(ompt_scope_begin, requested_num_teams);
+  }
+}
+
+OmptTargetSubmit::~OmptTargetSubmit() {
+  if (active) {
+    libomp_ompt_callback_target_submit_emi(ompt_scope_end, requested_num_teams);
+  }
+}

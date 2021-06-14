@@ -105,6 +105,15 @@ public:
     OmptTarget(ompt_target_t kind, int device_num, void *codeptr);
     ~OmptTarget();
 };
+
+class OmptTargetSubmit {
+private:
+    unsigned int requested_num_teams;
+    bool active;
+public:
+    OmptTargetSubmit(unsigned int requested_num_teams);
+    ~OmptTargetSubmit();
+};
 #else
 
 #define OMPT_ARG(...)
