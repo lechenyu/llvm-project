@@ -34,8 +34,6 @@
 
 #define ompt_emi_event(e) e##_emi
 
-#define initial_target_data_value 1
-
 /* Struct to collect host callback pointers */
 typedef struct ompt_callbacks_internal_s {
 #define ompt_event_macro(event, callback, eventid)                             \
@@ -100,6 +98,7 @@ typedef struct {
   struct kmp_taskdata *scheduling_parent;
   int thread_num;
   ompt_data_t target_data; // ompt_data for the enclosed target region
+  bool is_target_task;
 } ompt_task_info_t;
 
 typedef struct {

@@ -1025,7 +1025,7 @@ void __ompt_get_target_data_info(ompt_data_t **task_data, ompt_data_t **target_t
   kmp_info_t *thr = ompt_get_thread();
   kmp_taskdata *current_task = thr->th.th_current_task;
   ompt_task_info_t *current_task_info = OMPT_CUR_TASK_INFO(thr);
-  if (current_task_info->target_data.value == initial_target_data_value) {
+  if (current_task_info->is_target_task) {
     target_task_data_val = &current_task_info->task_data;
     task_data_val = &current_task->td_parent->ompt_task_info.task_data;
     target_data_val = &current_task_info->target_data;
@@ -1105,5 +1105,4 @@ _OMP_EXTERN void libomp_ompt_callback_target_submit_emi(ompt_scope_endpoint_t en
   kmp_info_t *thr = ompt_get_thread();
   host_op_id = &thr->th.ompt_thread_info.host_op_id;
   ompt_target_callbacks.ompt_callback(ompt_callback_target_submit_emi)(endpoint, target_data, host_op_id, requested_num_teams);
-
 }

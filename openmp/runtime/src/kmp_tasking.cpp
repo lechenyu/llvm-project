@@ -570,6 +570,7 @@ static inline void __ompt_task_init(kmp_taskdata_t *task, int tid) {
   task->ompt_task_info.frame.enter_frame_flags =
       ompt_frame_runtime | ompt_frame_framepointer;
   task->ompt_task_info.target_data.value = 0;
+  task->ompt_task_info.is_target_task = false;
 }
 
 // __ompt_task_start:
@@ -1461,7 +1462,7 @@ kmp_task_t *__kmpc_omp_target_task_alloc(ident_t *loc_ref, kmp_int32 gtid,
 #if OMPT_SUPPORT
   if (UNLIKELY(ompt_enabled.enabled)) {
     kmp_taskdata_t *task_data = KMP_TASK_TO_TASKDATA(retval);
-    task_data->ompt_task_info.target_data.value = initial_target_data_value;
+    task_data->ompt_task_info.is_target_task = true;
   }
 #endif
 
