@@ -1791,12 +1791,16 @@ kmp_int32 __kmpc_omp_task(ident_t *loc_ref, kmp_int32 gtid,
         parent->ompt_task_info.frame.enter_frame.ptr =
             OMPT_GET_FRAME_ADDRESS(0);
       }
+      int flag = ompt_task_explicit | TASK_TYPE_DETAILS_FORMAT(new_taskdata);
+      if (new_taskdata->ompt_task_info.is_target_task) {
+        flag |= ompt_task_target;
+      }
       if (ompt_enabled.ompt_callback_task_create) {
         ompt_callbacks.ompt_callback(ompt_callback_task_create)(
             &(parent->ompt_task_info.task_data),
             &(parent->ompt_task_info.frame),
             &(new_taskdata->ompt_task_info.task_data),
-            ompt_task_explicit | TASK_TYPE_DETAILS_FORMAT(new_taskdata), 0,
+            flag, 0,
             OMPT_LOAD_RETURN_ADDRESS(gtid));
       }
     } else {

@@ -96,8 +96,8 @@ typedef struct {
   ompt_frame_t frame;
   ompt_data_t task_data;
   struct kmp_taskdata *scheduling_parent;
-  int thread_num;
   ompt_data_t target_data; // ompt_data for the enclosed target region
+  int thread_num;
   bool is_target_task;
 } ompt_task_info_t;
 

@@ -1020,7 +1020,7 @@ static ompt_interface_fn_t ompt_fn_lookup(const char *s) {
   return NULL;
 }
 
-void __ompt_get_target_data_info(ompt_data_t **task_data, ompt_data_t **target_task_data, ompt_data_t **target_data) {
+void __ompt_get_target_data_info(ompt_data_t **task_data, ompt_data_t **target_task_data, ompt_data_t **target_data, bool *is_nowait) {
   ompt_data_t *task_data_val, *target_task_data_val, *target_data_val;
   kmp_info_t *thr = ompt_get_thread();
   kmp_taskdata *current_task = thr->th.th_current_task;
@@ -1043,6 +1043,9 @@ void __ompt_get_target_data_info(ompt_data_t **task_data, ompt_data_t **target_t
   if (target_data) {
     *target_data = target_data_val;
   }
+  if (is_nowait) {
+    *is_nowait = current_task_info->is_target_task;
+  }
 }
 /*****************************************************************************
  * Delegation of target-related OMPT callbacks
@@ -1051,8 +1054,11 @@ _OMP_EXTERN void libomp_ompt_callback_target_emi(ompt_target_t kind,
                                                  ompt_scope_endpoint_t endpoint,
                                                  int device_num, void *codeptr) {
   ompt_data_t *task_data, *target_task_data, *target_data;
-  __ompt_get_target_data_info(&task_data, &target_task_data, &target_data);
-
+  bool is_nowait;
+  __ompt_get_target_data_info(&task_data, &target_task_data, &target_data, &is_nowait);
+  if (is_nowait) {
+    codeptr = nullptr;
+  }
   switch (endpoint) {
     case ompt_scope_begin:
       *target_data = ompt_data_none;
@@ -1076,7 +1082,11 @@ _OMP_EXTERN void libomp_ompt_callback_target_data_op_emi(ompt_scope_endpoint_t e
                                                          size_t bytes,
                                                          void *codeptr) {
   ompt_data_t *target_task_data, *target_data;
-  __ompt_get_target_data_info(NULL, &target_task_data, &target_data);
+  bool is_nowait;
+  __ompt_get_target_data_info(nullptr, &target_task_data, &target_data, &is_nowait);
+  if (is_nowait) {
+    codeptr = nullptr;
+  }
   ompt_id_t *host_op_id;
   kmp_info_t *thr = ompt_get_thread();
   host_op_id = &thr->th.ompt_thread_info.host_op_id;
@@ -1092,7 +1102,11 @@ _OMP_EXTERN void libomp_ompt_callback_target_map_emi(unsigned int nitems,
                                                      unsigned int *mapping_flags,
                                                      void *codeptr) {
   ompt_data_t *target_data;
-  __ompt_get_target_data_info(NULL, NULL, &target_data);
+  bool is_nowait;
+  __ompt_get_target_data_info(nullptr, nullptr, &target_data, &is_nowait);
+  if (is_nowait) {
+    codeptr = nullptr;
+  }
   ompt_target_callbacks.ompt_callback(ompt_callback_target_map_emi)(target_data, nitems, host_addr, device_addr, bytes,
                                                                     mapping_flags, codeptr);
 }
@@ -1100,7 +1114,7 @@ _OMP_EXTERN void libomp_ompt_callback_target_map_emi(unsigned int nitems,
 _OMP_EXTERN void libomp_ompt_callback_target_submit_emi(ompt_scope_endpoint_t endpoint,
                                                         unsigned int requested_num_teams) {
   ompt_data_t *target_data;
-  __ompt_get_target_data_info(NULL, NULL, &target_data);
+  __ompt_get_target_data_info(nullptr, nullptr, &target_data, nullptr);
   ompt_id_t *host_op_id;
   kmp_info_t *thr = ompt_get_thread();
   host_op_id = &thr->th.ompt_thread_info.host_op_id;
