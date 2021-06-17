@@ -56,14 +56,23 @@ void OmptTargetMapping::add_mapping(void *hst_addr, void *tgt_addr, size_t byte,
   if (active) {
     // Calculate mapping_flag using arg_type
     unsigned int flag = 0;
-    if (con_type == TARGET_DATA_BEGIN || con_type == TARGET) {
+    if (con_type == TARGET) {
+      if (arg_type & OMP_TGT_MAPTYPE_TO) {
+        flag |= ompt_target_map_flag_to;
+      }
+      if (arg_type & OMP_TGT_MAPTYPE_FROM) {
+        flag |= ompt_target_map_flag_from;
+      }
+      if (!flag) {
+        flag |= ompt_target_map_flag_alloc;
+      }
+    } else if (con_type == TARGET_DATA_BEGIN) {
       if (arg_type & OMP_TGT_MAPTYPE_TO) {
         flag |= ompt_target_map_flag_to;
       } else {
         flag |= ompt_target_map_flag_alloc;
       }
-    }
-    if (con_type == TARGET_DATA_END || con_type == TARGET) {
+    } else if (con_type == TARGET_DATA_END) {
       if (arg_type & OMP_TGT_MAPTYPE_FROM) {
         flag |= ompt_target_map_flag_from;
       } else if (arg_type & OMP_TGT_MAPTYPE_DELETE) {

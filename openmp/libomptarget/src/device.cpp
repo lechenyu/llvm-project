@@ -486,16 +486,19 @@ int32_t DeviceTy::retrieveData(void *HstPtrBegin, void *TgtPtrBegin,
 int32_t DeviceTy::dataExchange(void *SrcPtr, DeviceTy &DstDev, void *DstPtr,
                                int64_t Size, AsyncInfoTy &AsyncInfo OMPT_ARG(void *codeptr)) {
   //TODO: how to set optype for data exchange?
-#if OMPT_SUPPORT
-  OmptTargetDataOp data_exchange{ompt_target_data_transfer_to_device, SrcPtr, DeviceID, DstPtr, DstDev.DeviceID,
-                               (size_t) Size, codeptr};
-#endif
-
   if (!AsyncInfo || !RTL->data_exchange_async || !RTL->synchronize) {
     assert(RTL->data_exchange && "RTL->data_exchange is nullptr");
+#if OMPT_SUPPORT
+    OmptTargetDataOp data_exchange{ompt_target_data_transfer_to_device, SrcPtr, DeviceID, DstPtr, DstDev.DeviceID,
+                                   (size_t) Size, codeptr};
+#endif
     return RTL->data_exchange(RTLDeviceID, SrcPtr, DstDev.RTLDeviceID, DstPtr,
                               Size);
   } else
+#if OMPT_SUPPORT
+    OmptTargetDataOp data_exchange{ompt_target_data_transfer_to_device_async, SrcPtr, DeviceID, DstPtr, DstDev.DeviceID,
+                                   (size_t) Size, codeptr};
+#endif
     return RTL->data_exchange_async(RTLDeviceID, SrcPtr, DstDev.RTLDeviceID,
                                     DstPtr, Size, AsyncInfo);
 }
