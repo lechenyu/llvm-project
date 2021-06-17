@@ -1,34 +1,52 @@
-// RUN: %libomptarget-compile-and-run-x86_64-pc-linux-gnu | FileCheck %s
+// RUN: %libomptarget-compile-generic -DNOWAIT=0 && %libomptarget-run-generic 2>&1 | %fcheck-generic --check-prefixes CHECK,SYNC
+// RUN: %libomptarget-compile-generic -DNOWAIT=1 && %libomptarget-run-generic 2>&1 | %fcheck-generic --check-prefixes CHECK,ASYNC
 // REQUIRES: ompt
 
 #include "callback-target.h"
 #include <stdio.h>
 
 int main() {
-  #pragma omp target
+  #pragma omp target NOWAIT_CLAUSE
   {
       //print_ids(0);
       printf("hello\n");
   }
-  print_current_address();
-  // CHECK-NOT: {{^}}0: Could not register callback
+  print_current_address(1);
+#if NOWAIT
+  #pragma omp taskwait
+  print_current_address(2);
+#endif
 
+  // CHECK-NOT: {{^}}0: Could not register callback
   // CHECK: 0: NULL_POINTER=[[NULL:.*$]]
 
   // CHECK: {{^}}[[MASTER_ID:[0-9]+]]: ompt_event_thread_begin: thread_type=ompt_thread_initial=1, thread_id=[[MASTER_ID]]
   // CHECK: {{^}}[[MASTER_ID]]: ompt_event_initial_task_begin
-  // CHECK-SAME: parallel_id=[[PARALLEL_ID:[0-9]+]], task_id=[[INITIAL_TASK_ID:[0-9]+]], actual_parallelism=1, index=1, flags=1 
-  // CHECK: {{^}}[[MASTER_ID]]: ompt_event_target_emi_begin
-  // CHECK-SAME: target_id=[[TARGET_ID:[0-9]+]], target_task_id=0, task_id=[[INITIAL_TASK_ID]], device_num=[[DEVICE_NUM:[0-9]+]]
-  // CHECK-SAME: kind=ompt_target, codeptr_ra=[[RETURN_ADDRESS:0x[0-f]+]]{{[0-f][0-f]}}
+  // CHECK-SAME: parallel_id=[[PARALLEL_ID:[0-9]+]], task_id=[[INITIAL_TASK_ID:[0-9]+]], actual_parallelism=1, index=1, flags=1
+
+  // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_emi_begin
+  // SYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_task_id=0, target_id=[[TARGET_ID:[0-9]+]], device_num=[[DEVICE_NUM:[0-9]+]]
+  // SYNC-SAME: kind=ompt_target, codeptr_ra=[[TARGET_RETURN_ADDRESS:0x[0-f]+]]{{[0-f][0-f]}}
+
+  // ASYNC: {{^}}[[MASTER_ID]]: ompt_event_task_create
+  // ASYNC-SAME: parent_task_id=[[INITIAL_TASK_ID]], parent_task_frame.exit=(nil), parent_task_frame.reenter=0x{{[0-f]+}}
+  // ASYNC-SAME: new_task_id=[[TARGET_TASK_ID:[0-9]+]], codeptr_ra=0x{{[0-f]+}}
+  // ASYNC-SAME: task_type=ompt_task_explicit|ompt_task_target
+  // ASYNC: {{^}}[[THREAD_ID:[0-9]+]]: ompt_event_target_emi_begin
+  // ASYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_task_id=[[TARGET_TASK_ID]], target_id=[[TARGET_ID:[0-9]+]], device_num=[[DEVICE_NUM:[0-9]+]]
+  // ASYNC-SAME: kind=ompt_target_nowait, codeptr_ra=(nil)
 
   // COM: {{^}}[[MASTER_ID]]: task level 0
   // COM: parallel_id=[[PARALLEL_ID]], task_id=[[INITIAL_TASK_ID]]
 
-  // CHECK: {{^}}[[MASTER_ID]]: ompt_event_target_emi_end
-  // CHECK-SAME: target_id=[[TARGET_ID]], target_task_id=0, task_id=[[INITIAL_TASK_ID]], device_num=[[DEVICE_NUM]]
-  // CHECK-SAME: kind=ompt_target, codeptr_ra=[[RETURN_ADDRESS]]
-  // CHECK: {{^}}[[MASTER_ID]]: current_address={{.*}}[[RETURN_ADDRESS]]
+  // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_emi_end
+  // SYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_task_id=0, target_id=[[TARGET_ID]], device_num=[[DEVICE_NUM]]
+  // SYNC-SAME: kind=ompt_target, codeptr_ra=[[TARGET_RETURN_ADDRESS]]{{[0-f][0-f]}}
+  // SYNC: {{^}}[[MASTER_ID]]: current_address={{.*}}[[TARGET_RETURN_ADDRESS]]{{[0-f][0-f]}}
+
+  // ASYNC: {{^}}[[THREAD_ID]]: ompt_event_target_emi_end
+  // ASYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_task_id=[[TARGET_TASK_ID]], target_id=[[TARGET_ID]], device_num=[[DEVICE_NUM]]
+  // ASYNC-SAME: kind=ompt_target_nowait, codeptr_ra=(nil)
 
   // CHECK: {{^}}[[MASTER_ID]]: ompt_event_initial_task_end
   // CHECK-SAME: parallel_id=[[PARALLEL_ID]], task_id=[[INITIAL_TASK_ID]], actual_parallelism=0, index=1
