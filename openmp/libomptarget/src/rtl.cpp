@@ -388,7 +388,6 @@ void RTLsTy::RegisterLib(__tgt_bin_desc *desc) {
 
   DP("Done registering entries!\n");
 #if OMPT_SUPPORT
-  //TODO(lyu) shall we get host_device_num_here
   if (ompt_target_enabled.enabled) {
     host_device_num = omp_get_initial_device();
   }
