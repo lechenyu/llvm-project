@@ -15,16 +15,20 @@ int main() {
   // target 1 (target enter data)
   #pragma omp target data map(tofrom: a[0:N])
   {
-  // target 2 (target update)
-  #pragma omp target update to(a[0:N]) NOWAIT_CLAUSE
+    // target 2 (target update)
+    #pragma omp target update to(a[0:N]) NOWAIT_CLAUSE
+    print_current_address(1);
 #if NOWAIT
-  #pragma omp taskwait
+    #pragma omp taskwait
 #endif
-  // target 3 (target update)
-  #pragma omp target update from(a[0:N]) NOWAIT_CLAUSE
+
+    // target 3 (target update)
+    #pragma omp target update from(a[0:N]) NOWAIT_CLAUSE
+    print_current_address(2);
 #if NOWAIT
-  #pragma omp taskwait
+    #pragma omp taskwait
 #endif
+
   // target 4 (target exit data)
   }
 
@@ -78,6 +82,7 @@ int main() {
   // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_emi_end
   // SYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_task_id=0, target_id=[[TARGET_ID_2]], device_num=[[DEVICE_NUM]]
   // SYNC-SAME: kind=ompt_target_update, codeptr_ra=[[TARGET_RETURN_ADDRESS_2]]{{[0-f][0-f]}}
+  // SYNC: {{^}}[[MASTER_ID]]: current_address={{.*}}[[TARGET_RETURN_ADDRESS_2]]{{[0-f][0-f]}}
 
   // ASYNC: {{^}}[[THREAD_ID_2]]: ompt_event_target_emi_end
   // ASYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_task_id=[[TARGET_TASK_ID_2]], target_id=[[TARGET_ID_2]], device_num=[[DEVICE_NUM]]
@@ -115,6 +120,7 @@ int main() {
   // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_emi_end
   // SYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_task_id=0, target_id=[[TARGET_ID_3]], device_num=[[DEVICE_NUM]]
   // SYNC-SAME: kind=ompt_target_update, codeptr_ra=[[TARGET_RETURN_ADDRESS_3]]{{[0-f][0-f]}}
+  // SYNC: {{^}}[[MASTER_ID]]: current_address={{.*}}[[TARGET_RETURN_ADDRESS_3]]{{[0-f][0-f]}}
 
   // ASYNC: {{^}}[[THREAD_ID_3]]: ompt_event_target_emi_end
   // ASYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_task_id=[[TARGET_TASK_ID_3]], target_id=[[TARGET_ID_3]], device_num=[[DEVICE_NUM]]

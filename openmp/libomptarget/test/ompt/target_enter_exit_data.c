@@ -14,10 +14,10 @@ int main() {
 
   // target 1 (target enter data)
   #pragma omp target enter data map(to: a[0:N]) NOWAIT_CLAUSE
+  print_current_address(1);
 #if NOWAIT
   #pragma omp taskwait
 #endif
-  print_current_address(1);
 
   // target 2 (target)
   #pragma omp target map(a[0: N]) NOWAIT_CLAUSE
@@ -26,17 +26,17 @@ int main() {
       a[i] = 1;
     }
   }
+  print_current_address(2);
 #if NOWAIT
   #pragma omp taskwait
 #endif
-  print_current_address(2);
 
   // target 3 (target exit data)
   #pragma omp target exit data map(from: a[0: N]) NOWAIT_CLAUSE
+  print_current_address(3);
 #if NOWAIT
   #pragma omp taskwait
 #endif
-  print_current_address(3);
 
   // CHECK-NOT: {{^}}0: Could not register callback
   // CHECK: 0: NULL_POINTER=[[NULL:.*$]]
