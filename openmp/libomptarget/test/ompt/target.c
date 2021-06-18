@@ -51,6 +51,5 @@ int main() {
   // CHECK: {{^}}[[MASTER_ID]]: ompt_event_initial_task_end
   // CHECK-SAME: parallel_id=[[PARALLEL_ID]], task_id=[[INITIAL_TASK_ID]], actual_parallelism=0, index=1
 
-
   return 0;
 }
