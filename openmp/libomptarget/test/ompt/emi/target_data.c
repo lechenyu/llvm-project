@@ -1,7 +1,7 @@
 // RUN: %libomptarget-compile-generic && %libomptarget-run-generic 2>&1 | %fcheck-generic --check-prefixes CHECK
 // REQUIRES: ompt
 
-#include "callback-target.h"
+#include "callback-emi.h"
 #include "stdio.h"
 #include "omp.h"
 
