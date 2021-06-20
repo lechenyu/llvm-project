@@ -3,7 +3,6 @@
 // REQUIRES: ompt
 
 #include "callback-emi.h"
-#include <stdio.h>
 
 int main() {
   #pragma omp target NOWAIT_CLAUSE

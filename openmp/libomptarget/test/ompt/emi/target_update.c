@@ -3,7 +3,6 @@
 // REQUIRES: ompt
 
 #include "callback-emi.h"
-#include "stdio.h"
 #include "omp.h"
 
 #define N 2

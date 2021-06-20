@@ -2,6 +2,7 @@
 #define __CALLBACK_EMI_H__
 
 #include "../callback-target.h"
+
 static void on_ompt_callback_target_emi(
         ompt_target_t kind,
         ompt_scope_endpoint_t endpoint,
