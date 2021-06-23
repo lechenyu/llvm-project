@@ -89,6 +89,7 @@ public:
         TARGET_DATA_BEGIN   = 2,
         TARGET_DATA_END     = 3
     } ConstructorType;
+
     OmptTargetMapping(int capacity, void *codeptr);
     ~OmptTargetMapping();
     void add_mapping(void *hst_addr, void *tgt_addr, size_t byte, int64_t arg_type, ConstructorType con_type);

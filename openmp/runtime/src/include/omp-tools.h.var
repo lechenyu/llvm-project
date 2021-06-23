@@ -474,7 +474,11 @@ typedef enum ompt_target_map_flag_t {
   ompt_target_map_flag_alloc          = 0x04,
   ompt_target_map_flag_release        = 0x08,
   ompt_target_map_flag_delete         = 0x10,
-  ompt_target_map_flag_implicit       = 0x20
+  ompt_target_map_flag_implicit       = 0x20,
+  ompt_target_map_flag_always         = 0x40,
+  ompt_target_map_flag_present        = 0x80,
+  ompt_target_map_flag_close          = 0x100,
+  ompt_target_map_flag_shared         = 0x200
 } ompt_target_map_flag_t;
 
 typedef enum ompt_dependence_type_t {

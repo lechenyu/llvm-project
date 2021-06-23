@@ -84,6 +84,16 @@ void OmptTargetMapping::add_mapping(void *hst_addr, void *tgt_addr, size_t byte,
     if (arg_type & OMP_TGT_MAPTYPE_IMPLICIT) {
       flag |= ompt_target_map_flag_implicit;
     }
+    if (arg_type & OMP_TGT_MAPTYPE_ALWAYS) {
+      flag |= ompt_target_map_flag_always;
+    }
+    if (arg_type & OMP_TGT_MAPTYPE_PRESENT) {
+      flag |= ompt_target_map_flag_present;
+    }
+    if (arg_type & OMP_TGT_MAPTYPE_CLOSE) {
+      flag |= ompt_target_map_flag_close;
+    }
+
     host_addr[size] = hst_addr;
     device_addr[size] = tgt_addr;
     bytes[size] = byte;
