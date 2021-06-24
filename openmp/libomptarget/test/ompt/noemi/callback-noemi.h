@@ -70,6 +70,16 @@ static void on_ompt_callback_target_map(
   }
 }
 
+static void on_ompt_callback_target_submit(
+        ompt_id_t target_id,
+        ompt_id_t host_op_id,
+        unsigned int requested_num_teams)
+{
+  printf("%" PRIu64 ":" _TOOL_PREFIX " ompt_event_target_submit: target_id=%" PRIu64
+         ", host_op_id=%" PRIu64 ", requested_num_teams=%" PRIu32 "\n", ompt_get_thread_data()->value, target_id, host_op_id,
+         requested_num_teams);
+}
+
 int ompt_initialize(
         ompt_function_lookup_t lookup,
         int initial_device_num,
@@ -100,6 +110,7 @@ int ompt_initialize(
   register_ompt_callback_t(ompt_callback_target, ompt_callback_target_t);
   register_ompt_callback_t(ompt_callback_target_data_op, ompt_callback_target_data_op_t);
   register_ompt_callback_t(ompt_callback_target_map, ompt_callback_target_map_t);
+  register_ompt_callback_t(ompt_callback_target_submit, ompt_callback_target_submit_t);
   return 1; //success
 }
 

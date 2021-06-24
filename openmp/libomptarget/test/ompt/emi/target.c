@@ -32,6 +32,16 @@ int main() {
   // ASYNC-SAME: task_type=ompt_task_explicit|ompt_task_target
   // ASYNC-DAG: {{^}}[[THREAD_ID:[0-9]+]]: ompt_event_target_emi_begin: task_id=[[INITIAL_TASK_ID]], target_task_id=[[TARGET_TASK_ID]], target_id=[[TARGET_ID:[0-9]+]], device_num=[[DEVICE_NUM:[0-9]+]], kind=ompt_target_nowait, codeptr_ra=(nil)
 
+  // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_submit_emi_begin
+  // SYNC-SAME: target_id=[[TARGET_ID]], host_op_id=[[HOST_OP_ID:[0-9]+]], requested_num_teams=1
+
+  // ASYNC-DAG: {{^}}[[THREAD_ID]]: ompt_event_target_submit_emi_begin: target_id=[[TARGET_ID]], host_op_id=[[HOST_OP_ID:[0-9]+]], requested_num_teams=1
+
+  // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_submit_emi_end
+  // SYNC-SAME: target_id=[[TARGET_ID]], host_op_id=[[HOST_OP_ID]], requested_num_teams=1
+
+  // ASYNC-DAG: {{^}}[[THREAD_ID]]: ompt_event_target_submit_emi_end: target_id=[[TARGET_ID]], host_op_id=[[HOST_OP_ID]], requested_num_teams=1
+
   // COM: {{^}}[[MASTER_ID]]: task level 0
   // COM: parallel_id=[[PARALLEL_ID]], task_id=[[INITIAL_TASK_ID]]
 

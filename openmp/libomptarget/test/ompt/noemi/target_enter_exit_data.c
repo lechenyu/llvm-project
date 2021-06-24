@@ -95,10 +95,11 @@ int main() {
 
 
   /** target 2 (target) **/
-
+  /** Only compare the first three digits of the return address since the return address range is from
+      0x403cfb to 0x403d0d **/
   // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_begin
   // SYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_id=[[TARGET_ID_2:[0-9]+]], device_num=[[DEVICE_NUM]]
-  // SYNC-SAME: kind=ompt_target, codeptr_ra=[[TARGET_RETURN_ADDRESS_2:0x[0-f]+]]{{[0-f][0-f]}}
+  // SYNC-SAME: kind=ompt_target, codeptr_ra=[[TARGET_RETURN_ADDRESS_2:0x[0-f]+]]{{[0-f][0-f][0-f]}}
 
   // ASYNC: {{^}}[[MASTER_ID]]: ompt_event_task_create
   // ASYNC-SAME: parent_task_id=[[INITIAL_TASK_ID]], parent_task_frame.exit=(nil), parent_task_frame.reenter=0x{{[0-f]+}}
@@ -109,17 +110,23 @@ int main() {
   // ASYNC-SAME: kind=ompt_target_nowait, codeptr_ra=(nil)
 
   // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_map
-  // SYNC-SAME: target_id=[[TARGET_ID_2]], nitems=1, codeptr_ra=[[TARGET_RETURN_ADDRESS_2]]{{[0-f][0-f]}}
+  // SYNC-SAME: target_id=[[TARGET_ID_2]], nitems=1, codeptr_ra=[[TARGET_RETURN_ADDRESS_2]]{{[0-f][0-f][0-f]}}
   // SYNC-NEXT: {{^}}[[MASTER_ID]]: map: host_addr=[[SRC_ADDR]], device_addr=[[DEST_ADDR]], bytes=8, mapping_flag=ompt_target_map_flag_to|ompt_target_map_flag_from
 
   // ASYNC: {{^}}[[THREAD_ID_2]]: ompt_event_target_map
   // ASYNC-SAME: target_id=[[TARGET_ID_2]], nitems=1, codeptr_ra=(nil)
   // ASYNC-NEXT: {{^}}[[THREAD_ID_2]]: map: host_addr=[[SRC_ADDR]], device_addr=[[DEST_ADDR]], bytes=8, mapping_flag=ompt_target_map_flag_to|ompt_target_map_flag_from
 
+  // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_submit
+  // SYNC-SAME: target_id=[[TARGET_ID_2]], host_op_id=[[HOST_OP_ID_3:[0-9]+]], requested_num_teams=1
+
+  // ASYNC: {{^}}[[THREAD_ID_2]]: ompt_event_target_submit
+  // ASYNC-SAME: target_id=[[TARGET_ID_2]], host_op_id=[[HOST_OP_ID_3:[0-9]+]], requested_num_teams=1
+
   // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_end
   // SYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_id=[[TARGET_ID_2]], device_num=[[DEVICE_NUM]]
-  // SYNC-SAME: kind=ompt_target, codeptr_ra=[[TARGET_RETURN_ADDRESS_2]]{{[0-f][0-f]}}
-  // SYNC: {{^}}[[MASTER_ID]]: current_address={{.*}}[[TARGET_RETURN_ADDRESS_2]]{{[0-f][0-f]}}
+  // SYNC-SAME: kind=ompt_target, codeptr_ra=[[TARGET_RETURN_ADDRESS_2]]{{[0-f][0-f][0-f]}}
+  // SYNC: {{^}}[[MASTER_ID]]: current_address={{.*}}[[TARGET_RETURN_ADDRESS_2]]{{[0-f][0-f][0-f]}}
 
   // ASYNC: {{^}}[[THREAD_ID_2]]: ompt_event_target_end
   // ASYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_id=[[TARGET_ID_2]], device_num=[[DEVICE_NUM]]
@@ -141,19 +148,19 @@ int main() {
   // ASYNC-SAME: kind=ompt_target_exit_data_nowait, codeptr_ra=(nil)
 
   // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_data_op
-  // SYNC-SAME: target_id=[[TARGET_ID_3]], host_op_id=[[HOST_OP_ID_3:[0-9]+]], optype=ompt_target_data_transfer_from_device, src_addr=[[DEST_ADDR]]
+  // SYNC-SAME: target_id=[[TARGET_ID_3]], host_op_id=[[HOST_OP_ID_4:[0-9]+]], optype=ompt_target_data_transfer_from_device, src_addr=[[DEST_ADDR]]
   // SYNC-SAME: src_device_num=[[DEVICE_NUM]], dest_addr=[[SRC_ADDR]], dest_device_num=[[HOST_NUM]], bytes=8, codeptr_ra=[[TARGET_RETURN_ADDRESS_3]]{{[0-f][0-f]}}
 
   // ASYNC: {{^}}[[THREAD_ID_3]]: ompt_event_target_data_op
-  // ASYNC-SAME: target_id=[[TARGET_ID_3]], host_op_id=[[HOST_OP_ID_3:[0-9]+]], optype=ompt_target_data_transfer_from_device, src_addr=[[DEST_ADDR]]
+  // ASYNC-SAME: target_id=[[TARGET_ID_3]], host_op_id=[[HOST_OP_ID_4:[0-9]+]], optype=ompt_target_data_transfer_from_device, src_addr=[[DEST_ADDR]]
   // ASYNC-SAME: src_device_num=[[DEVICE_NUM]], dest_addr=[[SRC_ADDR]], dest_device_num=[[HOST_NUM]], bytes=8, codeptr_ra=(nil)
 
   // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_data_op
-  // SYNC-SAME: target_id=[[TARGET_ID_3]], host_op_id=[[HOST_OP_ID_4:[0-9]+]], optype=ompt_target_data_delete, src_addr=[[SRC_ADDR]]
+  // SYNC-SAME: target_id=[[TARGET_ID_3]], host_op_id=[[HOST_OP_ID_5:[0-9]+]], optype=ompt_target_data_delete, src_addr=[[SRC_ADDR]]
   // SYNC-SAME: src_device_num=[[HOST_NUM]], dest_addr=[[DEST_ADDR]], dest_device_num=[[DEVICE_NUM]], bytes=8, codeptr_ra=[[TARGET_RETURN_ADDRESS_3]]{{[0-f][0-f]}}
 
   // ASYNC: {{^}}[[THREAD_ID_3]]: ompt_event_target_data_op
-  // ASYNC-SAME: target_id=[[TARGET_ID_3]], host_op_id=[[HOST_OP_ID_4:[0-9]+]], optype=ompt_target_data_delete, src_addr=[[SRC_ADDR]]
+  // ASYNC-SAME: target_id=[[TARGET_ID_3]], host_op_id=[[HOST_OP_ID_5:[0-9]+]], optype=ompt_target_data_delete, src_addr=[[SRC_ADDR]]
   // ASYNC-SAME: src_device_num=[[HOST_NUM]], dest_addr=[[DEST_ADDR]], dest_device_num=[[DEVICE_NUM]], bytes=8, codeptr_ra=(nil)
 
   // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_map

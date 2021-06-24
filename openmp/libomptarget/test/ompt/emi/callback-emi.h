@@ -107,6 +107,30 @@ static void on_ompt_callback_target_map_emi(
   }
 }
 
+static void on_ompt_callback_target_submit_emi(
+        ompt_scope_endpoint_t endpoint,
+        ompt_data_t *target_data,
+        ompt_id_t *host_op_id,
+        unsigned int requested_num_teams)
+{
+  switch(endpoint) {
+    case ompt_scope_begin:
+      *host_op_id = ompt_get_unique_id();
+      printf("%" PRIu64 ":" _TOOL_PREFIX " ompt_event_target_submit_emi_begin: target_id=%" PRIu64
+             ", host_op_id=%" PRIu64 ", requested_num_teams=%" PRIu32 "\n", ompt_get_thread_data()->value, target_data->value, *host_op_id,
+             requested_num_teams);
+      break;
+    case ompt_scope_end:
+      printf("%" PRIu64 ":" _TOOL_PREFIX " ompt_event_target_submit_emi_end: target_id=%" PRIu64
+             ", host_op_id=%" PRIu64 ", requested_num_teams=%" PRIu32 "\n", ompt_get_thread_data()->value, target_data->value, *host_op_id,
+             requested_num_teams);
+      break;
+    case ompt_scope_beginend:
+      printf("ompt_scope_beginend should never be passed to %s\n", __func__);
+      exit(-1);
+  }
+}
+
 int ompt_initialize(
         ompt_function_lookup_t lookup,
         int initial_device_num,
@@ -137,6 +161,7 @@ int ompt_initialize(
   register_ompt_callback_t(ompt_callback_target_emi, ompt_callback_target_emi_t);
   register_ompt_callback_t(ompt_callback_target_data_op_emi, ompt_callback_target_data_op_emi_t);
   register_ompt_callback_t(ompt_callback_target_map_emi, ompt_callback_target_map_emi_t);
+  register_ompt_callback_t(ompt_callback_target_submit_emi, ompt_callback_target_submit_emi_t);
   return 1; //success
 }
 

@@ -35,6 +35,11 @@ int main() {
   // COM: {{^}}[[MASTER_ID]]: task level 0
   // COM: parallel_id=[[PARALLEL_ID]], task_id=[[INITIAL_TASK_ID]]
 
+  // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_submit
+  // SYNC-SAME: target_id=[[TARGET_ID]], host_op_id=[[HOST_OP_ID:[0-9]+]], requested_num_teams=1
+
+  // ASYNC-DAG: {{^}}[[THREAD_ID]]: ompt_event_target_submit: target_id=[[TARGET_ID]], host_op_id=[[HOST_OP_ID:[0-9]+]], requested_num_teams=1
+
   // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_end
   // SYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_id=[[TARGET_ID]], device_num=[[DEVICE_NUM]]
   // SYNC-SAME: kind=ompt_target, codeptr_ra=[[TARGET_RETURN_ADDRESS]]{{[0-f][0-f]}}

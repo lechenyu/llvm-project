@@ -69,6 +69,9 @@ int main() {
   // CHECK-SAME: target_id=[[TARGET_ID_2]], nitems=1, codeptr_ra=[[TARGET_RETURN_ADDRESS_2]]{{[0-f][0-f]}}
   // CHECK-NEXT: {{^}}[[MASTER_ID]]: map: host_addr=[[SRC_ADDR]], device_addr=[[DEST_ADDR]], bytes=8, mapping_flag=ompt_target_map_flag_to|ompt_target_map_flag_from
 
+  // CHECK: {{^}}[[MASTER_ID]]: ompt_event_target_submit
+  // CHECK-SAME: target_id=[[TARGET_ID_2]], host_op_id=[[HOST_OP_ID_3:[0-9]+]], requested_num_teams=1
+
   // CHECK: {{^}}[[MASTER_ID]]: ompt_event_target_end
   // CHECK-SAME: task_id=[[INITIAL_TASK_ID]], target_id=[[TARGET_ID_2]], device_num=[[DEVICE_NUM]]
   // CHECK-SAME: kind=ompt_target, codeptr_ra=[[TARGET_RETURN_ADDRESS_2]]{{[0-f][0-f]}}
@@ -82,11 +85,11 @@ int main() {
   // CHECK-SAME: kind=ompt_target_exit_data, codeptr_ra=[[TARGET_RETURN_ADDRESS_3:0x[0-f]+]]{{[0-f][0-f]}}
 
   // CHECK: {{^}}[[MASTER_ID]]: ompt_event_target_data_op
-  // CHECK-SAME: target_id=[[TARGET_ID_3]], host_op_id=[[HOST_OP_ID_3:[0-9]+]], optype=ompt_target_data_transfer_from_device, src_addr=[[DEST_ADDR]]
+  // CHECK-SAME: target_id=[[TARGET_ID_3]], host_op_id=[[HOST_OP_ID_4:[0-9]+]], optype=ompt_target_data_transfer_from_device, src_addr=[[DEST_ADDR]]
   // CHECK-SAME: src_device_num=[[DEVICE_NUM]], dest_addr=[[SRC_ADDR]], dest_device_num=[[HOST_NUM]], bytes=8, codeptr_ra=[[TARGET_RETURN_ADDRESS_3]]{{[0-f][0-f]}}
 
   // CHECK: {{^}}[[MASTER_ID]]: ompt_event_target_data_op
-  // CHECK-SAME: target_id=[[TARGET_ID_3]], host_op_id=[[HOST_OP_ID_4:[0-9]+]], optype=ompt_target_data_delete, src_addr=[[SRC_ADDR]]
+  // CHECK-SAME: target_id=[[TARGET_ID_3]], host_op_id=[[HOST_OP_ID_5:[0-9]+]], optype=ompt_target_data_delete, src_addr=[[SRC_ADDR]]
   // CHECK-SAME: src_device_num=[[HOST_NUM]], dest_addr=[[DEST_ADDR]], dest_device_num=[[DEVICE_NUM]], bytes=8, codeptr_ra=[[TARGET_RETURN_ADDRESS_3]]{{[0-f][0-f]}}
 
   // CHECK: {{^}}[[MASTER_ID]]: ompt_event_target_map
