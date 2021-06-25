@@ -16,14 +16,14 @@ int main() {
   {
     // target 2 (target update)
 #pragma omp target update to(a[0:N]) NOWAIT_CLAUSE
-    print_current_address(1);
+    print_fuzzy_address(1);
 #if NOWAIT
 #pragma omp taskwait
 #endif
 
     // target 3 (target update)
 #pragma omp target update from(a[0:N]) NOWAIT_CLAUSE
-    print_current_address(2);
+    print_fuzzy_address(2);
 #if NOWAIT
 #pragma omp taskwait
 #endif
@@ -44,7 +44,7 @@ int main() {
 
   // CHECK: {{^}}[[MASTER_ID]]: ompt_event_target_data_op
   // CHECK-SAME: target_id=[[TARGET_ID_1:[0-9]+]], host_op_id=[[HOST_OP_ID_1:[0-9]+]], optype=ompt_target_data_alloc, src_addr=[[SRC_ADDR:0x[0-f]+]]
-  // CHECK-SAME: src_device_num=[[HOST_NUM]], dest_addr=[[DEST_ADDR:0x[0-f]+]], dest_device_num=[[DEVICE_NUM:[0-9]+]], bytes=8, codeptr_ra=[[TARGET_RETURN_ADDRESS_1:0x[0-f]+]]{{[0-f][0-f]}}
+  // CHECK-SAME: src_device_num=[[HOST_NUM]], dest_addr=[[DEST_ADDR:0x[0-f]+]], dest_device_num=[[DEVICE_NUM:[0-9]+]], bytes=8, codeptr_ra={{0x[0-f]+}}
 
 
   /** target 2 (target update) **/
@@ -72,7 +72,7 @@ int main() {
   // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_end
   // SYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_id=[[TARGET_ID_2]], device_num=[[DEVICE_NUM]]
   // SYNC-SAME: kind=ompt_target_update, codeptr_ra=[[TARGET_RETURN_ADDRESS_2]]{{[0-f][0-f]}}
-  // SYNC: {{^}}[[MASTER_ID]]: current_address={{.*}}[[TARGET_RETURN_ADDRESS_2]]{{[0-f][0-f]}}
+  // SYNC: {{^}}[[MASTER_ID]]: fuzzy_address={{.*}}[[TARGET_RETURN_ADDRESS_2]]
 
   // ASYNC: {{^}}[[THREAD_ID_2]]: ompt_event_target_end
   // ASYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_id=[[TARGET_ID_2]], device_num=[[DEVICE_NUM]]
@@ -104,7 +104,7 @@ int main() {
   // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_end
   // SYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_id=[[TARGET_ID_3]], device_num=[[DEVICE_NUM]]
   // SYNC-SAME: kind=ompt_target_update, codeptr_ra=[[TARGET_RETURN_ADDRESS_3]]{{[0-f][0-f]}}
-  // SYNC: {{^}}[[MASTER_ID]]: current_address={{.*}}[[TARGET_RETURN_ADDRESS_3]]{{[0-f][0-f]}}
+  // SYNC: {{^}}[[MASTER_ID]]: fuzzy_address={{.*}}[[TARGET_RETURN_ADDRESS_3]]
 
   // ASYNC: {{^}}[[THREAD_ID_3]]: ompt_event_target_end
   // ASYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_id=[[TARGET_ID_3]], device_num=[[DEVICE_NUM]]

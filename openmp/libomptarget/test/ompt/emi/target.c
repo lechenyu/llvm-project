@@ -10,7 +10,7 @@ int main() {
       //print_ids(0);
       printf("hello\n");
   }
-  print_current_address(1);
+  print_fuzzy_address(1);
 #if NOWAIT
   #pragma omp taskwait
 #endif
@@ -48,10 +48,10 @@ int main() {
   // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_emi_end
   // SYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_task_id=0, target_id=[[TARGET_ID]], device_num=[[DEVICE_NUM]]
   // SYNC-SAME: kind=ompt_target, codeptr_ra=[[TARGET_RETURN_ADDRESS]]{{[0-f][0-f]}}
-  // SYNC: {{^}}[[MASTER_ID]]: current_address={{.*}}[[TARGET_RETURN_ADDRESS]]{{[0-f][0-f]}}
+  // SYNC: {{^}}[[MASTER_ID]]: fuzzy_address={{.*}}[[TARGET_RETURN_ADDRESS]]
 
   // ASYNC-DAG: {{^}}[[THREAD_ID]]: ompt_event_target_emi_end: task_id=[[INITIAL_TASK_ID]], target_task_id=[[TARGET_TASK_ID]], target_id=[[TARGET_ID]], device_num=[[DEVICE_NUM]], kind=ompt_target_nowait, codeptr_ra=(nil)
-  // ASYNC-DAG: {{^}}[[MASTER_ID]]: current_address={{.*}}[[TARGET_RETURN_ADDRESS]]{{[0-f][0-f]}}
+  // ASYNC-DAG: {{^}}[[MASTER_ID]]: fuzzy_address={{.*}}[[TARGET_RETURN_ADDRESS]]
 
   // CHECK: {{^}}[[MASTER_ID]]: ompt_event_initial_task_end
   // CHECK-SAME: parallel_id=[[PARALLEL_ID]], task_id=[[INITIAL_TASK_ID]], actual_parallelism=0, index=1

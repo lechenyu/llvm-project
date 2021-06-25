@@ -13,7 +13,7 @@ int main() {
 
   // target 1 (target enter data)
   #pragma omp target enter data map(to: a[0:N]) NOWAIT_CLAUSE
-  print_current_address(1);
+  print_fuzzy_address(1);
 #if NOWAIT
   #pragma omp taskwait
 #endif
@@ -25,14 +25,14 @@ int main() {
       a[i] = 1;
     }
   }
-  print_current_address(2);
+  print_fuzzy_address(2);
 #if NOWAIT
   #pragma omp taskwait
 #endif
 
   // target 3 (target exit data)
   #pragma omp target exit data map(from: a[0: N]) NOWAIT_CLAUSE
-  print_current_address(3);
+  print_fuzzy_address(3);
 #if NOWAIT
   #pragma omp taskwait
 #endif
@@ -99,7 +99,7 @@ int main() {
   // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_emi_end
   // SYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_task_id=0, target_id=[[TARGET_ID_1]], device_num=[[DEVICE_NUM]]
   // SYNC-SAME: kind=ompt_target_enter_data, codeptr_ra=[[TARGET_RETURN_ADDRESS_1]]{{[0-f][0-f]}}
-  // SYNC: {{^}}[[MASTER_ID]]: current_address={{.*}}[[TARGET_RETURN_ADDRESS_1]]{{[0-f][0-f]}}
+  // SYNC: {{^}}[[MASTER_ID]]: fuzzy_address={{.*}}[[TARGET_RETURN_ADDRESS_1]]
   
   // ASYNC: {{^}}[[THREAD_ID_1]]: ompt_event_target_emi_end
   // ASYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_task_id=[[TARGET_TASK_ID_1]], target_id=[[TARGET_ID_1]], device_num=[[DEVICE_NUM]]
@@ -143,7 +143,7 @@ int main() {
   // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_emi_end
   // SYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_task_id=0, target_id=[[TARGET_ID_2]], device_num=[[DEVICE_NUM]]
   // SYNC-SAME: kind=ompt_target, codeptr_ra=[[TARGET_RETURN_ADDRESS_2]]{{[0-f][0-f]}}
-  // SYNC: {{^}}[[MASTER_ID]]: current_address={{.*}}[[TARGET_RETURN_ADDRESS_2]]{{[0-f][0-f]}}
+  // SYNC: {{^}}[[MASTER_ID]]: fuzzy_address={{.*}}[[TARGET_RETURN_ADDRESS_2]]
   
   // ASYNC: {{^}}[[THREAD_ID_2]]: ompt_event_target_emi_end
   // ASYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_task_id=[[TARGET_TASK_ID_2]], target_id=[[TARGET_ID_2]], device_num=[[DEVICE_NUM]]
@@ -203,7 +203,7 @@ int main() {
   // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_emi_end
   // SYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_task_id=0, target_id=[[TARGET_ID_3]], device_num=[[DEVICE_NUM]]
   // SYNC-SAME: kind=ompt_target_exit_data, codeptr_ra=[[TARGET_RETURN_ADDRESS_3]]{{[0-f][0-f]}}
-  // SYNC: {{^}}[[MASTER_ID]]: current_address={{.*}}[[TARGET_RETURN_ADDRESS_3]]{{[0-f][0-f]}}
+  // SYNC: {{^}}[[MASTER_ID]]: fuzzy_address={{.*}}[[TARGET_RETURN_ADDRESS_3]]
   
   // ASYNC: {{^}}[[THREAD_ID_3]]: ompt_event_target_emi_end
   // ASYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_task_id=[[TARGET_TASK_ID_3]], target_id=[[TARGET_ID_3]], device_num=[[DEVICE_NUM]]

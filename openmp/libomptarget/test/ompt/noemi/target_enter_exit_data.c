@@ -13,7 +13,7 @@ int main() {
 
   // target 1 (target enter data)
 #pragma omp target enter data map(to: a[0:N]) NOWAIT_CLAUSE
-  print_current_address(1);
+  print_fuzzy_address(1);
 #if NOWAIT
 #pragma omp taskwait
 #endif
@@ -25,14 +25,14 @@ int main() {
       a[i] = 1;
     }
   }
-  print_current_address(2);
+  print_fuzzy_address(2);
 #if NOWAIT
 #pragma omp taskwait
 #endif
 
   // target 3 (target exit data)
 #pragma omp target exit data map(from: a[0: N]) NOWAIT_CLAUSE
-  print_current_address(3);
+  print_fuzzy_address(3);
 #if NOWAIT
 #pragma omp taskwait
 #endif
@@ -87,7 +87,7 @@ int main() {
   // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_end
   // SYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_id=[[TARGET_ID_1]], device_num=[[DEVICE_NUM]]
   // SYNC-SAME: kind=ompt_target_enter_data, codeptr_ra=[[TARGET_RETURN_ADDRESS_1]]{{[0-f][0-f]}}
-  // SYNC: {{^}}[[MASTER_ID]]: current_address={{.*}}[[TARGET_RETURN_ADDRESS_1]]{{[0-f][0-f]}}
+  // SYNC: {{^}}[[MASTER_ID]]: fuzzy_address={{.*}}[[TARGET_RETURN_ADDRESS_1]]
 
   // ASYNC: {{^}}[[THREAD_ID_1]]: ompt_event_target_end
   // ASYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_id=[[TARGET_ID_1]], device_num=[[DEVICE_NUM]]
@@ -95,11 +95,10 @@ int main() {
 
 
   /** target 2 (target) **/
-  /** Only compare the first three digits of the return address since the return address range is from
-      0x403cfb to 0x403d0d **/
+
   // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_begin
   // SYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_id=[[TARGET_ID_2:[0-9]+]], device_num=[[DEVICE_NUM]]
-  // SYNC-SAME: kind=ompt_target, codeptr_ra=[[TARGET_RETURN_ADDRESS_2:0x[0-f]+]]{{[0-f][0-f][0-f]}}
+  // SYNC-SAME: kind=ompt_target, codeptr_ra=[[TARGET_RETURN_ADDRESS_2:0x[0-f]+]]{{[0-f][0-f]}}
 
   // ASYNC: {{^}}[[MASTER_ID]]: ompt_event_task_create
   // ASYNC-SAME: parent_task_id=[[INITIAL_TASK_ID]], parent_task_frame.exit=(nil), parent_task_frame.reenter=0x{{[0-f]+}}
@@ -110,7 +109,7 @@ int main() {
   // ASYNC-SAME: kind=ompt_target_nowait, codeptr_ra=(nil)
 
   // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_map
-  // SYNC-SAME: target_id=[[TARGET_ID_2]], nitems=1, codeptr_ra=[[TARGET_RETURN_ADDRESS_2]]{{[0-f][0-f][0-f]}}
+  // SYNC-SAME: target_id=[[TARGET_ID_2]], nitems=1, codeptr_ra=[[TARGET_RETURN_ADDRESS_2]]{{[0-f][0-f]}}
   // SYNC-NEXT: {{^}}[[MASTER_ID]]: map: host_addr=[[SRC_ADDR]], device_addr=[[DEST_ADDR]], bytes=8, mapping_flag=ompt_target_map_flag_to|ompt_target_map_flag_from
 
   // ASYNC: {{^}}[[THREAD_ID_2]]: ompt_event_target_map
@@ -125,8 +124,8 @@ int main() {
 
   // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_end
   // SYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_id=[[TARGET_ID_2]], device_num=[[DEVICE_NUM]]
-  // SYNC-SAME: kind=ompt_target, codeptr_ra=[[TARGET_RETURN_ADDRESS_2]]{{[0-f][0-f][0-f]}}
-  // SYNC: {{^}}[[MASTER_ID]]: current_address={{.*}}[[TARGET_RETURN_ADDRESS_2]]{{[0-f][0-f][0-f]}}
+  // SYNC-SAME: kind=ompt_target, codeptr_ra=[[TARGET_RETURN_ADDRESS_2]]{{[0-f][0-f]}}
+  // SYNC: {{^}}[[MASTER_ID]]: fuzzy_address={{.*}}[[TARGET_RETURN_ADDRESS_2]]
 
   // ASYNC: {{^}}[[THREAD_ID_2]]: ompt_event_target_end
   // ASYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_id=[[TARGET_ID_2]], device_num=[[DEVICE_NUM]]
@@ -174,7 +173,7 @@ int main() {
   // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_end
   // SYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_id=[[TARGET_ID_3]], device_num=[[DEVICE_NUM]]
   // SYNC-SAME: kind=ompt_target_exit_data, codeptr_ra=[[TARGET_RETURN_ADDRESS_3]]{{[0-f][0-f]}}
-  // SYNC: {{^}}[[MASTER_ID]]: current_address={{.*}}[[TARGET_RETURN_ADDRESS_3]]{{[0-f][0-f]}}
+  // SYNC: {{^}}[[MASTER_ID]]: fuzzy_address={{.*}}[[TARGET_RETURN_ADDRESS_3]]
 
   // ASYNC: {{^}}[[THREAD_ID_3]]: ompt_event_target_end
   // ASYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_id=[[TARGET_ID_3]], device_num=[[DEVICE_NUM]]
