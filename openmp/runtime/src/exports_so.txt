@@ -31,6 +31,7 @@ VERSION {
         libomp_ompt_callback_target_data_op_emi;  # delegate for ompt_callback_target_data_op_emi
         libomp_ompt_callback_target_map_emi;      # delegate for ompt_callback_target_map
         libomp_ompt_callback_target_submit_emi;   # delegate for ompt_callback_target_submit
+        libomp_ompt_callback_device_mem;          # delegate for ompt_callback_device_mem
 
         # icc drops weak attribute at linking step without the following line:
         Annotate*;           # TSAN annotation

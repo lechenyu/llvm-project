@@ -164,6 +164,7 @@
                                                                                                                          \
     macro (ompt_callback_device_load,       ompt_callback_device_load_t,       14) /* device load                     */ \
     macro (ompt_callback_device_unload,     ompt_callback_device_unload_t,     15) /* device unload                   */ \
+    macro (ompt_callback_device_mem,        ompt_callback_device_mem_t,        37) /* device mem op                   */ \
 
 
 #define FOREACH_OMPT_NOEMI_EVENT(macro)                                                                                  \
@@ -255,7 +256,10 @@
     macro (ompt_callback_reduction,         ompt_callback_sync_region_t,       31) /* reduction                       */ \
                                                                                                                          \
     macro (ompt_callback_dispatch,          ompt_callback_dispatch_t,          32) /* dispatch of work                */ \
-    macro (ompt_callback_error,             ompt_callback_error_t,             37) /* error                           */
+                                                                                                                         \
+    macro (ompt_callback_device_mem,        ompt_callback_device_mem_t,        37) /* device mem op                   */ \
+                                                                                                                         \
+    macro (ompt_callback_error,             ompt_callback_error_t,             38) /* error                           */
 
 #define FOREACH_OMP51_TARGET_EVENT(macro)                                                                                \
   macro (ompt_callback_target_emi,         ompt_callback_target_emi_t,         33) /* target                          */ \
@@ -321,7 +325,8 @@ typedef enum ompt_callbacks_t {
   ompt_callback_target_data_op_emi       = 34,
   ompt_callback_target_submit_emi        = 35,
   ompt_callback_target_map_emi           = 36,
-  ompt_callback_error                    = 37
+  ompt_callback_device_mem               = 37,
+  ompt_callback_error                    = 38
 } ompt_callbacks_t;
 
 typedef enum ompt_record_t {
@@ -548,6 +553,15 @@ typedef enum ompt_state_t {
   ompt_state_overhead                         = 0x101,
   ompt_state_undefined                        = 0x102
 } ompt_state_t;
+
+typedef enum ompt_device_mem_flag_t {
+  ompt_device_mem_flag_to             = 0x01,
+  ompt_device_mem_flag_from           = 0x02,
+  ompt_device_mem_flag_alloc          = 0x04,
+  ompt_device_mem_flag_release        = 0x08,
+  ompt_device_mem_flag_associate      = 0x10,
+  ompt_device_mem_flag_disassociate   = 0x20
+} ompt_device_mem_flag_t;
 
 typedef uint64_t (*ompt_get_unique_id_t) (void);
 
@@ -1174,6 +1188,19 @@ typedef void (*ompt_callback_target_submit_t) (
   ompt_id_t target_id,
   ompt_id_t host_op_id,
   unsigned int requested_num_teams
+);
+
+typedef void (*ompt_callback_device_mem_t) (
+  ompt_data_t *target_task_data,
+  ompt_data_t *target_data,
+  unsigned int device_mem_flag,
+  void *orig_base_addr,
+  void *orig_addr,
+  int orig_device_num,
+  void *dest_addr,
+  int dest_device_num,
+  size_t bytes,
+  const void *codeptr_ra
 );
 
 typedef struct ompt_record_target_kernel_t {

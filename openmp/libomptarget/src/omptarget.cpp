@@ -413,6 +413,7 @@ int targetDataBegin(ident_t *loc, DeviceTy &Device, int32_t arg_num,
 ) {
 #if OMPT_SUPPORT
   OmptTargetMapping mappings{arg_num, codeptr};
+  void *TgtPtrBase;
 #endif
 
   // process each input.
@@ -543,6 +544,10 @@ int targetDataBegin(ident_t *loc, DeviceTy &Device, int32_t arg_num,
 #if OMPT_SUPPORT
     mappings.add_mapping(HstPtrBegin, TgtPtrBegin, data_size, arg_types[i],
                          ForTarget ? OmptTargetMapping::TARGET : OmptTargetMapping::TARGET_DATA_BEGIN);
+    OmptDeviceMem mem{HstPtrBase, HstPtrBegin, host_device_num, TgtPtrBegin, Device.DeviceID, (size_t)data_size, codeptr};
+    if (IsNew) {
+      mem.add_target_data_op(ompt_device_mem_flag_alloc|ompt_device_mem_flag_associate);
+    }
 #endif
 
     if (arg_types[i] & OMP_TGT_MAPTYPE_TO) {
@@ -566,6 +571,9 @@ int targetDataBegin(ident_t *loc, DeviceTy &Device, int32_t arg_num,
       }
 
       if (copy && !IsHostPtr) {
+#if OMPT_SUPPORT
+        mem.add_target_data_op(ompt_device_mem_flag_to);
+#endif
         DP("Moving %" PRId64 " bytes (hst:" DPxMOD ") -> (tgt:" DPxMOD ")\n",
            data_size, DPxPTR(HstPtrBegin), DPxPTR(TgtPtrBegin));
         int rt =
@@ -732,13 +740,18 @@ int targetDataEnd(ident_t *loc, DeviceTy &Device, int32_t ArgNum,
     if (!TgtPtrBegin)
       continue;
 
+    bool DelEntry = IsLast || ForceDelete;
+
 #if OMPT_SUPPORT
     if (!ForTarget) {
       mappings.add_mapping(HstPtrBegin, TgtPtrBegin, DataSize, ArgTypes[I], OmptTargetMapping::TARGET_DATA_END);
     }
+    void *HstPtrBase = ArgBases[I];
+    OmptDeviceMem mem(HstPtrBase, HstPtrBegin, host_device_num, TgtPtrBegin, Device.DeviceID, DataSize, codeptr);
+    if (DelEntry) {
+      mem.add_target_data_op(ompt_device_mem_flag_disassociate | ompt_device_mem_flag_release);
+    }
 #endif
-
-    bool DelEntry = IsLast || ForceDelete;
 
     // If the last element from the mapper (for end transfer args comes in
     // reverse order), do not remove the partial entry, the parent struct still
@@ -771,6 +784,9 @@ int targetDataEnd(ident_t *loc, DeviceTy &Device, int32_t ArgNum,
         if ((DelEntry || Always || CopyMember) &&
             !(PM->RTLs.RequiresFlags & OMP_REQ_UNIFIED_SHARED_MEMORY &&
               TgtPtrBegin == HstPtrBegin)) {
+#if OMPT_SUPPORT
+          mem.add_target_data_op(ompt_device_mem_flag_from);
+#endif
 
           DP("Moving %" PRId64 " bytes (tgt:" DPxMOD ") -> (hst:" DPxMOD ")\n",
              DataSize, DPxPTR(TgtPtrBegin), DPxPTR(HstPtrBegin));

@@ -133,3 +133,22 @@ OmptTargetSubmit::~OmptTargetSubmit() {
     libomp_ompt_callback_target_submit_emi(ompt_scope_end, requested_num_teams);
   }
 }
+
+OmptDeviceMem::OmptDeviceMem(void *orig_base_addr, void *orig_addr, int orig_device_num, void *dest_addr,
+                             int dest_device_num, size_t bytes, void *codeptr) :
+        device_mem_flag(0), orig_base_addr(orig_base_addr), orig_addr(orig_addr), orig_device_num(orig_device_num),
+        dest_addr(dest_addr), dest_device_num(dest_device_num), bytes(bytes), codeptr(codeptr) {
+  this->active = ompt_target_enabled.enabled && ompt_target_enabled.ompt_callback_device_mem;
+}
+
+void OmptDeviceMem::add_target_data_op(unsigned int flag) {
+  if (active) {
+    device_mem_flag |= flag;
+  }
+}
+
+OmptDeviceMem::~OmptDeviceMem() {
+  if (active && device_mem_flag) {
+    libomp_ompt_callback_device_mem(device_mem_flag, orig_base_addr, orig_addr, orig_device_num, dest_addr, dest_device_num, bytes, codeptr);
+  }
+}

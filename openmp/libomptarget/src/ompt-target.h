@@ -56,7 +56,18 @@ _OMP_EXTERN OMPT_WEAK_ATTRIBUTE void libomp_ompt_callback_target_map_emi(unsigne
 
 _OMP_EXTERN OMPT_WEAK_ATTRIBUTE void libomp_ompt_callback_target_submit_emi(ompt_scope_endpoint_t endpoint,
                                                                             unsigned int requested_num_teams);
+
+_OMP_EXTERN OMPT_WEAK_ATTRIBUTE void libomp_ompt_callback_device_mem(unsigned int device_mem_flag,
+                                                                     void *orig_base_addr,
+                                                                     void *orig_addr,
+                                                                     int orig_device_num,
+                                                                     void *dest_base_addr,
+                                                                     int dest_device_num,
+                                                                     size_t bytes,
+                                                                     void *codeptr);
+
 //TODO (lechenyu): Will move following classes into openmp runtime
+//TODO (lechenyu): Need to add additional parameters to initialize and clean target_data for omp_target_* routines
 class OmptTargetDataOp {
 private:
     ompt_target_data_op_t optype;
@@ -114,6 +125,23 @@ private:
 public:
     OmptTargetSubmit(unsigned int requested_num_teams);
     ~OmptTargetSubmit();
+};
+
+class OmptDeviceMem {
+private:
+    unsigned int device_mem_flag;
+    void *orig_base_addr;
+    void *orig_addr;
+    int orig_device_num;
+    void *dest_addr;
+    int dest_device_num;
+    size_t bytes;
+    void *codeptr;
+    bool active;
+public:
+    OmptDeviceMem(void *orig_base_addr, void *orig_addr, int orig_device_num, void *dest_addr, int dest_device_num, size_t bytes, void *codeptr);
+    ~OmptDeviceMem();
+    void add_target_data_op(unsigned int flag);
 };
 #else
 
