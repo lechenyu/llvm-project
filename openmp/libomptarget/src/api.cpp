@@ -74,7 +74,7 @@ EXTERN void omp_target_free(void *device_ptr, int device_num) {
     return;
   }
 
-  PM->Devices[device_num].deleteData(device_ptr OMPT_ARG(nullptr, 0, OMPT_GET_RETURN_ADDRESS(0)));
+  PM->Devices[device_num].deleteData(device_ptr OMPT_ARG(nullptr, 0, true, OMPT_GET_RETURN_ADDRESS(0)));
   DP("omp_target_free deallocated device ptr\n");
 }
 
@@ -162,12 +162,12 @@ EXTERN int omp_target_memcpy(void *dst, const void *src, size_t length,
     DP("copy from host to device\n");
     DeviceTy &DstDev = PM->Devices[dst_device];
     AsyncInfoTy AsyncInfo(DstDev);
-    rc = DstDev.submitData(dstAddr, srcAddr, length, AsyncInfo OMPT_ARG(OMPT_GET_RETURN_ADDRESS(0)));
+    rc = DstDev.submitData(dstAddr, srcAddr, length, AsyncInfo OMPT_ARG(true, OMPT_GET_RETURN_ADDRESS(0)));
   } else if (dst_device == omp_get_initial_device()) {
     DP("copy from device to host\n");
     DeviceTy &SrcDev = PM->Devices[src_device];
     AsyncInfoTy AsyncInfo(SrcDev);
-    rc = SrcDev.retrieveData(dstAddr, srcAddr, length, AsyncInfo OMPT_ARG(OMPT_GET_RETURN_ADDRESS(0)));
+    rc = SrcDev.retrieveData(dstAddr, srcAddr, length, AsyncInfo OMPT_ARG(true, OMPT_GET_RETURN_ADDRESS(0)));
   } else {
     DP("copy from device to device\n");
     DeviceTy &SrcDev = PM->Devices[src_device];
@@ -176,7 +176,7 @@ EXTERN int omp_target_memcpy(void *dst, const void *src, size_t length,
     // to unefficient way.
     if (SrcDev.isDataExchangable(DstDev)) {
       AsyncInfoTy AsyncInfo(SrcDev);
-      rc = SrcDev.dataExchange(srcAddr, DstDev, dstAddr, length, AsyncInfo OMPT_ARG(OMPT_GET_RETURN_ADDRESS(0)));
+      rc = SrcDev.dataExchange(srcAddr, DstDev, dstAddr, length, AsyncInfo OMPT_ARG(true, OMPT_GET_RETURN_ADDRESS(0)));
       if (rc == OFFLOAD_SUCCESS)
         return OFFLOAD_SUCCESS;
     }
@@ -184,11 +184,11 @@ EXTERN int omp_target_memcpy(void *dst, const void *src, size_t length,
     void *buffer = malloc(length);
     {
       AsyncInfoTy AsyncInfo(SrcDev);
-      rc = SrcDev.retrieveData(buffer, srcAddr, length, AsyncInfo OMPT_ARG(OMPT_GET_RETURN_ADDRESS(0)));
+      rc = SrcDev.retrieveData(buffer, srcAddr, length, AsyncInfo OMPT_ARG(true, OMPT_GET_RETURN_ADDRESS(0)));
     }
     if (rc == OFFLOAD_SUCCESS) {
       AsyncInfoTy AsyncInfo(SrcDev);
-      rc = DstDev.submitData(dstAddr, buffer, length, AsyncInfo OMPT_ARG(OMPT_GET_RETURN_ADDRESS(0)));
+      rc = DstDev.submitData(dstAddr, buffer, length, AsyncInfo OMPT_ARG(true, OMPT_GET_RETURN_ADDRESS(0)));
     }
     free(buffer);
   }
@@ -283,7 +283,7 @@ EXTERN int omp_target_associate_ptr(const void *host_ptr,
   DeviceTy &Device = PM->Devices[device_num];
   void *device_addr = (void *)((uint64_t)device_ptr + (uint64_t)device_offset);
   int rc = Device.associatePtr(const_cast<void *>(host_ptr),
-                               const_cast<void *>(device_addr), size OMPT_ARG(OMPT_GET_RETURN_ADDRESS(0)));
+                               const_cast<void *>(device_addr), size OMPT_ARG(true, OMPT_GET_RETURN_ADDRESS(0)));
   DP("omp_target_associate_ptr returns %d\n", rc);
   return rc;
 }
@@ -311,7 +311,7 @@ EXTERN int omp_target_disassociate_ptr(const void *host_ptr, int device_num) {
   }
 
   DeviceTy &Device = PM->Devices[device_num];
-  int rc = Device.disassociatePtr(const_cast<void *>(host_ptr) OMPT_ARG(OMPT_GET_RETURN_ADDRESS(0)));
+  int rc = Device.disassociatePtr(const_cast<void *>(host_ptr) OMPT_ARG(true, OMPT_GET_RETURN_ADDRESS(0)));
   DP("omp_target_disassociate_ptr returns %d\n", rc);
   return rc;
 }

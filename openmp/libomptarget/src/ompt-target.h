@@ -45,6 +45,7 @@ _OMP_EXTERN OMPT_WEAK_ATTRIBUTE void libomp_ompt_callback_target_data_op_emi(omp
                                                                              void *dest_addr,
                                                                              int dest_device_num,
                                                                              size_t bytes,
+                                                                             bool ompRoutine,
                                                                              void *codeptr);
 
 _OMP_EXTERN OMPT_WEAK_ATTRIBUTE void libomp_ompt_callback_target_map_emi(unsigned int nitems,
@@ -76,10 +77,11 @@ private:
     void *dest_addr;
     int dest_device_num;
     size_t bytes;
+    bool ompRoutine;
     void * codeptr;
     bool active;
 public:
-    OmptTargetDataOp(ompt_target_data_op_t optype, void *src_addr, int src_device_num, void *dest_addr, int dest_device_num, size_t bytes, void *codeptr);
+    OmptTargetDataOp(ompt_target_data_op_t optype, void *src_addr, int src_device_num, void *dest_addr, int dest_device_num, size_t bytes, bool ompRoutine, void *codeptr);
     ~OmptTargetDataOp();
     void set_dest_addr(void *dest_addr);
 };

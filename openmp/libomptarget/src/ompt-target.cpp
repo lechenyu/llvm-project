@@ -6,20 +6,20 @@ ompt_target_callbacks_active_t ompt_target_enabled;
 int host_device_num;
 
 OmptTargetDataOp::OmptTargetDataOp(ompt_target_data_op_t optype, void *src_addr, int src_device_num, void *dest_addr,
-                                   int dest_device_num, size_t bytes, void *codeptr) :
+                                   int dest_device_num, size_t bytes, bool ompRoutine, void *codeptr) :
         optype(optype), src_addr(src_addr), src_device_num(src_device_num), dest_addr(dest_addr),
-        dest_device_num(dest_device_num), bytes(bytes), codeptr(codeptr) {
+        dest_device_num(dest_device_num), bytes(bytes), ompRoutine(ompRoutine), codeptr(codeptr) {
   this->active = ompt_target_enabled.enabled && ompt_target_enabled.ompt_callback_target_data_op_emi;
   if (active) {
     libomp_ompt_callback_target_data_op_emi(ompt_scope_begin, optype, src_addr, src_device_num, dest_addr,
-                                            dest_device_num, bytes, codeptr);
+                                            dest_device_num, bytes, ompRoutine, codeptr);
   }
 }
 
 OmptTargetDataOp::~OmptTargetDataOp() {
   if (active) {
     libomp_ompt_callback_target_data_op_emi(ompt_scope_end, optype, src_addr, src_device_num, dest_addr,
-                                            dest_device_num, bytes, codeptr);
+                                            dest_device_num, bytes, ompRoutine, codeptr);
   }
 }
 

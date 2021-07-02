@@ -1080,6 +1080,7 @@ _OMP_EXTERN void libomp_ompt_callback_target_data_op_emi(ompt_scope_endpoint_t e
                                                          void *dest_addr,
                                                          int dest_device_num,
                                                          size_t bytes,
+                                                         bool ompRoutine,
                                                          void *codeptr) {
   ompt_data_t *target_task_data, *target_data;
   bool is_nowait;
@@ -1090,9 +1091,15 @@ _OMP_EXTERN void libomp_ompt_callback_target_data_op_emi(ompt_scope_endpoint_t e
   ompt_id_t *host_op_id;
   kmp_info_t *thr = ompt_get_thread();
   host_op_id = &thr->th.ompt_thread_info.host_op_id;
+  if (ompRoutine && (endpoint == ompt_scope_begin || endpoint == ompt_scope_beginend)) {
+    *target_data = ompt_data_none;
+  }
   ompt_target_callbacks.ompt_callback(ompt_callback_target_data_op_emi)(endpoint, target_task_data, target_data,
                                                                         host_op_id, optype, src_addr, src_device_num,
                                                                         dest_addr, dest_device_num, bytes, codeptr);
+  if (ompRoutine && (endpoint == ompt_scope_end || endpoint == ompt_scope_beginend)) {
+    *target_data = ompt_data_none;
+  }
 }
 
 _OMP_EXTERN void libomp_ompt_callback_target_map_emi(unsigned int nitems,

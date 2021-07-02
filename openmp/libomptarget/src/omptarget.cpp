@@ -354,7 +354,7 @@ void *targetAllocExplicit(size_t size, int device_num, int kind,
 //TODO: how to set the codeptr since llvm_omp_target_alloc_device_* and omp_target_alloc
 // may be invoked by the application and runtime?
   DeviceTy &Device = PM->Devices[device_num];
-  rc = Device.allocData(size OMPT_ARG(nullptr), nullptr, kind);
+  rc = Device.allocData(size OMPT_ARG(true, nullptr), nullptr, kind);
   DP("%s returns device ptr " DPxMOD "\n", name, DPxPTR(rc));
   return rc;
 }
@@ -577,7 +577,7 @@ int targetDataBegin(ident_t *loc, DeviceTy &Device, int32_t arg_num,
         DP("Moving %" PRId64 " bytes (hst:" DPxMOD ") -> (tgt:" DPxMOD ")\n",
            data_size, DPxPTR(HstPtrBegin), DPxPTR(TgtPtrBegin));
         int rt =
-            Device.submitData(TgtPtrBegin, HstPtrBegin, data_size, AsyncInfo OMPT_ARG(codeptr));
+            Device.submitData(TgtPtrBegin, HstPtrBegin, data_size, AsyncInfo OMPT_ARG(false, codeptr));
         if (rt != OFFLOAD_SUCCESS) {
           REPORT("Copying data to device failed.\n");
           return OFFLOAD_FAIL;
@@ -592,7 +592,7 @@ int targetDataBegin(ident_t *loc, DeviceTy &Device, int32_t arg_num,
       void *&TgtPtrBase = AsyncInfo.getVoidPtrLocation();
       TgtPtrBase = (void *)((uint64_t)TgtPtrBegin - Delta);
       int rt = Device.submitData(PointerTgtPtrBegin, &TgtPtrBase,
-                                 sizeof(void *), AsyncInfo OMPT_ARG(codeptr));
+                                 sizeof(void *), AsyncInfo OMPT_ARG(false, codeptr));
       if (rt != OFFLOAD_SUCCESS) {
         REPORT("Copying data to device failed.\n");
         return OFFLOAD_FAIL;
@@ -791,7 +791,7 @@ int targetDataEnd(ident_t *loc, DeviceTy &Device, int32_t ArgNum,
           DP("Moving %" PRId64 " bytes (tgt:" DPxMOD ") -> (hst:" DPxMOD ")\n",
              DataSize, DPxPTR(TgtPtrBegin), DPxPTR(HstPtrBegin));
           Ret = Device.retrieveData(HstPtrBegin, TgtPtrBegin, DataSize,
-                                    AsyncInfo OMPT_ARG(codeptr));
+                                    AsyncInfo OMPT_ARG(false, codeptr));
           if (Ret != OFFLOAD_SUCCESS) {
             REPORT("Copying data from device failed.\n");
             return OFFLOAD_FAIL;
@@ -898,7 +898,7 @@ static int targetDataContiguous(ident_t *loc, DeviceTy &Device, void *ArgsBase,
   if (ArgType & OMP_TGT_MAPTYPE_FROM) {
     DP("Moving %" PRId64 " bytes (tgt:" DPxMOD ") -> (hst:" DPxMOD ")\n",
        ArgSize, DPxPTR(TgtPtrBegin), DPxPTR(HstPtrBegin));
-    int Ret = Device.retrieveData(HstPtrBegin, TgtPtrBegin, ArgSize, AsyncInfo OMPT_ARG(codeptr));
+    int Ret = Device.retrieveData(HstPtrBegin, TgtPtrBegin, ArgSize, AsyncInfo OMPT_ARG(false, codeptr));
     if (Ret != OFFLOAD_SUCCESS) {
       REPORT("Copying data from device failed.\n");
       return OFFLOAD_FAIL;
@@ -925,7 +925,7 @@ static int targetDataContiguous(ident_t *loc, DeviceTy &Device, void *ArgsBase,
   if (ArgType & OMP_TGT_MAPTYPE_TO) {
     DP("Moving %" PRId64 " bytes (hst:" DPxMOD ") -> (tgt:" DPxMOD ")\n",
        ArgSize, DPxPTR(HstPtrBegin), DPxPTR(TgtPtrBegin));
-    int Ret = Device.submitData(TgtPtrBegin, HstPtrBegin, ArgSize, AsyncInfo OMPT_ARG(codeptr));
+    int Ret = Device.submitData(TgtPtrBegin, HstPtrBegin, ArgSize, AsyncInfo OMPT_ARG(false, codeptr));
     if (Ret != OFFLOAD_SUCCESS) {
       REPORT("Copying data to device failed.\n");
       return OFFLOAD_FAIL;
@@ -945,7 +945,7 @@ static int targetDataContiguous(ident_t *loc, DeviceTy &Device, void *ArgsBase,
          "pointer " DPxMOD "\n",
          DPxPTR(IT->second.TgtPtrVal), DPxPTR(IT->second.TgtPtrAddr));
       Ret = Device.submitData(IT->second.TgtPtrAddr, &IT->second.TgtPtrVal,
-                              sizeof(void *), AsyncInfo OMPT_ARG(codeptr));
+                              sizeof(void *), AsyncInfo OMPT_ARG(false, codeptr));
       if (Ret != OFFLOAD_SUCCESS) {
         REPORT("Copying data to device failed.\n");
         Device.ShadowMtx.unlock();
@@ -1177,7 +1177,7 @@ public:
     // predefined threshold, we will allocate memory and issue the transfer
     // immediately.
     if (ArgSize > FirstPrivateArgSizeThreshold || !IsFirstPrivate) {
-      TgtPtr = Device.allocData(ArgSize OMPT_ARG(codeptr), HstPtr);
+      TgtPtr = Device.allocData(ArgSize OMPT_ARG(false, codeptr), HstPtr);
       if (!TgtPtr) {
         DP("Data allocation for %sprivate array " DPxMOD " failed.\n",
            (IsFirstPrivate ? "first-" : ""), DPxPTR(HstPtr));
@@ -1193,7 +1193,7 @@ public:
 #endif
       // If first-private, copy data from host
       if (IsFirstPrivate) {
-        int Ret = Device.submitData(TgtPtr, HstPtr, ArgSize, AsyncInfo OMPT_ARG(codeptr));
+        int Ret = Device.submitData(TgtPtr, HstPtr, ArgSize, AsyncInfo OMPT_ARG(false, codeptr));
         if (Ret != OFFLOAD_SUCCESS) {
           DP("Copying data to device failed, failed.\n");
           return OFFLOAD_FAIL;
@@ -1239,7 +1239,7 @@ public:
       }
       // Allocate target memory
       void *TgtPtr =
-          Device.allocData(FirstPrivateArgSize OMPT_ARG(codeptr), FirstPrivateArgBuffer.data());
+          Device.allocData(FirstPrivateArgSize OMPT_ARG(false, codeptr), FirstPrivateArgBuffer.data());
       if (TgtPtr == nullptr) {
         DP("Failed to allocate target memory for private arguments.\n");
         return OFFLOAD_FAIL;
@@ -1249,7 +1249,7 @@ public:
          FirstPrivateArgSize, DPxPTR(TgtPtr));
       // Transfer data to target device
       int Ret = Device.submitData(TgtPtr, FirstPrivateArgBuffer.data(),
-                                  FirstPrivateArgSize, AsyncInfo OMPT_ARG(codeptr));
+                                  FirstPrivateArgSize, AsyncInfo OMPT_ARG(false, codeptr));
       if (Ret != OFFLOAD_SUCCESS) {
         DP("Failed to submit data of private arguments.\n");
         return OFFLOAD_FAIL;
@@ -1274,7 +1274,7 @@ public:
   /// Free all target memory allocated for private arguments
   int free(OMPT_FIRST_ARG(void *codeptr)) {
     for (void *P : TgtPtrs) {
-      int Ret = Device.deleteData(P OMPT_ARG(nullptr, 0, codeptr));
+      int Ret = Device.deleteData(P OMPT_ARG(nullptr, 0, false, codeptr));
       if (Ret != OFFLOAD_SUCCESS) {
         DP("Deallocation of (first-)private arrays failed.\n");
         return OFFLOAD_FAIL;
@@ -1349,7 +1349,7 @@ static int processDataBefore(ident_t *loc, int64_t DeviceId, void *HostPtr,
         DP("Update lambda reference (" DPxMOD ") -> [" DPxMOD "]\n",
            DPxPTR(PointerTgtPtrBegin), DPxPTR(TgtPtrBegin));
         Ret = Device.submitData(TgtPtrBegin, &PointerTgtPtrBegin,
-                                sizeof(void *), AsyncInfo OMPT_ARG(codeptr));
+                                sizeof(void *), AsyncInfo OMPT_ARG(false, codeptr));
         if (Ret != OFFLOAD_SUCCESS) {
           REPORT("Copying data to device failed.\n");
           return OFFLOAD_FAIL;
