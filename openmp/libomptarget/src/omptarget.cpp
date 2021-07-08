@@ -413,7 +413,6 @@ int targetDataBegin(ident_t *loc, DeviceTy &Device, int32_t arg_num,
 ) {
 #if OMPT_SUPPORT
   OmptTargetMapping mappings{arg_num, codeptr};
-  void *TgtPtrBase;
 #endif
 
   // process each input.

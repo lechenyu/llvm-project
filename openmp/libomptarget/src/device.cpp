@@ -485,18 +485,17 @@ int32_t DeviceTy::retrieveData(void *HstPtrBegin, void *TgtPtrBegin,
 // Copy data from current device to destination device directly
 int32_t DeviceTy::dataExchange(void *SrcPtr, DeviceTy &DstDev, void *DstPtr,
                                int64_t Size, AsyncInfoTy &AsyncInfo OMPT_ARG(bool OmpRoutine, void *Codeptr)) {
-  //TODO: how to set optype for data exchange?
   if (!AsyncInfo || !RTL->data_exchange_async || !RTL->synchronize) {
     assert(RTL->data_exchange && "RTL->data_exchange is nullptr");
 #if OMPT_SUPPORT
-    OmptTargetDataOp DataExchange{ompt_target_data_transfer_to_device, SrcPtr, DeviceID, DstPtr, DstDev.DeviceID,
+    OmptTargetDataOp DataExchange{ompt_target_data_transfer, SrcPtr, DeviceID, DstPtr, DstDev.DeviceID,
                                    (size_t) Size, OmpRoutine, Codeptr};
 #endif
     return RTL->data_exchange(RTLDeviceID, SrcPtr, DstDev.RTLDeviceID, DstPtr,
                               Size);
   } else
 #if OMPT_SUPPORT
-    OmptTargetDataOp DataExchange{ompt_target_data_transfer_to_device_async, SrcPtr, DeviceID, DstPtr, DstDev.DeviceID,
+    OmptTargetDataOp DataExchange{ompt_target_data_transfer_async, SrcPtr, DeviceID, DstPtr, DstDev.DeviceID,
                                    (size_t) Size, OmpRoutine, Codeptr};
 #endif
     return RTL->data_exchange_async(RTLDeviceID, SrcPtr, DstDev.RTLDeviceID,
