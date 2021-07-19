@@ -77,7 +77,7 @@ int DeviceTy::associatePtr(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size OM
   }
 
 #if OMPT_SUPPORT
-  if (ompt_target_enabled.enabled && ompt_target_enabled.ompt_callback_target_data_op_emi) {
+  if (OmptTargetEnabled.enabled && OmptTargetEnabled.ompt_callback_target_data_op_emi) {
     libomp_ompt_callback_target_data_op_emi(ompt_scope_beginend, ompt_target_data_associate, HstPtrBegin,
                                             HostDeviceNum,
                                             TgtPtrBegin, DeviceID, Size, OmpRoutine, CodePtr);
@@ -110,7 +110,7 @@ int DeviceTy::disassociatePtr(void *HstPtrBegin OMPT_ARG(bool OmpRoutine, void *
     // Mapping exists
     if (search->isRefCountInf()) {
 #if OMPT_SUPPORT
-      if (ompt_target_enabled.enabled && ompt_target_enabled.ompt_callback_target_data_op_emi)
+      if (OmptTargetEnabled.enabled && OmptTargetEnabled.ompt_callback_target_data_op_emi)
       libomp_ompt_callback_target_data_op_emi(ompt_scope_beginend, ompt_target_data_disassociate, HstPtrBegin, HostDeviceNum,
                                               nullptr, DeviceID, 0, OmpRoutine, CodePtr);
 #endif

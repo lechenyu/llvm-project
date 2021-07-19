@@ -14,7 +14,7 @@
 
 #define OMPT_FIRST_ARG(...) __VA_ARGS__
 
-extern ompt_target_callbacks_active_t ompt_target_enabled;
+extern ompt_target_callbacks_active_t OmptTargetEnabled;
 
 extern int HostDeviceNum;
 
