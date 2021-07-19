@@ -3,152 +3,152 @@
 
 ompt_target_callbacks_active_t ompt_target_enabled;
 
-int host_device_num;
+int HostDeviceNum;
 
-OmptTargetDataOp::OmptTargetDataOp(ompt_target_data_op_t optype, void *src_addr, int src_device_num, void *dest_addr,
-                                   int dest_device_num, size_t bytes, bool ompRoutine, void *codeptr) :
-        optype(optype), src_addr(src_addr), src_device_num(src_device_num), dest_addr(dest_addr),
-        dest_device_num(dest_device_num), bytes(bytes), ompRoutine(ompRoutine), codeptr(codeptr) {
-  this->active = ompt_target_enabled.enabled && ompt_target_enabled.ompt_callback_target_data_op_emi;
-  if (active) {
-    libomp_ompt_callback_target_data_op_emi(ompt_scope_begin, optype, src_addr, src_device_num, dest_addr,
-                                            dest_device_num, bytes, ompRoutine, codeptr);
+OmptTargetDataOp::OmptTargetDataOp(ompt_target_data_op_t OpType, void *SrcAddr, int SrcDeviceNum, void *DestAddr,
+                                   int DestDeviceNum, size_t Bytes, bool OmpRoutine, void *CodePtr) :
+        OpType(OpType), SrcAddr(SrcAddr), SrcDeviceNum(SrcDeviceNum), DestAddr(DestAddr),
+        DestDeviceNum(DestDeviceNum), Bytes(Bytes), OmpRoutine(OmpRoutine), CodePtr(CodePtr) {
+  this->Active = ompt_target_enabled.enabled && ompt_target_enabled.ompt_callback_target_data_op_emi;
+  if (Active) {
+    libomp_ompt_callback_target_data_op_emi(ompt_scope_begin, OpType, SrcAddr, SrcDeviceNum, DestAddr,
+                                            DestDeviceNum, Bytes, OmpRoutine, CodePtr);
   }
 }
 
 OmptTargetDataOp::~OmptTargetDataOp() {
-  if (active) {
-    libomp_ompt_callback_target_data_op_emi(ompt_scope_end, optype, src_addr, src_device_num, dest_addr,
-                                            dest_device_num, bytes, ompRoutine, codeptr);
+  if (Active) {
+    libomp_ompt_callback_target_data_op_emi(ompt_scope_end, OpType, SrcAddr, SrcDeviceNum, DestAddr,
+                                            DestDeviceNum, Bytes, OmpRoutine, CodePtr);
   }
 }
 
-void OmptTargetDataOp::set_dest_addr(void *dest_addr) {
-  this->dest_addr = dest_addr;
+void OmptTargetDataOp::setDestAddr(void *DestAddr) {
+  this->DestAddr = DestAddr;
 }
 
-OmptTargetMapping::OmptTargetMapping(int capacity, void *codeptr) : capacity(capacity), size(0), codeptr(codeptr) {
-  this->active = ompt_target_enabled.enabled && ompt_target_enabled.ompt_callback_target_map_emi;
-  if (active && capacity) {
-    host_addr = new void *[capacity];
-    device_addr = new void *[capacity];
-    bytes = new size_t[capacity];
-    mapping_flags = new unsigned int[capacity];
+OmptTargetMapping::OmptTargetMapping(int Capacity, void *CodePtr) : Capacity(Capacity), Size(0), CodePtr(CodePtr) {
+  this->Active = ompt_target_enabled.enabled && ompt_target_enabled.ompt_callback_target_map_emi;
+  if (Active && Capacity) {
+    HostAddr = new void *[Capacity];
+    DeviceAddr = new void *[Capacity];
+    Bytes = new size_t[Capacity];
+    MappingFlags = new unsigned int[Capacity];
   } else {
-    host_addr = nullptr;
-    device_addr = nullptr;
-    bytes = nullptr;
-    mapping_flags = nullptr;
+    HostAddr = nullptr;
+    DeviceAddr = nullptr;
+    Bytes = nullptr;
+    MappingFlags = nullptr;
   }
 }
 
 OmptTargetMapping::~OmptTargetMapping() {
-  if (active && capacity) {
-    delete[] host_addr;
-    delete[] device_addr;
-    delete[] bytes;
-    delete[] mapping_flags;
+  if (Active && Capacity) {
+    delete[] HostAddr;
+    delete[] DeviceAddr;
+    delete[] Bytes;
+    delete[] MappingFlags;
   }
 }
 
 // This function should only be invoked when capacity is non-zero
-void OmptTargetMapping::add_mapping(void *hst_addr, void *tgt_addr, size_t byte, int64_t arg_type, ConstructorType con_type) {
-  if (active) {
+void OmptTargetMapping::addMapping(void *HstAddr, void *TgtAddr, size_t Byte, int64_t ArgType, ConstructorType ConType) {
+  if (Active) {
     // Calculate mapping_flag using arg_type
     unsigned int flag = 0;
-    if (con_type == TARGET) {
-      if (arg_type & OMP_TGT_MAPTYPE_TO) {
+    if (ConType == TARGET) {
+      if (ArgType & OMP_TGT_MAPTYPE_TO) {
         flag |= ompt_target_map_flag_to;
       }
-      if (arg_type & OMP_TGT_MAPTYPE_FROM) {
+      if (ArgType & OMP_TGT_MAPTYPE_FROM) {
         flag |= ompt_target_map_flag_from;
       }
       if (!flag) {
         flag |= ompt_target_map_flag_alloc;
       }
-    } else if (con_type == TARGET_DATA_BEGIN) {
-      if (arg_type & OMP_TGT_MAPTYPE_TO) {
+    } else if (ConType == TARGET_DATA_BEGIN) {
+      if (ArgType & OMP_TGT_MAPTYPE_TO) {
         flag |= ompt_target_map_flag_to;
       } else {
         flag |= ompt_target_map_flag_alloc;
       }
-    } else if (con_type == TARGET_DATA_END) {
-      if (arg_type & OMP_TGT_MAPTYPE_FROM) {
+    } else if (ConType == TARGET_DATA_END) {
+      if (ArgType & OMP_TGT_MAPTYPE_FROM) {
         flag |= ompt_target_map_flag_from;
-      } else if (arg_type & OMP_TGT_MAPTYPE_DELETE) {
+      } else if (ArgType & OMP_TGT_MAPTYPE_DELETE) {
         flag |= ompt_target_map_flag_delete;
       } else {
         flag |= ompt_target_map_flag_release;
       }
     }
-    if (arg_type & OMP_TGT_MAPTYPE_IMPLICIT) {
+    if (ArgType & OMP_TGT_MAPTYPE_IMPLICIT) {
       flag |= ompt_target_map_flag_implicit;
     }
-    if (arg_type & OMP_TGT_MAPTYPE_ALWAYS) {
+    if (ArgType & OMP_TGT_MAPTYPE_ALWAYS) {
       flag |= ompt_target_map_flag_always;
     }
-    if (arg_type & OMP_TGT_MAPTYPE_PRESENT) {
+    if (ArgType & OMP_TGT_MAPTYPE_PRESENT) {
       flag |= ompt_target_map_flag_present;
     }
-    if (arg_type & OMP_TGT_MAPTYPE_CLOSE) {
+    if (ArgType & OMP_TGT_MAPTYPE_CLOSE) {
       flag |= ompt_target_map_flag_close;
     }
 
-    host_addr[size] = hst_addr;
-    device_addr[size] = tgt_addr;
-    bytes[size] = byte;
-    mapping_flags[size] = flag;
-    size += 1;
+    HostAddr[Size] = HstAddr;
+    DeviceAddr[Size] = TgtAddr;
+    Bytes[Size] = Byte;
+    MappingFlags[Size] = flag;
+    Size += 1;
   }
 }
 
-void OmptTargetMapping::invoke_callback() {
-  if (active) {
-    libomp_ompt_callback_target_map_emi(size, host_addr, device_addr, bytes, mapping_flags, codeptr);
+void OmptTargetMapping::invokeCallback() {
+  if (Active) {
+    libomp_ompt_callback_target_map_emi(Size, HostAddr, DeviceAddr, Bytes, MappingFlags, CodePtr);
   }
 }
 
-OmptTarget::OmptTarget(ompt_target_t kind, int device_num, void *codeptr) : kind(kind), device_num(device_num), codeptr(codeptr) {
-  this->active = ompt_target_enabled.enabled && ompt_target_enabled.ompt_callback_target_emi;
-  if (active) {
-    libomp_ompt_callback_target_emi(kind, ompt_scope_begin, device_num, codeptr);
+OmptTarget::OmptTarget(ompt_target_t Kind, int DeviceNum, void *CodePtr) : Kind(Kind), DeviceNum(DeviceNum), CodePtr(CodePtr) {
+  this->Active = ompt_target_enabled.enabled && ompt_target_enabled.ompt_callback_target_emi;
+  if (Active) {
+    libomp_ompt_callback_target_emi(Kind, ompt_scope_begin, DeviceNum, CodePtr);
   }
 }
 
 OmptTarget::~OmptTarget() {
-  if (active) {
-    libomp_ompt_callback_target_emi(kind, ompt_scope_end, device_num, codeptr);
+  if (Active) {
+    libomp_ompt_callback_target_emi(Kind, ompt_scope_end, DeviceNum, CodePtr);
   }
 }
 
-OmptTargetSubmit::OmptTargetSubmit(unsigned int requested_num_teams) : requested_num_teams(requested_num_teams) {
-  this->active = ompt_target_enabled.enabled && ompt_target_enabled.ompt_callback_target_submit_emi;
-  if (active) {
-    libomp_ompt_callback_target_submit_emi(ompt_scope_begin, requested_num_teams);
+OmptTargetSubmit::OmptTargetSubmit(unsigned int RequestedNumTeams) : RequestedNumTeams(RequestedNumTeams) {
+  this->Active = ompt_target_enabled.enabled && ompt_target_enabled.ompt_callback_target_submit_emi;
+  if (Active) {
+    libomp_ompt_callback_target_submit_emi(ompt_scope_begin, RequestedNumTeams);
   }
 }
 
 OmptTargetSubmit::~OmptTargetSubmit() {
-  if (active) {
-    libomp_ompt_callback_target_submit_emi(ompt_scope_end, requested_num_teams);
+  if (Active) {
+    libomp_ompt_callback_target_submit_emi(ompt_scope_end, RequestedNumTeams);
   }
 }
 
-OmptDeviceMem::OmptDeviceMem(void *orig_base_addr, void *orig_addr, int orig_device_num, void *dest_addr,
-                             int dest_device_num, size_t bytes, void *codeptr) :
-        device_mem_flag(0), orig_base_addr(orig_base_addr), orig_addr(orig_addr), orig_device_num(orig_device_num),
-        dest_addr(dest_addr), dest_device_num(dest_device_num), bytes(bytes), codeptr(codeptr) {
-  this->active = ompt_target_enabled.enabled && ompt_target_enabled.ompt_callback_device_mem;
+OmptDeviceMem::OmptDeviceMem(void *OrigBaseAddr, void *OrigAddr, int OrigDeviceNum, void *DestAddr,
+                             int DestDeviceNum, size_t Bytes, void *CodePtr) :
+        DeviceMemFlag(0), OrigBaseAddr(OrigBaseAddr), OrigAddr(OrigAddr), OrigDeviceNum(OrigDeviceNum),
+        DestAddr(DestAddr), DestDeviceNum(DestDeviceNum), Bytes(Bytes), CodePtr(CodePtr) {
+  this->Active = ompt_target_enabled.enabled && ompt_target_enabled.ompt_callback_device_mem;
 }
 
-void OmptDeviceMem::add_target_data_op(unsigned int flag) {
-  if (active) {
-    device_mem_flag |= flag;
+void OmptDeviceMem::addTargetDataOp(unsigned int Flag) {
+  if (Active) {
+    DeviceMemFlag |= Flag;
   }
 }
 
 OmptDeviceMem::~OmptDeviceMem() {
-  if (active && device_mem_flag) {
-    libomp_ompt_callback_device_mem(device_mem_flag, orig_base_addr, orig_addr, orig_device_num, dest_addr, dest_device_num, bytes, codeptr);
+  if (Active && DeviceMemFlag) {
+    libomp_ompt_callback_device_mem(DeviceMemFlag, OrigBaseAddr, OrigAddr, OrigDeviceNum, DestAddr, DestDeviceNum, Bytes, CodePtr);
   }
 }

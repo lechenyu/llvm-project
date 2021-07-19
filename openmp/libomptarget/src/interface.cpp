@@ -66,7 +66,7 @@ EXTERN void __tgt_target_data_begin_internal(ident_t *loc, int64_t device_id,
                                            void **args, int64_t *arg_sizes,
                                            int64_t *arg_types,
                                            map_var_info_t *arg_names,
-                                           void **arg_mappers OMPT_ARG(bool nowait, void *codeptr)) {
+                                           void **arg_mappers OMPT_ARG(bool Nowait, void *CodePtr)) {
   //TIMESCOPE_WITH_IDENT(loc);
   DP("Entering data begin region for device %" PRId64 " with %d mappings\n",
      device_id, arg_num);
@@ -92,11 +92,11 @@ EXTERN void __tgt_target_data_begin_internal(ident_t *loc, int64_t device_id,
   int rc;
 #if OMPT_SUPPORT
   {
-    OmptTarget Callback{nowait ? ompt_target_enter_data_nowait : ompt_target_enter_data, Device.DeviceID, codeptr};
+    OmptTarget Callback{Nowait ? ompt_target_enter_data_nowait : ompt_target_enter_data, Device.DeviceID, CodePtr};
 #endif
     AsyncInfoTy AsyncInfo(Device);
     rc = targetDataBegin(loc, Device, arg_num, args_base, args, arg_sizes,
-                         arg_types, arg_names, arg_mappers, AsyncInfo OMPT_ARG(false, codeptr));
+                         arg_types, arg_names, arg_mappers, AsyncInfo OMPT_ARG(false, CodePtr));
     if (rc == OFFLOAD_SUCCESS)
       rc = AsyncInfo.synchronize();
 #if OMPT_SUPPORT
@@ -160,7 +160,7 @@ EXTERN void __tgt_target_data_end_internal(ident_t *loc, int64_t device_id,
                                          void **args, int64_t *arg_sizes,
                                          int64_t *arg_types,
                                          map_var_info_t *arg_names,
-                                         void **arg_mappers OMPT_ARG(bool nowait, void *codeptr)) {
+                                         void **arg_mappers OMPT_ARG(bool Nowait, void *CodePtr)) {
   //TIMESCOPE_WITH_IDENT(loc);
   DP("Entering data end region with %d mappings\n", arg_num);
   if (checkDeviceAndCtors(device_id, loc) != OFFLOAD_SUCCESS) {
@@ -185,11 +185,11 @@ EXTERN void __tgt_target_data_end_internal(ident_t *loc, int64_t device_id,
   int rc;
 #if OMPT_SUPPORT
   {
-    OmptTarget Callback{nowait ? ompt_target_exit_data_nowait : ompt_target_exit_data, Device.DeviceID, codeptr};
+    OmptTarget Callback{Nowait ? ompt_target_exit_data_nowait : ompt_target_exit_data, Device.DeviceID, CodePtr};
 #endif
     AsyncInfoTy AsyncInfo(Device);
     rc = targetDataEnd(loc, Device, arg_num, args_base, args, arg_sizes,
-                       arg_types, arg_names, arg_mappers, AsyncInfo OMPT_ARG(false, codeptr));
+                       arg_types, arg_names, arg_mappers, AsyncInfo OMPT_ARG(false, CodePtr));
     if (rc == OFFLOAD_SUCCESS)
       rc = AsyncInfo.synchronize();
 #if OMPT_SUPPORT
@@ -249,7 +249,7 @@ EXTERN void __tgt_target_data_update_internal(ident_t *loc, int64_t device_id,
                                             void **args, int64_t *arg_sizes,
                                             int64_t *arg_types,
                                             map_var_info_t *arg_names,
-                                            void **arg_mappers OMPT_ARG(bool nowait, void *codeptr)) {
+                                            void **arg_mappers OMPT_ARG(bool Nowait, void *CodePtr)) {
   //TIMESCOPE_WITH_IDENT(loc);
   DP("Entering data update with %d mappings\n", arg_num);
   if (checkDeviceAndCtors(device_id, loc) != OFFLOAD_SUCCESS) {
@@ -267,10 +267,10 @@ EXTERN void __tgt_target_data_update_internal(ident_t *loc, int64_t device_id,
   int rc;
 #if OMPT_SUPPORT
   {
-    OmptTarget Callback{nowait ? ompt_target_update_nowait : ompt_target_update, Device.DeviceID, codeptr};
+    OmptTarget Callback{Nowait ? ompt_target_update_nowait : ompt_target_update, Device.DeviceID, CodePtr};
 #endif
     rc = targetDataUpdate(loc, Device, arg_num, args_base, args, arg_sizes,
-                          arg_types, arg_names, arg_mappers, AsyncInfo OMPT_ARG(false, codeptr));
+                          arg_types, arg_names, arg_mappers, AsyncInfo OMPT_ARG(false, CodePtr));
     if (rc == OFFLOAD_SUCCESS)
       rc = AsyncInfo.synchronize();
 #if OMPT_SUPPORT
@@ -327,7 +327,7 @@ EXTERN int __tgt_target_internal(ident_t *loc, int64_t device_id, void *host_ptr
                                int32_t arg_num, void **args_base, void **args,
                                int64_t *arg_sizes, int64_t *arg_types,
                                map_var_info_t *arg_names, void **arg_mappers
-                               OMPT_ARG(bool nowait, void* codeptr)
+                               OMPT_ARG(bool Nowait, void* CodePtr)
                                ) {
   //TIMESCOPE_WITH_IDENT(loc);
   DP("Entering target region with entry point " DPxMOD " and device Id %" PRId64
@@ -353,13 +353,13 @@ EXTERN int __tgt_target_internal(ident_t *loc, int64_t device_id, void *host_ptr
   int rc;
 #if OMPT_SUPPORT
   {
-    OmptTarget Callback{nowait ? ompt_target_nowait : ompt_target, (int) device_id, codeptr};
+    OmptTarget Callback{Nowait ? ompt_target_nowait : ompt_target, (int) device_id, CodePtr};
 #endif
     DeviceTy &Device = PM->Devices[device_id];
     AsyncInfoTy AsyncInfo(Device);
     rc = target(loc, Device, host_ptr, arg_num, args_base, args, arg_sizes,
                 arg_types, arg_names, arg_mappers, 0, 0, false /*team*/,
-                AsyncInfo OMPT_ARG(codeptr));
+                AsyncInfo OMPT_ARG(CodePtr));
 
     if (rc == OFFLOAD_SUCCESS)
       rc = AsyncInfo.synchronize();
@@ -422,7 +422,7 @@ EXTERN int __tgt_target_teams_internal(ident_t *loc, int64_t device_id,
                                      int64_t *arg_sizes, int64_t *arg_types,
                                      map_var_info_t *arg_names,
                                      void **arg_mappers, int32_t team_num,
-                                     int32_t thread_limit OMPT_ARG(bool nowait, void *codeptr)) {
+                                     int32_t thread_limit OMPT_ARG(bool Nowait, void *CodePtr)) {
   DP("Entering target region with entry point " DPxMOD " and device Id %" PRId64
      "\n",
      DPxPTR(host_ptr), device_id);
@@ -446,13 +446,13 @@ EXTERN int __tgt_target_teams_internal(ident_t *loc, int64_t device_id,
   int rc;
 #if OMPT_SUPPORT
   {
-    OmptTarget Callback{nowait ? ompt_target_nowait : ompt_target, (int) device_id, codeptr};
+    OmptTarget Callback{Nowait ? ompt_target_nowait : ompt_target, (int) device_id, CodePtr};
 #endif
     DeviceTy &Device = PM->Devices[device_id];
     AsyncInfoTy AsyncInfo(Device);
     rc = target(loc, Device, host_ptr, arg_num, args_base, args, arg_sizes,
                 arg_types, arg_names, arg_mappers, team_num, thread_limit,
-                true /*team*/, AsyncInfo OMPT_ARG(codeptr));
+                true /*team*/, AsyncInfo OMPT_ARG(CodePtr));
     if (rc == OFFLOAD_SUCCESS)
       rc = AsyncInfo.synchronize();
 

@@ -29,7 +29,7 @@ typedef struct ompt_target_callbacks_active_s {
 
 extern ompt_target_callbacks_active_t ompt_target_enabled;
 
-extern int host_device_num;
+extern int HostDeviceNum;
 
 _OMP_EXTERN OMPT_WEAK_ATTRIBUTE bool libomp_start_tool(
         ompt_target_callbacks_active_t *libomptarget_ompt_enabled);
@@ -71,31 +71,31 @@ _OMP_EXTERN OMPT_WEAK_ATTRIBUTE void libomp_ompt_callback_device_mem(unsigned in
 //TODO (lechenyu): Need to add additional parameters to initialize and clean target_data for omp_target_* routines
 class OmptTargetDataOp {
 private:
-    ompt_target_data_op_t optype;
-    void *src_addr;
-    int src_device_num;
-    void *dest_addr;
-    int dest_device_num;
-    size_t bytes;
-    bool ompRoutine;
-    void * codeptr;
-    bool active;
+    ompt_target_data_op_t OpType;
+    void *SrcAddr;
+    int SrcDeviceNum;
+    void *DestAddr;
+    int DestDeviceNum;
+    size_t Bytes;
+    bool OmpRoutine;
+    void * CodePtr;
+    bool Active;
 public:
-    OmptTargetDataOp(ompt_target_data_op_t optype, void *src_addr, int src_device_num, void *dest_addr, int dest_device_num, size_t bytes, bool ompRoutine, void *codeptr);
+    OmptTargetDataOp(ompt_target_data_op_t OpType, void *SrcAddr, int SrcDeviceNum, void *DestAddr, int DestDeviceNum, size_t Bytes, bool OmpRoutine, void *CodePtr);
     ~OmptTargetDataOp();
-    void set_dest_addr(void *dest_addr);
+    void setDestAddr(void *DestAddr);
 };
 
 class OmptTargetMapping {
 private:
-    int32_t capacity;
-    int32_t size;
-    void **host_addr;
-    void **device_addr;
-    size_t *bytes;
-    unsigned int *mapping_flags;
-    void *codeptr;
-    bool active;
+    int32_t Capacity;
+    int32_t Size;
+    void **HostAddr;
+    void **DeviceAddr;
+    size_t *Bytes;
+    unsigned int *MappingFlags;
+    void *CodePtr;
+    bool Active;
 public:
     typedef enum ConstructorType {
         TARGET              = 1,
@@ -103,47 +103,47 @@ public:
         TARGET_DATA_END     = 3
     } ConstructorType;
 
-    OmptTargetMapping(int capacity, void *codeptr);
+    OmptTargetMapping(int Capacity, void *CodePtr);
     ~OmptTargetMapping();
-    void add_mapping(void *hst_addr, void *tgt_addr, size_t byte, int64_t arg_type, ConstructorType con_type);
-    void invoke_callback();
+    void addMapping(void *HstAddr, void *TgtAddr, size_t Byte, int64_t ArgType, ConstructorType ConType);
+    void invokeCallback();
 };
 
 class OmptTarget {
 private:
-    ompt_target_t kind;
-    int device_num;
-    void *codeptr;
-    bool active;
+    ompt_target_t Kind;
+    int DeviceNum;
+    void *CodePtr;
+    bool Active;
 public:
-    OmptTarget(ompt_target_t kind, int device_num, void *codeptr);
+    OmptTarget(ompt_target_t Kind, int DeviceNum, void *CodePtr);
     ~OmptTarget();
 };
 
 class OmptTargetSubmit {
 private:
-    unsigned int requested_num_teams;
-    bool active;
+    unsigned int RequestedNumTeams;
+    bool Active;
 public:
-    OmptTargetSubmit(unsigned int requested_num_teams);
+    OmptTargetSubmit(unsigned int RequestedNumTeams);
     ~OmptTargetSubmit();
 };
 
 class OmptDeviceMem {
 private:
-    unsigned int device_mem_flag;
-    void *orig_base_addr;
-    void *orig_addr;
-    int orig_device_num;
-    void *dest_addr;
-    int dest_device_num;
-    size_t bytes;
-    void *codeptr;
-    bool active;
+    unsigned int DeviceMemFlag;
+    void *OrigBaseAddr;
+    void *OrigAddr;
+    int OrigDeviceNum;
+    void *DestAddr;
+    int DestDeviceNum;
+    size_t Bytes;
+    void *CodePtr;
+    bool Active;
 public:
-    OmptDeviceMem(void *orig_base_addr, void *orig_addr, int orig_device_num, void *dest_addr, int dest_device_num, size_t bytes, void *codeptr);
+    OmptDeviceMem(void *OrigBaseAddr, void *OrigAddr, int OrigDeviceNum, void *DestAddr, int DestDeviceNum, size_t Bytes, void *CodePtr);
     ~OmptDeviceMem();
-    void add_target_data_op(unsigned int flag);
+    void addTargetDataOp(unsigned int Flag);
 };
 #else
 
