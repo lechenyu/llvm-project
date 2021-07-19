@@ -55,7 +55,6 @@ endif()
 set(LIBOMP_OMPT_SUPPORT_IN_LIBOMPTARGET ${OMPT_DEFAULT_IN_LIBOMPTARGET} CACHE BOOL
         "OMPT-support in libomptarget?")
 if(LIBOMP_OMPT_SUPPORT_IN_LIBOMPTARGET)
-  add_definitions(-DOMPT_SUPPORT=1)
   message(STATUS "OMPT enabled in libomptarget")
 else()
   message(STATUS "OMPT disabled in libomptarget")
