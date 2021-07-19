@@ -326,40 +326,6 @@ int __tgt_target_teams_nowait_mapper(
     int32_t thread_limit, int32_t depNum, void *depList, int32_t noAliasDepNum,
     void *noAliasDepList);
 
-//int __tgt_target_internal(ident_t *loc, int64_t device_id, void *host_ptr,
-//                          int32_t arg_num, void **args_base, void **args,
-//                          int64_t *arg_sizes, int64_t *arg_types,
-//                          map_var_info_t *arg_names, void **arg_mappers
-//                          OMPT_ARG(bool nowait, void* codeptr));
-//
-//int __tgt_target_teams_internal(ident_t *loc, int64_t device_id,
-//                                void *host_ptr, int32_t arg_num,
-//                                void **args_base, void **args,
-//                                int64_t *arg_sizes, int64_t *arg_types,
-//                                map_var_info_t *arg_names,
-//                                void **arg_mappers, int32_t team_num,
-//                                int32_t thread_limit OMPT_ARG(bool nowait, void *codeptr));
-//
-//void __tgt_target_data_begin_internal(ident_t *loc, int64_t device_id,
-//                                      int32_t arg_num, void **args_base,
-//                                      void **args, int64_t *arg_sizes,
-//                                      int64_t *arg_types,
-//                                      map_var_info_t *arg_names,
-//                                      void **arg_mappers OMPT_ARG(void *codeptr));
-//
-//void __tgt_target_data_end_internal(ident_t *loc, int64_t device_id,
-//                                    int32_t arg_num, void **args_base,
-//                                    void **args, int64_t *arg_sizes,
-//                                    int64_t *arg_types,
-//                                    map_var_info_t *arg_names,
-//                                    void **arg_mappers OMPT_ARG(void *codeptr));
-//
-//void __tgt_target_data_update_internal(ident_t *loc, int64_t device_id,
-//                                       int32_t arg_num, void **args_base,
-//                                       void **args, int64_t *arg_sizes,
-//                                       int64_t *arg_types,
-//                                       map_var_info_t *arg_names,
-//                                       void **arg_mappers OMPT_ARG(void *codeptr));
 
 void __kmpc_push_target_tripcount(int64_t device_id, uint64_t loop_tripcount);
 
