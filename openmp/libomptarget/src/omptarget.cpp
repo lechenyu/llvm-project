@@ -542,10 +542,14 @@ int targetDataBegin(ident_t *loc, DeviceTy &Device, int32_t arg_num,
 
 #if OMPT_SUPPORT
     Mapping.addMapping(HstPtrBegin, TgtPtrBegin, data_size, arg_types[i],
-                         ForTarget ? OmptTargetMapping::TARGET : OmptTargetMapping::TARGET_DATA_BEGIN);
-    OmptDeviceMem Mem{HstPtrBase, HstPtrBegin, HostDeviceNum, TgtPtrBegin, Device.DeviceID, (size_t)data_size, CodePtr};
+                       ForTarget ? OmptTargetMapping::TARGET
+                                 : OmptTargetMapping::TARGET_DATA_BEGIN);
+    OmptDeviceMem Mem{HstPtrBase,  HstPtrBegin,     HostDeviceNum,
+                      TgtPtrBegin, Device.DeviceID, (size_t)data_size,
+                      CodePtr};
     if (IsNew) {
-      Mem.addTargetDataOp(ompt_device_mem_flag_alloc|ompt_device_mem_flag_associate);
+      Mem.addTargetDataOp(ompt_device_mem_flag_alloc |
+                          ompt_device_mem_flag_associate);
     }
 #endif
 
@@ -743,12 +747,15 @@ int targetDataEnd(ident_t *loc, DeviceTy &Device, int32_t ArgNum,
 
 #if OMPT_SUPPORT
     if (!ForTarget) {
-      Mapping.addMapping(HstPtrBegin, TgtPtrBegin, DataSize, ArgTypes[I], OmptTargetMapping::TARGET_DATA_END);
+      Mapping.addMapping(HstPtrBegin, TgtPtrBegin, DataSize, ArgTypes[I],
+                         OmptTargetMapping::TARGET_DATA_END);
     }
     void *HstPtrBase = ArgBases[I];
-    OmptDeviceMem Mem(HstPtrBase, HstPtrBegin, HostDeviceNum, TgtPtrBegin, Device.DeviceID, DataSize, CodePtr);
+    OmptDeviceMem Mem(HstPtrBase, HstPtrBegin, HostDeviceNum, TgtPtrBegin,
+                      Device.DeviceID, DataSize, CodePtr);
     if (DelEntry) {
-      Mem.addTargetDataOp(ompt_device_mem_flag_disassociate | ompt_device_mem_flag_release);
+      Mem.addTargetDataOp(ompt_device_mem_flag_disassociate |
+                          ompt_device_mem_flag_release);
     }
 #endif
 
