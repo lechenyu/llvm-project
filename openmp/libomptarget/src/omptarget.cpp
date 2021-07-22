@@ -412,7 +412,7 @@ int targetDataBegin(ident_t *loc, DeviceTy &Device, int32_t arg_num,
                     bool FromMapper
 ) {
 #if OMPT_SUPPORT
-  OmptTargetMapping mappings{arg_num, CodePtr};
+  OmptTargetMapping Mapping{arg_num, CodePtr};
 #endif
 
   // process each input.
@@ -541,11 +541,11 @@ int targetDataBegin(ident_t *loc, DeviceTy &Device, int32_t arg_num,
     }
 
 #if OMPT_SUPPORT
-    mappings.addMapping(HstPtrBegin, TgtPtrBegin, data_size, arg_types[i],
+    Mapping.addMapping(HstPtrBegin, TgtPtrBegin, data_size, arg_types[i],
                          ForTarget ? OmptTargetMapping::TARGET : OmptTargetMapping::TARGET_DATA_BEGIN);
-    OmptDeviceMem mem{HstPtrBase, HstPtrBegin, HostDeviceNum, TgtPtrBegin, Device.DeviceID, (size_t)data_size, CodePtr};
+    OmptDeviceMem Mem{HstPtrBase, HstPtrBegin, HostDeviceNum, TgtPtrBegin, Device.DeviceID, (size_t)data_size, CodePtr};
     if (IsNew) {
-      mem.addTargetDataOp(ompt_device_mem_flag_alloc|ompt_device_mem_flag_associate);
+      Mem.addTargetDataOp(ompt_device_mem_flag_alloc|ompt_device_mem_flag_associate);
     }
 #endif
 
@@ -571,7 +571,7 @@ int targetDataBegin(ident_t *loc, DeviceTy &Device, int32_t arg_num,
 
       if (copy && !IsHostPtr) {
 #if OMPT_SUPPORT
-        mem.addTargetDataOp(ompt_device_mem_flag_to);
+        Mem.addTargetDataOp(ompt_device_mem_flag_to);
 #endif
         DP("Moving %" PRId64 " bytes (hst:" DPxMOD ") -> (tgt:" DPxMOD ")\n",
            data_size, DPxPTR(HstPtrBegin), DPxPTR(TgtPtrBegin));
@@ -605,7 +605,7 @@ int targetDataBegin(ident_t *loc, DeviceTy &Device, int32_t arg_num,
   }
 
 #if OMPT_SUPPORT
-  mappings.invokeCallback();
+  Mapping.invokeCallback();
 #endif
 
   return OFFLOAD_SUCCESS;
@@ -637,7 +637,7 @@ int targetDataEnd(ident_t *loc, DeviceTy &Device, int32_t ArgNum,
                   int64_t *ArgTypes, map_var_info_t *ArgNames,
                   void **ArgMappers, AsyncInfoTy &AsyncInfo OMPT_ARG(bool ForTarget, void *CodePtr), bool FromMapper) {
 #if OMPT_SUPPORT
-  OmptTargetMapping mappings{ForTarget ? 0 : ArgNum, CodePtr};
+  OmptTargetMapping Mapping{ForTarget ? 0 : ArgNum, CodePtr};
 #endif
 
   int Ret;
@@ -743,12 +743,12 @@ int targetDataEnd(ident_t *loc, DeviceTy &Device, int32_t ArgNum,
 
 #if OMPT_SUPPORT
     if (!ForTarget) {
-      mappings.addMapping(HstPtrBegin, TgtPtrBegin, DataSize, ArgTypes[I], OmptTargetMapping::TARGET_DATA_END);
+      Mapping.addMapping(HstPtrBegin, TgtPtrBegin, DataSize, ArgTypes[I], OmptTargetMapping::TARGET_DATA_END);
     }
     void *HstPtrBase = ArgBases[I];
-    OmptDeviceMem mem(HstPtrBase, HstPtrBegin, HostDeviceNum, TgtPtrBegin, Device.DeviceID, DataSize, CodePtr);
+    OmptDeviceMem Mem(HstPtrBase, HstPtrBegin, HostDeviceNum, TgtPtrBegin, Device.DeviceID, DataSize, CodePtr);
     if (DelEntry) {
-      mem.addTargetDataOp(ompt_device_mem_flag_disassociate | ompt_device_mem_flag_release);
+      Mem.addTargetDataOp(ompt_device_mem_flag_disassociate | ompt_device_mem_flag_release);
     }
 #endif
 
@@ -784,7 +784,7 @@ int targetDataEnd(ident_t *loc, DeviceTy &Device, int32_t ArgNum,
             !(PM->RTLs.RequiresFlags & OMP_REQ_UNIFIED_SHARED_MEMORY &&
               TgtPtrBegin == HstPtrBegin)) {
 #if OMPT_SUPPORT
-          mem.addTargetDataOp(ompt_device_mem_flag_from);
+          Mem.addTargetDataOp(ompt_device_mem_flag_from);
 #endif
 
           DP("Moving %" PRId64 " bytes (tgt:" DPxMOD ") -> (hst:" DPxMOD ")\n",
@@ -862,7 +862,7 @@ int targetDataEnd(ident_t *loc, DeviceTy &Device, int32_t ArgNum,
 
 #if OMPT_SUPPORT
   if (!ForTarget) {
-    mappings.invokeCallback();
+    Mapping.invokeCallback();
   }
 #endif
 

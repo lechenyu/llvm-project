@@ -40,7 +40,7 @@ static char *ProfileTraceFile = nullptr;
 #endif
 
 #if OMPT_SUPPORT
-static bool ompt_initialized = false;
+static bool OmptInitialized = false;
 #endif
 
 __attribute__((constructor(101))) void init() {
@@ -184,7 +184,7 @@ void RTLsTy::LoadRTLs() {
 
 #if OMPT_SUPPORT
   DP("OMPT_SUPPORT is enabled in libomptarget\n");
-  if (!ompt_initialized) {
+  if (!OmptInitialized) {
     DP("Init OMPT for libomptarget\n");
     if (libomp_start_tool) {
       DP("Retrieve libomp_start_tool successfully\n");
@@ -193,7 +193,7 @@ void RTLsTy::LoadRTLs() {
         memset(&OmptTargetEnabled, 0, sizeof(OmptTargetEnabled));
       }
     }
-    ompt_initialized = true;
+    OmptInitialized = true;
   }
 #endif
 
