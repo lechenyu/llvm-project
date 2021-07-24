@@ -14,6 +14,7 @@
 #define __OMPT_INTERNAL_H__
 
 #include "ompt-event-specific.h"
+#include "ompt-target-api.h"
 #include "omp-tools.h"
 
 #define OMPT_VERSION 1
@@ -26,20 +27,50 @@
 
 #define ompt_callback(e) e##_callback
 
+#define ompt_emi_callback(e) e##_emi_callback
+
+#define ompt_emi_callback_type(e) e##_emi_t
+
+#define ompt_emi_wrapper(e) e##_emi_wrapper
+
+#define ompt_emi_event(e) e##_emi
+
+/* Struct to collect host callback pointers */
 typedef struct ompt_callbacks_internal_s {
 #define ompt_event_macro(event, callback, eventid)                             \
   callback ompt_callback(event);
 
-  FOREACH_OMPT_EVENT(ompt_event_macro)
+  FOREACH_OMPT_HOST_EVENT(ompt_event_macro)
 
 #undef ompt_event_macro
 } ompt_callbacks_internal_t;
 
+/* Struct to collect target callback pointers */
+typedef struct ompt_target_callbacks_internal_s {
+#define ompt_event_macro(event, callback, eventid)                             \
+  callback ompt_callback(event);
+
+  FOREACH_OMPT_51_TARGET_EVENT(ompt_event_macro)
+
+#undef ompt_event_macro
+} ompt_target_callbacks_internal_t;
+
+/* Struct to collect noemi callback pointers */
+typedef struct ompt_callbacks_internal_noemi_s {
+#define ompt_event_macro(event, callback, eventid)                             \
+  callback ompt_callback(event);
+
+  FOREACH_OMPT_NOEMI_EVENT(ompt_event_macro)
+
+#undef ompt_event_macro
+} ompt_callbacks_internal_noemi_t;
+
+/* Bitmap to mark OpenMP 5.1 host events as registered*/
 typedef struct ompt_callbacks_active_s {
   unsigned int enabled : 1;
 #define ompt_event_macro(event, callback, eventid) unsigned int event : 1;
 
-  FOREACH_OMPT_EVENT(ompt_event_macro)
+  FOREACH_OMPT_HOST_EVENT(ompt_event_macro)
 
 #undef ompt_event_macro
 } ompt_callbacks_active_t;
@@ -56,7 +87,9 @@ typedef struct {
   ompt_frame_t frame;
   ompt_data_t task_data;
   struct kmp_taskdata *scheduling_parent;
+  ompt_data_t target_data; // ompt_data for the enclosed target region
   int thread_num;
+  bool is_target_task;
 } ompt_task_info_t;
 
 typedef struct {
@@ -81,9 +114,12 @@ typedef struct {
   int ompt_task_yielded;
   int parallel_flags; // information for the last parallel region invoked
   void *idle_frame;
+  ompt_id_t host_op_id;
 } ompt_thread_info_t;
 
 extern ompt_callbacks_internal_t ompt_callbacks;
+extern ompt_target_callbacks_internal_t ompt_target_callbacks;
+extern ompt_callbacks_internal_noemi_t ompt_callbacks_noemi;
 
 #if OMPT_SUPPORT && OMPT_OPTIONAL
 #if USE_FAST_MEMORY
@@ -109,6 +145,7 @@ void ompt_fini(void);
 int __kmp_control_tool(uint64_t command, uint64_t modifier, void *arg);
 
 extern ompt_callbacks_active_t ompt_enabled;
+extern ompt_target_callbacks_active_t ompt_target_enabled;
 
 #if KMP_OS_WINDOWS
 #define UNLIKELY(x) (x)
