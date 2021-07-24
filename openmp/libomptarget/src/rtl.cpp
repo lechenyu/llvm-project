@@ -13,6 +13,7 @@
 #include "rtl.h"
 #include "device.h"
 #include "private.h"
+#include "ompt-target.h"
 
 #include <cassert>
 #include <cstdlib>
@@ -36,6 +37,10 @@ PluginManager *PM;
 
 #if OMPTARGET_PROFILE_ENABLED
 static char *ProfileTraceFile = nullptr;
+#endif
+
+#if OMPT_SUPPORT
+static bool OmptInitialized = false;
 #endif
 
 __attribute__((constructor(101))) void init() {
@@ -176,6 +181,21 @@ void RTLsTy::LoadRTLs() {
     *((void **)&R.supports_empty_images) =
         dlsym(dynlib_handle, "__tgt_rtl_supports_empty_images");
   }
+
+#if OMPT_SUPPORT
+  DP("OMPT_SUPPORT is enabled in libomptarget\n");
+  if (!OmptInitialized) {
+    DP("Init OMPT for libomptarget\n");
+    if (libomp_start_tool) {
+      DP("Retrieve libomp_start_tool successfully\n");
+      if (!libomp_start_tool(&OmptTargetEnabled)) {
+        DP("Turn off OMPT in libomptarget because libomp_start_tool returns false\n");
+        memset(&OmptTargetEnabled, 0, sizeof(OmptTargetEnabled));
+      }
+    }
+    OmptInitialized = true;
+  }
+#endif
 
   DP("RTLs loaded!\n");
 
@@ -367,6 +387,11 @@ void RTLsTy::RegisterLib(__tgt_bin_desc *desc) {
   PM->RTLsMtx.unlock();
 
   DP("Done registering entries!\n");
+#if OMPT_SUPPORT
+  if (OmptTargetEnabled.enabled) {
+    HostDeviceNum = omp_get_initial_device();
+  }
+#endif
 }
 
 void RTLsTy::UnregisterLib(__tgt_bin_desc *desc) {
