@@ -21,13 +21,11 @@ set(LIBOMPTARGET_SRC_FILES
 )
 
 if(LIBOMP_OMPT_SUPPORT_IN_LIBOMPTARGET)
-  list(APPEND LIBOMPTARGET_SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/ompt-target.cpp)
-  list(APPEND LIBOMPTARGET_LLVM_INCLUDE_DIRS ${LIBOMP_INCLUDE_DIR})
+  list(APPEND LIBOMPTARGET_LLVM_INCLUDE_DIRS ${LIBOMP_INCLUDE_DIR} ${LIBOMP_SRC_DIR})
 endif()
 
 set(LIBOMPTARGET_SRC_FILES ${LIBOMPTARGET_SRC_FILES} PARENT_SCOPE)
 include_directories(${LIBOMPTARGET_LLVM_INCLUDE_DIRS})
-
 # Build libomptarget library with libdl dependency. Add LLVMSupport
 # dependency if building in-tree with profiling enabled.
 if(OPENMP_STANDALONE_BUILD OR (NOT OPENMP_ENABLE_LIBOMPTARGET_PROFILING))
@@ -39,10 +37,15 @@ else()
   set(LLVM_LINK_COMPONENTS
     Support
     )
-  add_llvm_library(omptarget SHARED ${LIBOMPTARGET_SRC_FILES}
+  if(LIBOMP_OMPT_SUPPORT_IN_LIBOMPTARGET)
+    add_llvm_library(omptarget SHARED ${LIBOMPTARGET_SRC_FILES}
       LINK_LIBS ${CMAKE_DL_LIBS}
-      "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/exports"
-      )
+      "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/exports")
+  else()
+    add_llvm_library(omptarget SHARED ${LIBOMPTARGET_SRC_FILES} PARTIAL_SOURCES_INTENDED
+       LINK_LIBS ${CMAKE_DL_LIBS}
+       "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/exports")
+  endif()
   target_compile_definitions(omptarget PUBLIC OMPTARGET_PROFILE_ENABLED)
 endif()
 
