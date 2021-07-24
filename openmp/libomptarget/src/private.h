@@ -17,32 +17,33 @@
 #include <Debug.h>
 #include <SourceInfo.h>
 #include <omptarget.h>
+#include "ompt-target.h"
 
 #include <cstdint>
 
 extern int targetDataBegin(ident_t *loc, DeviceTy &Device, int32_t arg_num,
                            void **args_base, void **args, int64_t *arg_sizes,
                            int64_t *arg_types, map_var_info_t *arg_names,
-                           void **arg_mappers, AsyncInfoTy &AsyncInfo,
-                           bool FromMapper = false);
+                           void **arg_mappers, AsyncInfoTy &AsyncInfo OMPT_ARG(bool ForTarget, void *CodePtr),
+                           bool FromMapper = false );
 
 extern int targetDataEnd(ident_t *loc, DeviceTy &Device, int32_t ArgNum,
                          void **ArgBases, void **Args, int64_t *ArgSizes,
                          int64_t *ArgTypes, map_var_info_t *arg_names,
-                         void **ArgMappers, AsyncInfoTy &AsyncInfo,
+                         void **ArgMappers, AsyncInfoTy &AsyncInfo OMPT_ARG(bool ForTarget, void *CodePtr),
                          bool FromMapper = false);
 
 extern int targetDataUpdate(ident_t *loc, DeviceTy &Device, int32_t arg_num,
                             void **args_base, void **args, int64_t *arg_sizes,
                             int64_t *arg_types, map_var_info_t *arg_names,
-                            void **arg_mappers, AsyncInfoTy &AsyncInfo,
+                            void **arg_mappers, AsyncInfoTy &AsyncInfo OMPT_ARG(bool ForTarget, void *CodePtr),
                             bool FromMapper = false);
 
 extern int target(ident_t *loc, DeviceTy &Device, void *HostPtr, int32_t ArgNum,
                   void **ArgBases, void **Args, int64_t *ArgSizes,
                   int64_t *ArgTypes, map_var_info_t *arg_names,
                   void **ArgMappers, int32_t TeamNum, int32_t ThreadLimit,
-                  int IsTeamConstruct, AsyncInfoTy &AsyncInfo);
+                  int IsTeamConstruct, AsyncInfoTy &AsyncInfo OMPT_ARG(void *CodePtr));
 
 extern void handleTargetOutcome(bool Success, ident_t *Loc);
 extern int checkDeviceAndCtors(int64_t &DeviceID, ident_t *Loc);
@@ -82,8 +83,9 @@ typedef void (*MapperFuncPtrTy)(void *, void *, void *, int64_t, int64_t,
 // targetDataEnd and targetDataUpdate).
 typedef int (*TargetDataFuncPtrTy)(ident_t *, DeviceTy &, int32_t, void **,
                                    void **, int64_t *, int64_t *,
-                                   map_var_info_t *, void **, AsyncInfoTy &,
-                                   bool);
+                                   map_var_info_t *, void **, AsyncInfoTy & OMPT_ARG(bool, void *),
+                                   bool
+);
 
 // Implemented in libomp, they are called from within __tgt_* functions.
 #ifdef __cplusplus
