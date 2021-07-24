@@ -412,6 +412,10 @@ int targetDataBegin(ident_t *loc, DeviceTy &Device, int32_t arg_num,
                     AsyncInfoTy &AsyncInfo OMPT_ARG(bool ForTarget,
                                                     void *CodePtr),
                     bool FromMapper) {
+#if OMPT_SUPPORT
+  OmptTargetMapping Mapping{arg_num, CodePtr};
+#endif
+
   // process each input.
   for (int32_t i = 0; i < arg_num; ++i) {
     // Ignore private variables and arrays - there is no mapping for them.
@@ -539,6 +543,12 @@ int targetDataBegin(ident_t *loc, DeviceTy &Device, int32_t arg_num,
       args_base[i] = TgtPtrBase;
     }
 
+#if OMPT_SUPPORT
+    Mapping.addMapping(HstPtrBegin, TgtPtrBegin, data_size, arg_types[i],
+                       ForTarget ? OmptTargetMapping::TARGET
+                                 : OmptTargetMapping::TARGET_DATA_BEGIN);
+#endif
+
     if (arg_types[i] & OMP_TGT_MAPTYPE_TO) {
       bool copy = false;
       if (!(PM->RTLs.RequiresFlags & OMP_REQ_UNIFIED_SHARED_MEMORY) ||
@@ -592,6 +602,10 @@ int targetDataBegin(ident_t *loc, DeviceTy &Device, int32_t arg_num,
     }
   }
 
+#if OMPT_SUPPORT
+  Mapping.invokeCallback();
+#endif
+
   return OFFLOAD_SUCCESS;
 }
 
@@ -623,6 +637,10 @@ int targetDataEnd(ident_t *loc, DeviceTy &Device, int32_t ArgNum,
                   AsyncInfoTy &AsyncInfo OMPT_ARG(bool ForTarget,
                                                   void *CodePtr),
                   bool FromMapper) {
+#if OMPT_SUPPORT
+  OmptTargetMapping Mapping{ForTarget ? 0 : ArgNum, CodePtr};
+#endif
+
   int Ret;
   std::vector<DeallocTgtPtrInfo> DeallocTgtPtrs;
   // process each input.
@@ -723,6 +741,13 @@ int targetDataEnd(ident_t *loc, DeviceTy &Device, int32_t ArgNum,
       continue;
 
     bool DelEntry = IsLast || ForceDelete;
+
+#if OMPT_SUPPORT
+    if (!ForTarget) {
+      Mapping.addMapping(HstPtrBegin, TgtPtrBegin, DataSize, ArgTypes[I],
+                         OmptTargetMapping::TARGET_DATA_END);
+    }
+#endif
 
     // If the last element from the mapper (for end transfer args comes in
     // reverse order), do not remove the partial entry, the parent struct still
@@ -829,6 +854,12 @@ int targetDataEnd(ident_t *loc, DeviceTy &Device, int32_t ArgNum,
     }
   }
 
+#if OMPT_SUPPORT
+  if (!ForTarget) {
+    Mapping.invokeCallback();
+  }
+#endif
+  
   return OFFLOAD_SUCCESS;
 }
 
