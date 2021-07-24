@@ -317,10 +317,12 @@ typedef enum ompt_target_data_op_t {
   ompt_target_data_delete                     = 4,
   ompt_target_data_associate                  = 5,
   ompt_target_data_disassociate               = 6,
+  ompt_target_data_transfer                   = 7,
   ompt_target_data_alloc_async                = 17,
   ompt_target_data_transfer_to_device_async   = 18,
   ompt_target_data_transfer_from_device_async = 19,
-  ompt_target_data_delete_async               = 20
+  ompt_target_data_delete_async               = 20,
+  ompt_target_data_transfer_async             = 23
 } ompt_target_data_op_t;
 
 typedef enum ompt_work_t {
@@ -403,7 +405,11 @@ typedef enum ompt_target_map_flag_t {
   ompt_target_map_flag_alloc          = 0x04,
   ompt_target_map_flag_release        = 0x08,
   ompt_target_map_flag_delete         = 0x10,
-  ompt_target_map_flag_implicit       = 0x20
+  ompt_target_map_flag_implicit       = 0x20,
+  ompt_target_map_flag_always         = 0x40,
+  ompt_target_map_flag_present        = 0x80,
+  ompt_target_map_flag_close          = 0x100,
+  ompt_target_map_flag_shared         = 0x200
 } ompt_target_map_flag_t;
 
 typedef enum ompt_dependence_type_t {

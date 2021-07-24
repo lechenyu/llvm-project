@@ -23,6 +23,7 @@
 #if KMP_OS_UNIX
 #include <dlfcn.h>
 #endif
+#include "kmp.h"
 
 /*****************************************************************************
  * ompt include files
@@ -154,26 +155,49 @@ void ompt_callback_target_data_op_emi_wrapper(
     ompt_data_t *target_data, ompt_id_t *host_op_id,
     ompt_target_data_op_t optype, void *src_addr, int src_device_num,
     void *dest_addr, int dest_device_num, size_t bytes,
-    const void *codeptr_ra) {}
+    const void *codeptr_ra) {
+  if (endpoint == ompt_scope_begin || endpoint == ompt_scope_beginend) {
+    *host_op_id = __ompt_get_unique_id_internal();
+  }
+  if (endpoint == ompt_scope_end || endpoint == ompt_scope_beginend) {
+    ompt_callbacks_noemi.ompt_callback(ompt_callback_target_data_op)(
+        target_data->value, *host_op_id, optype, src_addr, src_device_num,
+        dest_addr, dest_device_num, bytes, codeptr_ra);
+  }
+}
 
 void ompt_callback_target_emi_wrapper(ompt_target_t kind,
                                       ompt_scope_endpoint_t endpoint,
                                       int device_num, ompt_data_t *task_data,
                                       ompt_data_t *target_task_data,
                                       ompt_data_t *target_data,
-                                      const void *codeptr_ra) {}
+                                      const void *codeptr_ra) {
+  if (endpoint == ompt_scope_begin || endpoint == ompt_scope_beginend) {
+    target_data->value = __ompt_get_unique_id_internal();
+  }
+  ompt_callbacks_noemi.ompt_callback(ompt_callback_target)(
+      kind, endpoint, device_num, task_data, target_data->value, codeptr_ra);
+}
 
 void ompt_callback_target_map_emi_wrapper(ompt_data_t *target_data,
                                           unsigned int nitems, void **host_addr,
                                           void **device_addr, size_t *bytes,
                                           unsigned int *mapping_flags,
-                                          const void *codeptr_ra) {}
+                                          const void *codeptr_ra) {
+  ompt_callbacks_noemi.ompt_callback(ompt_callback_target_map)(
+      target_data->value, nitems, host_addr, device_addr, bytes, mapping_flags,
+      codeptr_ra);
+}
 
 void ompt_callback_target_submit_emi_wrapper(ompt_scope_endpoint_t endpoint,
                                              ompt_data_t *target_data,
                                              ompt_id_t *host_op_id,
                                              unsigned int requested_num_teams) {
-
+  if (endpoint == ompt_scope_begin || endpoint == ompt_scope_beginend) {
+    ompt_id_t op_id = __ompt_get_unique_id_internal();
+    ompt_callbacks_noemi.ompt_callback(ompt_callback_target_submit)(
+        target_data->value, op_id, requested_num_teams);
+  }
 }
 
 #if KMP_OS_DARWIN
@@ -992,4 +1016,116 @@ static ompt_interface_fn_t ompt_fn_lookup(const char *s) {
   FOREACH_OMPT_INQUIRY_FN(ompt_interface_fn)
 
   return NULL;
+}
+
+void __ompt_get_target_data_info(ompt_data_t **task_data,
+                                 ompt_data_t **target_task_data,
+                                 ompt_data_t **target_data, bool *is_nowait) {
+  ompt_data_t *task_data_val, *target_task_data_val, *target_data_val;
+  kmp_info_t *thr = ompt_get_thread();
+  kmp_taskdata *current_task = thr->th.th_current_task;
+  ompt_task_info_t *current_task_info = OMPT_CUR_TASK_INFO(thr);
+  if (current_task_info->is_target_task) {
+    target_task_data_val = &current_task_info->task_data;
+    task_data_val = &current_task->td_parent->ompt_task_info.task_data;
+    target_data_val = &current_task_info->target_data;
+  } else {
+    target_task_data_val = NULL;
+    task_data_val = &current_task_info->task_data;
+    target_data_val = &current_task_info->target_data;
+  }
+  if (task_data) {
+    *task_data = task_data_val;
+  }
+  if (target_task_data) {
+    *target_task_data = target_task_data_val;
+  }
+  if (target_data) {
+    *target_data = target_data_val;
+  }
+  if (is_nowait) {
+    *is_nowait = current_task_info->is_target_task;
+  }
+}
+/*****************************************************************************
+ * Delegation of target-related OMPT callbacks
+ ****************************************************************************/
+_OMP_EXTERN void libomp_ompt_callback_target_emi(ompt_target_t kind,
+                                                 ompt_scope_endpoint_t endpoint,
+                                                 int device_num,
+                                                 void *codeptr) {
+  ompt_data_t *task_data, *target_task_data, *target_data;
+  bool is_nowait;
+  __ompt_get_target_data_info(&task_data, &target_task_data, &target_data,
+                              &is_nowait);
+  if (is_nowait) {
+    codeptr = nullptr;
+  }
+  switch (endpoint) {
+  case ompt_scope_begin:
+    *target_data = ompt_data_none;
+    ompt_target_callbacks.ompt_callback(ompt_callback_target_emi)(
+        kind, endpoint, device_num, task_data, target_task_data, target_data,
+        codeptr);
+    break;
+  case ompt_scope_end:
+    ompt_target_callbacks.ompt_callback(ompt_callback_target_emi)(
+        kind, endpoint, device_num, task_data, target_task_data, target_data,
+        codeptr);
+    *target_data = ompt_data_none;
+    break;
+  }
+}
+
+_OMP_EXTERN void libomp_ompt_callback_target_data_op_emi(
+    ompt_scope_endpoint_t endpoint, ompt_target_data_op_t optype,
+    void *src_addr, int src_device_num, void *dest_addr, int dest_device_num,
+    size_t bytes, bool ompRoutine, void *codeptr) {
+  ompt_data_t *target_task_data, *target_data;
+  bool is_nowait;
+  __ompt_get_target_data_info(nullptr, &target_task_data, &target_data,
+                              &is_nowait);
+  if (is_nowait) {
+    codeptr = nullptr;
+  }
+  ompt_id_t *host_op_id;
+  kmp_info_t *thr = ompt_get_thread();
+  host_op_id = &thr->th.ompt_thread_info.host_op_id;
+  if (ompRoutine &&
+      (endpoint == ompt_scope_begin || endpoint == ompt_scope_beginend)) {
+    *target_data = ompt_data_none;
+  }
+  ompt_target_callbacks.ompt_callback(ompt_callback_target_data_op_emi)(
+      endpoint, target_task_data, target_data, host_op_id, optype, src_addr,
+      src_device_num, dest_addr, dest_device_num, bytes, codeptr);
+  if (ompRoutine &&
+      (endpoint == ompt_scope_end || endpoint == ompt_scope_beginend)) {
+    *target_data = ompt_data_none;
+  }
+}
+
+_OMP_EXTERN void libomp_ompt_callback_target_map_emi(
+    unsigned int nitems, void **host_addr, void **device_addr, size_t *bytes,
+    unsigned int *mapping_flags, void *codeptr) {
+  ompt_data_t *target_data;
+  bool is_nowait;
+  __ompt_get_target_data_info(nullptr, nullptr, &target_data, &is_nowait);
+  if (is_nowait) {
+    codeptr = nullptr;
+  }
+  ompt_target_callbacks.ompt_callback(ompt_callback_target_map_emi)(
+      target_data, nitems, host_addr, device_addr, bytes, mapping_flags,
+      codeptr);
+}
+
+_OMP_EXTERN void
+libomp_ompt_callback_target_submit_emi(ompt_scope_endpoint_t endpoint,
+                                       unsigned int requested_num_teams) {
+  ompt_data_t *target_data;
+  __ompt_get_target_data_info(nullptr, nullptr, &target_data, nullptr);
+  ompt_id_t *host_op_id;
+  kmp_info_t *thr = ompt_get_thread();
+  host_op_id = &thr->th.ompt_thread_info.host_op_id;
+  ompt_target_callbacks.ompt_callback(ompt_callback_target_submit_emi)(
+      endpoint, target_data, host_op_id, requested_num_teams);
 }
