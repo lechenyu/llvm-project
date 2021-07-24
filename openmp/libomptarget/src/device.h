@@ -22,6 +22,7 @@
 #include <set>
 #include <vector>
 
+#include "ompt-target.h"
 #include "omptarget.h"
 #include "rtl.h"
 
@@ -170,15 +171,19 @@ struct DeviceTy {
   void *getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase, int64_t Size,
                          map_var_info_t HstPtrName, bool &IsNew,
                          bool &IsHostPtr, bool IsImplicit, bool UpdateRefCount,
-                         bool HasCloseModifier, bool HasPresentModifier);
+                         bool HasCloseModifier,
+                         bool HasPresentModifier OMPT_ARG(void *CodePtr));
   void *getTgtPtrBegin(void *HstPtrBegin, int64_t Size);
   void *getTgtPtrBegin(void *HstPtrBegin, int64_t Size, bool &IsLast,
                        bool UpdateRefCount, bool &IsHostPtr,
                        bool MustContain = false);
-  int deallocTgtPtr(void *TgtPtrBegin, int64_t Size, bool ForceDelete,
+  int deallocTgtPtr(void *TgtPtrBegin, int64_t Size,
+                    bool ForceDelete OMPT_ARG(void *CodePtr),
                     bool HasCloseModifier = false);
-  int associatePtr(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size);
-  int disassociatePtr(void *HstPtrBegin);
+  int associatePtr(void *HstPtrBegin, void *TgtPtrBegin,
+                   int64_t Size OMPT_ARG(bool OmpRoutine, void *CodePtr));
+  int disassociatePtr(void *HstPtrBegin OMPT_ARG(bool OmpRoutine,
+                                                 void *CodePtr));
 
   // calls to RTL
   int32_t initOnce();
@@ -193,23 +198,28 @@ struct DeviceTy {
   /// pointer association. Actually, all the __tgt_rtl_data_alloc
   /// implementations ignore \p HstPtr. \p Kind dictates what allocator should
   /// be used (host, shared, device).
-  void *allocData(int64_t Size, void *HstPtr = nullptr,
-                  int32_t Kind = TARGET_ALLOC_DEFAULT);
+  void *allocData(int64_t Size OMPT_ARG(bool OmpRoutine, void *CodePtr),
+                  void *HstPtr = nullptr, int32_t Kind = TARGET_ALLOC_DEFAULT);
   /// Deallocates memory which \p TgtPtrBegin points at and returns
   /// OFFLOAD_SUCCESS/OFFLOAD_FAIL when succeeds/fails.
-  int32_t deleteData(void *TgtPtrBegin);
+  int32_t deleteData(void *TgtPtrBegin OMPT_ARG(void *HstPtrBegin, int64_t Size,
+                                                bool OmpRoutine,
+                                                void *CodePtr));
 
   // Data transfer. When AsyncInfo is nullptr, the transfer will be
   // synchronous.
   // Copy data from host to device
   int32_t submitData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
-                     AsyncInfoTy &AsyncInfo);
+                     AsyncInfoTy &AsyncInfo OMPT_ARG(bool OmpRoutine,
+                                                     void *CodePtr));
   // Copy data from device back to host
   int32_t retrieveData(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
-                       AsyncInfoTy &AsyncInfo);
+                       AsyncInfoTy &AsyncInfo OMPT_ARG(bool OmpRoutine,
+                                                       void *CodePtr));
   // Copy data from current device to destination device directly
-  int32_t dataExchange(void *SrcPtr, DeviceTy &DstDev, void *DstPtr,
-                       int64_t Size, AsyncInfoTy &AsyncInfo);
+  int32_t
+  dataExchange(void *SrcPtr, DeviceTy &DstDev, void *DstPtr, int64_t Size,
+               AsyncInfoTy &AsyncInfo OMPT_ARG(bool OmpRoutine, void *CodePtr));
 
   int32_t runRegion(void *TgtEntryPtr, void **TgtVarsPtr, ptrdiff_t *TgtOffsets,
                     int32_t TgtVarsSize, AsyncInfoTy &AsyncInfo);
