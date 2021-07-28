@@ -14,6 +14,10 @@
 #include "device.h"
 #include "private.h"
 
+#if OMPT_SUPPORT
+#include "ompt-target.h"
+#endif
+
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
@@ -36,6 +40,10 @@ PluginManager *PM;
 
 #if OMPTARGET_PROFILE_ENABLED
 static char *ProfileTraceFile = nullptr;
+#endif
+
+#if OMPT_SUPPORT
+static bool ompt_initialized = false;
 #endif
 
 __attribute__((constructor(101))) void init() {
@@ -176,6 +184,22 @@ void RTLsTy::LoadRTLs() {
     *((void **)&R.supports_empty_images) =
         dlsym(dynlib_handle, "__tgt_rtl_supports_empty_images");
   }
+
+#if OMPT_SUPPORT
+  DP("OMPT_SUPPORT is enabled in libomptarget\n");
+  if (!ompt_initialized) {
+    DP("Init OMPT for libomptarget\n");
+    if (libomp_start_tool) {
+      DP("Retrieve libomp_start_tool successfully\n");
+      if (!libomp_start_tool(&ompt_target_enabled)) {
+        DP("Turn off OMPT in libomptarget because libomp_start_tool returns "
+           "false\n");
+        memset(&ompt_target_enabled, 0, sizeof(ompt_target_enabled));
+      }
+    }
+    ompt_initialized = true;
+  }
+#endif
 
   DP("RTLs loaded!\n");
 
