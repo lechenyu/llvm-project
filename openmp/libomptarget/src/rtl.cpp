@@ -12,6 +12,7 @@
 
 #include "rtl.h"
 #include "device.h"
+#include "ompt-target.h"
 #include "private.h"
 
 #if OMPT_SUPPORT
@@ -190,10 +191,10 @@ void RTLsTy::LoadRTLs() {
   DP("Init OMPT for libomptarget\n");
   if (libomp_start_tool) {
     DP("Retrieve libomp_start_tool successfully\n");
-    if (!libomp_start_tool(&ompt_target_enabled)) {
+    if (!libomp_start_tool(&OmptTargetEnabled)) {
       DP("Turn off OMPT in libomptarget because libomp_start_tool returns "
          "false\n");
-      memset(&ompt_target_enabled, 0, sizeof(ompt_target_enabled));
+      memset(&OmptTargetEnabled, 0, sizeof(OmptTargetEnabled));
     }
   }
 #endif
@@ -396,6 +397,11 @@ void RTLsTy::RegisterLib(__tgt_bin_desc *desc) {
   PM->RTLsMtx.unlock();
 
   DP("Done registering entries!\n");
+#if OMPT_SUPPORT
+  if (OmptTargetEnabled.enabled) {
+    HostDeviceNum = omp_get_initial_device();
+  }
+#endif
 }
 
 void RTLsTy::UnregisterLib(__tgt_bin_desc *desc) {
