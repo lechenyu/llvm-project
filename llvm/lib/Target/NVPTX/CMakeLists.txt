@@ -36,6 +36,7 @@ set(NVPTXCodeGen_sources
   NVVMIntrRange.cpp
   NVVMReflect.cpp
   NVPTXProxyRegErasure.cpp
+  BallistaInstrument.cpp
   )
 
 add_llvm_target(NVPTXCodeGen
