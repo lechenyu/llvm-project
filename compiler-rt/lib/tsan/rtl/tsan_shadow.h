@@ -56,6 +56,7 @@ static_assert(sizeof(FastState) == kShadowSize, "bad FastState size");
 
 class Shadow {
  public:
+  // RawShadow is an enum with underlying type unsigned int, which is 32 bits
   static constexpr RawShadow kEmpty = static_cast<RawShadow>(0);
 
   Shadow(FastState state, u32 addr, u32 size, AccessType typ) {

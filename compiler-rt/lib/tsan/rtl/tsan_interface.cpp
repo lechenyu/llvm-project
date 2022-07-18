@@ -20,7 +20,10 @@
 
 using namespace __tsan;
 
-void __tsan_init() { Initialize(cur_thread_init()); }
+void __tsan_init() { 
+  DPrintf5("Tsan! __tsan_init in omp_dpst branch \n");
+  Initialize(cur_thread_init()); 
+}
 
 void __tsan_flush_memory() {
   FlushShadowMemory();

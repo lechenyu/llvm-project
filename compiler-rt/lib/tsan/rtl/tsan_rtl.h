@@ -156,6 +156,11 @@ struct TidSlot {
 
 // This struct is stored in TLS.
 struct ThreadState {
+  // TODO: what to save in the ThreadState? A dpst_node pointer to an async node?
+  // idea: pointer to an async node, which is the current task that this thread is working
+  // will need to update the node each time the thread switches to a new task
+  void* dpst_node = nullptr;
+
   FastState fast_state;
   int ignore_sync;
 #if !SANITIZER_GO
@@ -458,16 +463,22 @@ bool OutputReport(ThreadState *thr, const ScopedReport &srep);
 bool IsFiredSuppression(Context *ctx, ReportType type, StackTrace trace);
 bool IsExpectedReport(uptr addr, uptr size);
 
-#if defined(TSAN_DEBUG_OUTPUT) && TSAN_DEBUG_OUTPUT >= 1
+#if defined(TSAN_DEBUG_OUTPUT) && TSAN_DEBUG_OUTPUT == 1
 # define DPrintf Printf
 #else
 # define DPrintf(...)
 #endif
 
-#if defined(TSAN_DEBUG_OUTPUT) && TSAN_DEBUG_OUTPUT >= 2
+#if defined(TSAN_DEBUG_OUTPUT) && TSAN_DEBUG_OUTPUT == 2
 # define DPrintf2 Printf
 #else
 # define DPrintf2(...)
+#endif
+
+#if defined(TSAN_DEBUG_OUTPUT) && TSAN_DEBUG_OUTPUT == 5
+# define DPrintf5 Printf
+#else
+# define DPrintf5(...)
 #endif
 
 StackID CurrentStackId(ThreadState *thr, uptr pc);

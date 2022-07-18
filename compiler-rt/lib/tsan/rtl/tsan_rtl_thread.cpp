@@ -128,7 +128,8 @@ Tid ThreadCreate(ThreadState *thr, uptr pc, uptr uid, bool detached) {
     }
   }
   Tid tid = ctx->thread_registry.CreateThread(uid, detached, parent, &arg);
-  DPrintf("#%d: ThreadCreate tid=%d uid=%zu\n", parent, tid, uid);
+  // DPrintf("#%d: ThreadCreate tid=%d uid=%zu\n", parent, tid, uid);
+  DPrintf5("Tsan! #%d: ThreadCreate tid=%d uid=%zu\n", parent, tid, uid);
   return tid;
 }
 
