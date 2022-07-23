@@ -47,6 +47,8 @@ FunctionPass *createNVPTXLowerArgsPass(const NVPTXTargetMachine *TM);
 FunctionPass *createNVPTXLowerAllocaPass();
 MachineFunctionPass *createNVPTXPeephole();
 MachineFunctionPass *createNVPTXProxyRegErasurePass();
+FunctionPass *createNVPTXBallistaInstrumentPass();
+ModulePass *createNVPTXBallistaAddGlobalPass();
 
 struct NVVMIntrRangePass : PassInfoMixin<NVVMIntrRangePass> {
   NVVMIntrRangePass();

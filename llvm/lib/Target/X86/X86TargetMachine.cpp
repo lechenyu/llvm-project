@@ -94,6 +94,7 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeX86Target() {
   initializeX86OptimizeLEAPassPass(PR);
   initializeX86PartialReductionPass(PR);
   initializePseudoProbeInserterPass(PR);
+  initializeX86BallistaAddGlobalPass(PR);
 }
 
 static std::unique_ptr<TargetLoweringObjectFile> createTLOF(const Triple &TT) {
@@ -414,6 +415,7 @@ TargetPassConfig *X86TargetMachine::createPassConfig(PassManagerBase &PM) {
 }
 
 void X86PassConfig::addIRPasses() {
+  addPass(createX86BallistaAddGlobalPass());
   addPass(createAtomicExpandPass());
 
   // We add both pass anyway and when these two passes run, we skip the pass

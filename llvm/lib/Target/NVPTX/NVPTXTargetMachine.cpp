@@ -73,6 +73,8 @@ void initializeNVPTXLowerAggrCopiesPass(PassRegistry &);
 void initializeNVPTXLowerArgsPass(PassRegistry &);
 void initializeNVPTXLowerAllocaPass(PassRegistry &);
 void initializeNVPTXProxyRegErasurePass(PassRegistry &);
+void initializeNVPTXBallistaInstrumentPass(PassRegistry &);
+void initializeNVPTXBallistaAddGlobalPass(PassRegistry &);
 
 } // end namespace llvm
 
@@ -94,6 +96,8 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeNVPTXTarget() {
   initializeNVPTXLowerAllocaPass(PR);
   initializeNVPTXLowerAggrCopiesPass(PR);
   initializeNVPTXProxyRegErasurePass(PR);
+  initializeNVPTXBallistaInstrumentPass(PR);
+  initializeNVPTXBallistaAddGlobalPass(PR);
 }
 
 static std::string computeDataLayout(bool is64Bit, bool UseShortPointers) {
@@ -322,6 +326,8 @@ void NVPTXPassConfig::addIRPasses() {
   addPass(createNVPTXAssignValidGlobalNamesPass());
   addPass(createGenericToNVVMPass());
 
+  addPass(createNVPTXBallistaAddGlobalPass());
+  addPass(createNVPTXBallistaInstrumentPass());
   // NVPTXLowerArgs is required for correctness and should be run right
   // before the address space inference passes.
   addPass(createNVPTXLowerArgsPass(&getNVPTXTargetMachine()));

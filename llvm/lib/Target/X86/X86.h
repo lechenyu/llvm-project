@@ -18,6 +18,7 @@
 
 namespace llvm {
 
+class ModulePass;
 class FunctionPass;
 class InstructionSelector;
 class PassRegistry;
@@ -157,6 +158,8 @@ FunctionPass *createX86LoadValueInjectionRetHardeningPass();
 FunctionPass *createX86SpeculativeLoadHardeningPass();
 FunctionPass *createX86SpeculativeExecutionSideEffectSuppression();
 
+ModulePass *createX86BallistaAddGlobalPass();
+
 void initializeEvexToVexInstPassPass(PassRegistry &);
 void initializeFixupBWInstPassPass(PassRegistry &);
 void initializeFixupLEAPassPass(PassRegistry &);
@@ -185,6 +188,7 @@ void initializeX86LowerAMXTypeLegacyPassPass(PassRegistry &);
 void initializeX86PreAMXConfigPassPass(PassRegistry &);
 void initializeX86LowerTileCopyPass(PassRegistry &);
 void initializeX86LowerAMXIntrinsicsLegacyPassPass(PassRegistry &);
+void initializeX86BallistaAddGlobalPass(PassRegistry &);
 
 namespace X86AS {
 enum : unsigned {
