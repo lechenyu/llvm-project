@@ -14,6 +14,7 @@
 #define __OMPT_INTERNAL_H__
 
 #include "ompt-event-specific.h"
+#include "ompt-target-api.h"
 #include "omp-tools.h"
 
 #define OMPT_VERSION 1
@@ -110,6 +111,7 @@ void ompt_fini(void);
 int __kmp_control_tool(uint64_t command, uint64_t modifier, void *arg);
 
 extern ompt_callbacks_active_t ompt_enabled;
+extern ompt_target_callbacks_active_t ompt_target_enabled;
 
 #if KMP_OS_WINDOWS
 #define UNLIKELY(x) (x)

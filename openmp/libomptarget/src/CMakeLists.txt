@@ -12,6 +12,36 @@
 
 libomptarget_say("Building offloading runtime library libomptarget.")
 
+if(LIBOMP_OMPT_SUPPORT_IN_LIBOMPTARGET)
+add_llvm_library(omptarget
+  SHARED
+
+  api.cpp
+  device.cpp
+  interface.cpp
+  interop.cpp
+  omptarget.cpp
+  rtl.cpp
+  LegacyAPI.cpp
+  ompt-target.cpp
+
+  ADDITIONAL_HEADER_DIRS
+  ${LIBOMPTARGET_INCLUDE_DIR}
+  ${LIBOMP_INCLUDE_DIR}
+  ${LIBOMP_SRC_DIR}
+
+  LINK_COMPONENTS
+  Support
+  Object
+
+  LINK_LIBS 
+  PRIVATE
+  ${CMAKE_DL_LIBS}
+  "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/exports"
+  NO_INSTALL_RPATH
+)
+target_include_directories(omptarget PRIVATE ${LIBOMPTARGET_INCLUDE_DIR} ${LIBOMP_INCLUDE_DIR} ${LIBOMP_SRC_DIR})
+else()
 add_llvm_library(omptarget
   SHARED
 
@@ -23,6 +53,8 @@ add_llvm_library(omptarget
   rtl.cpp
   LegacyAPI.cpp
 
+  PARTIAL_SOURCES_INTENDED
+  
   ADDITIONAL_HEADER_DIRS
   ${LIBOMPTARGET_INCLUDE_DIR}
 
@@ -37,6 +69,7 @@ add_llvm_library(omptarget
   NO_INSTALL_RPATH
 )
 target_include_directories(omptarget PRIVATE ${LIBOMPTARGET_INCLUDE_DIR})
+endif()
 
 # libomptarget.so needs to be aware of where the plugins live as they
 # are now separated in the build directory.

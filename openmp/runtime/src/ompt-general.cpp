@@ -86,6 +86,8 @@ enum tool_setting_e {
 
 ompt_callbacks_active_t ompt_enabled;
 
+ompt_target_callbacks_active_t ompt_target_enabled;
+
 ompt_state_info_t ompt_state_info[] = {
 #define ompt_state_macro(state, code) {#state, state},
     FOREACH_OMPT_STATE(ompt_state_macro)
@@ -240,6 +242,24 @@ ompt_tool_windows(unsigned int omp_version, const char *runtime_version) {
 #else
 #error Activation of OMPT is not supported on this platform.
 #endif
+
+_OMP_EXTERN bool
+libomp_start_tool(ompt_target_callbacks_active_t *libomptarget_ompt_enabled) {
+  if (!TCR_4(__kmp_init_middle)) {
+    __kmp_middle_initialize();
+  }
+  bool ret = false;
+  libomptarget_ompt_enabled->enabled = ompt_enabled.enabled;
+  if (ompt_enabled.enabled) {
+    ret = true;
+#define ompt_event_macro(event_name, callback_type, event_id)                  \
+  libomptarget_ompt_enabled->event_name = ompt_target_enabled.event_name;
+
+    FOREACH_OMPT_51_TARGET_EVENT(ompt_event_macro)
+#undef ompt_event_macro
+  }
+  return ret;
+}
 
 static ompt_start_tool_result_t *
 ompt_try_start_tool(unsigned int omp_version, const char *runtime_version) {

@@ -16,6 +16,10 @@
 
 #include "llvm/Object/OffloadBinary.h"
 
+#if OMPTARGET_OMPT_SUPPORT
+#include "ompt-target.h"
+#endif
+
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
@@ -38,6 +42,10 @@ PluginManager *PM;
 
 #if OMPTARGET_PROFILE_ENABLED
 static char *ProfileTraceFile = nullptr;
+#endif
+
+#if OMPTARGET_OMPT_SUPPORT
+static bool OmptInitialized = false;
 #endif
 
 __attribute__((constructor(101))) void init() {
@@ -223,6 +231,22 @@ void RTLsTy::loadRTLs() {
     *((void **)&R.init_device_info) =
         dlsym(DynlibHandle, "__tgt_rtl_init_device_info");
   }
+
+#if OMPTARGET_OMPT_SUPPORT
+  DP("OMPTARGET_OMPT_SUPPORT is enabled in libomptarget\n");
+  if (!OmptInitialized) {
+    DP("Init OMPT for libomptarget\n");
+    if (libomp_start_tool) {
+      DP("Retrieve libomp_start_tool successfully\n");
+      if (!libomp_start_tool(&OmptTargetEnabled)) {
+        DP("Turn off OMPT in libomptarget because libomp_start_tool returns "
+           "false\n");
+        memset(&OmptTargetEnabled, 0, sizeof(OmptTargetEnabled));
+      }
+    }
+    OmptInitialized = true;
+  }
+#endif
 
   DP("RTLs loaded!\n");
 
