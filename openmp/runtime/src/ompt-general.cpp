@@ -102,6 +102,10 @@ kmp_mutex_impl_info_t kmp_mutex_impl_info[] = {
 
 ompt_callbacks_internal_t ompt_callbacks;
 
+ompt_target_callbacks_internal_t ompt_target_callbacks;
+
+ompt_callbacks_internal_noemi_t ompt_callbacks_noemi;
+
 static ompt_start_tool_result_t *ompt_start_tool_result = NULL;
 
 #if KMP_OS_WINDOWS
@@ -243,6 +247,7 @@ ompt_tool_windows(unsigned int omp_version, const char *runtime_version) {
 #error Activation of OMPT is not supported on this platform.
 #endif
 
+// Function to be invoked by libomptarget to initialize its OMPT implementation
 _OMP_EXTERN bool
 libomp_start_tool(ompt_target_callbacks_active_t *libomptarget_ompt_enabled) {
   if (!TCR_4(__kmp_init_middle)) {
@@ -259,6 +264,60 @@ libomp_start_tool(ompt_target_callbacks_active_t *libomptarget_ompt_enabled) {
 #undef ompt_event_macro
   }
   return ret;
+}
+
+/*****************************************************************************
+ * wrappers for noemi callbacks
+ ****************************************************************************/
+
+void ompt_callback_target_data_op_emi_wrapper(
+    ompt_scope_endpoint_t endpoint, ompt_data_t *target_task_data,
+    ompt_data_t *target_data, ompt_id_t *host_op_id,
+    ompt_target_data_op_t optype, void *src_addr, int src_device_num,
+    void *dest_addr, int dest_device_num, size_t bytes,
+    const void *codeptr_ra) {
+  if (endpoint == ompt_scope_begin || endpoint == ompt_scope_beginend) {
+    *host_op_id = __ompt_get_unique_id_internal();
+  }
+  if (endpoint == ompt_scope_end || endpoint == ompt_scope_beginend) {
+    ompt_callbacks_noemi.ompt_callback(ompt_callback_target_data_op)(
+        target_data->value, *host_op_id, optype, src_addr, src_device_num,
+        dest_addr, dest_device_num, bytes, codeptr_ra);
+  }
+}
+
+void ompt_callback_target_emi_wrapper(ompt_target_t kind,
+                                      ompt_scope_endpoint_t endpoint,
+                                      int device_num, ompt_data_t *task_data,
+                                      ompt_data_t *target_task_data,
+                                      ompt_data_t *target_data,
+                                      const void *codeptr_ra) {
+  if (endpoint == ompt_scope_begin || endpoint == ompt_scope_beginend) {
+    target_data->value = __ompt_get_unique_id_internal();
+  }
+  ompt_callbacks_noemi.ompt_callback(ompt_callback_target)(
+      kind, endpoint, device_num, task_data, target_data->value, codeptr_ra);
+}
+
+void ompt_callback_target_map_emi_wrapper(ompt_data_t *target_data,
+                                          unsigned int nitems, void **host_addr,
+                                          void **device_addr, size_t *bytes,
+                                          unsigned int *mapping_flags,
+                                          const void *codeptr_ra) {
+  ompt_callbacks_noemi.ompt_callback(ompt_callback_target_map)(
+      target_data->value, nitems, host_addr, device_addr, bytes, mapping_flags,
+      codeptr_ra);
+}
+
+void ompt_callback_target_submit_emi_wrapper(ompt_scope_endpoint_t endpoint,
+                                             ompt_data_t *target_data,
+                                             ompt_id_t *host_op_id,
+                                             unsigned int requested_num_teams) {
+  if (endpoint == ompt_scope_begin || endpoint == ompt_scope_beginend) {
+    ompt_id_t op_id = __ompt_get_unique_id_internal();
+    ompt_callbacks_noemi.ompt_callback(ompt_callback_target_submit)(
+        target_data->value, op_id, requested_num_teams);
+  }
 }
 
 static ompt_start_tool_result_t *
@@ -599,7 +658,37 @@ OMPT_API_ROUTINE ompt_set_result_t ompt_set_callback(ompt_callbacks_t which,
     else                                                                       \
       return ompt_set_always;
 
-    FOREACH_OMPT_EVENT(ompt_event_macro)
+    FOREACH_OMPT_HOST_EVENT(ompt_event_macro)
+
+#undef ompt_event_macro
+
+#define ompt_event_macro(event_name, callback_type, event_id)                  \
+  case event_name:                                                             \
+    ompt_target_callbacks.ompt_callback(event_name) = (callback_type)callback; \
+    ompt_target_enabled.event_name = (callback != 0);                          \
+    if (callback)                                                              \
+      return ompt_event_implementation_status(event_name);                     \
+    else                                                                       \
+      return ompt_set_always;
+
+    FOREACH_OMPT_51_TARGET_EVENT(ompt_event_macro)
+
+#undef ompt_event_macro
+
+#define ompt_event_macro(event_name, callback_type, event_id)                  \
+  case event_name:                                                             \
+    ompt_callbacks_noemi.ompt_callback(event_name) = (callback_type)callback;  \
+    ompt_target_enabled.ompt_emi_event(event_name) = (callback != 0);          \
+    if (callback) {                                                            \
+      ompt_target_callbacks.ompt_emi_callback(event_name) =                    \
+          (ompt_emi_callback_type(event_name))(&ompt_emi_wrapper(event_name)); \
+      return ompt_event_implementation_status(event_name);                     \
+    } else {                                                                   \
+      ompt_target_callbacks.ompt_emi_callback(event_name) = NULL;              \
+      return ompt_set_always;                                                  \
+    }
+
+    FOREACH_OMPT_NOEMI_EVENT(ompt_event_macro)
 
 #undef ompt_event_macro
 
@@ -626,7 +715,56 @@ OMPT_API_ROUTINE int ompt_get_callback(ompt_callbacks_t which,
     return ompt_get_callback_failure;                                          \
   }
 
-    FOREACH_OMPT_EVENT(ompt_event_macro)
+    FOREACH_OMPT_HOST_EVENT(ompt_event_macro)
+
+#undef ompt_event_macro
+
+#define ompt_event_macro(event_name, callback_type, event_id)                  \
+  case event_name: {                                                           \
+    ompt_callback_t mycb =                                                     \
+        (ompt_callback_t)ompt_target_callbacks.ompt_callback(event_name);      \
+    if (ompt_target_enabled.event_name && mycb) {                              \
+      *callback = mycb;                                                        \
+      return ompt_get_callback_success;                                        \
+    }                                                                          \
+    return ompt_get_callback_failure;                                          \
+  }
+
+    FOREACH_OMPT_DEVICE_EVENT(ompt_event_macro)
+
+#undef ompt_event_macro
+
+#define ompt_event_macro(event_name, callback_type, event_id)                  \
+  case ompt_emi_event(event_name): {                                           \
+    ompt_callback_t mycb =                                                     \
+        (ompt_callback_t)ompt_target_callbacks.ompt_emi_callback(event_name);  \
+    if (ompt_target_enabled.ompt_emi_event(event_name) &&                      \
+        mycb != (ompt_callback_t)(&ompt_emi_wrapper(event_name))) {            \
+      *callback = mycb;                                                        \
+      return ompt_get_callback_success;                                        \
+    }                                                                          \
+    return ompt_get_callback_failure;                                          \
+  }
+
+    FOREACH_OMPT_NOEMI_EVENT(ompt_event_macro)
+
+#undef ompt_event_macro
+
+#define ompt_event_macro(event_name, callback_type, event_id)                  \
+  case event_name: {                                                           \
+    ompt_callback_t mycb =                                                     \
+        (ompt_callback_t)ompt_callbacks_noemi.ompt_callback(event_name);       \
+    ompt_callback_t wrapper =                                                  \
+        (ompt_callback_t)ompt_target_callbacks.ompt_emi_callback(event_name);  \
+    if (ompt_target_enabled.ompt_emi_event(event_name) &&                      \
+        wrapper == (ompt_callback_t)(&ompt_emi_wrapper(event_name))) {         \
+      *callback = mycb;                                                        \
+      return ompt_get_callback_success;                                        \
+    }                                                                          \
+    return ompt_get_callback_failure;                                          \
+  }
+
+    FOREACH_OMPT_NOEMI_EVENT(ompt_event_macro)
 
 #undef ompt_event_macro
 
