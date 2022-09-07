@@ -283,6 +283,10 @@ void __tgt_target_data_begin_nowait_mapper(
     void **Args, int64_t *ArgSizes, int64_t *ArgTypes, map_var_info_t *ArgNames,
     void **ArgMappers, int32_t DepNum, void *DepList, int32_t NoAliasDepNum,
     void *NoAliasDepList);
+void __tgt_target_data_begin_internal(
+    ident_t *Loc, int64_t DeviceId, int32_t ArgNum, void **ArgsBase,
+    void **Args, int64_t *ArgSizes, int64_t *ArgTypes, map_var_info_t *ArgNames,
+    void **ArgMappers, bool Nowait, void *CodePtr = nullptr);
 
 // passes data from the target, release target memory and destroys the
 // host-target mapping (top entry from the stack of data maps) created by
@@ -303,6 +307,12 @@ void __tgt_target_data_end_nowait_mapper(
     void **Args, int64_t *ArgSizes, int64_t *ArgTypes, map_var_info_t *ArgNames,
     void **ArgMappers, int32_t depNum, void *depList, int32_t NoAliasDepNum,
     void *NoAliasDepList);
+void __tgt_target_data_end_internal(ident_t *Loc, int64_t DeviceId,
+                                    int32_t ArgNum, void **ArgsBase,
+                                    void **Args, int64_t *ArgSizes,
+                                    int64_t *ArgTypes, map_var_info_t *ArgNames,
+                                    void **ArgMappers, bool Nowait,
+                                    void *CodePtr = nullptr);
 
 /// passes data to/from the target
 void __tgt_target_data_update(int64_t DeviceId, int32_t ArgNum, void **ArgsBase,
@@ -325,6 +335,10 @@ void __tgt_target_data_update_nowait_mapper(
     void **Args, int64_t *ArgSizes, int64_t *ArgTypes, map_var_info_t *ArgNames,
     void **ArgMappers, int32_t DepNum, void *DepList, int32_t NoAliasDepNum,
     void *NoAliasDepList);
+void __tgt_target_data_update_internal(
+    ident_t *Loc, int64_t DeviceId, int32_t ArgNum, void **ArgsBase,
+    void **Args, int64_t *ArgSizes, int64_t *ArgTypes, map_var_info_t *ArgNames,
+    void **ArgMappers, bool Nowait, void *CodePtr = nullptr);
 
 // Performs the same actions as data_begin in case ArgNum is non-zero
 // and initiates run of offloaded region on target platform; if ArgNum
@@ -340,6 +354,10 @@ int __tgt_target_kernel_nowait(ident_t *Loc, int64_t DeviceId, int32_t NumTeams,
                                __tgt_kernel_arguments *Args, int32_t DepNum,
                                void *DepList, int32_t NoAliasDepNum,
                                void *NoAliasDepList);
+int __tgt_target_kernel_internal(ident_t *Loc, int64_t DeviceId,
+                                 int32_t NumTeams, int32_t ThreadLimit,
+                                 void *HostPtr, __tgt_kernel_arguments *Args,
+                                 bool Nowait, void *CodePtr = nullptr);
 
 void __tgt_set_info_flag(uint32_t);
 

@@ -16,6 +16,10 @@
 #include "private.h"
 #include "rtl.h"
 
+#if OMPTARGET_OMPT_SUPPORT
+#include "ompt-target.h"
+#endif
+
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
@@ -64,12 +68,10 @@ EXTERN void __tgt_unregister_lib(__tgt_bin_desc *Desc) {
 /// creates host-to-target data mapping, stores it in the
 /// libomptarget.so internal structure (an entry in a stack of data maps)
 /// and passes the data to the device.
-EXTERN void __tgt_target_data_begin_mapper(ident_t *Loc, int64_t DeviceId,
-                                           int32_t ArgNum, void **ArgsBase,
-                                           void **Args, int64_t *ArgSizes,
-                                           int64_t *ArgTypes,
-                                           map_var_info_t *ArgNames,
-                                           void **ArgMappers) {
+EXTERN void __tgt_target_data_begin_internal(
+    ident_t *Loc, int64_t DeviceId, int32_t ArgNum, void **ArgsBase,
+    void **Args, int64_t *ArgSizes, int64_t *ArgTypes, map_var_info_t *ArgNames,
+    void **ArgMappers, bool Nowait, void *CodePtr) {
   TIMESCOPE_WITH_IDENT(Loc);
   DP("Entering data begin region for device %" PRId64 " with %d mappings\n",
      DeviceId, ArgNum);
@@ -100,6 +102,25 @@ EXTERN void __tgt_target_data_begin_mapper(ident_t *Loc, int64_t DeviceId,
   handleTargetOutcome(Rc == OFFLOAD_SUCCESS, Loc);
 }
 
+EXTERN void __tgt_target_data_begin_mapper(ident_t *Loc, int64_t DeviceId,
+                                           int32_t ArgNum, void **ArgsBase,
+                                           void **Args, int64_t *ArgSizes,
+                                           int64_t *ArgTypes,
+                                           map_var_info_t *ArgNames,
+                                           void **ArgMappers) {
+  TIMESCOPE_WITH_IDENT(Loc);
+
+#if OMPTARGET_OMPT_SUPPORT
+  __tgt_target_data_begin_internal(Loc, DeviceId, ArgNum, ArgsBase, Args,
+                                   ArgSizes, ArgTypes, ArgNames, ArgMappers,
+                                   false, OMPT_GET_RETURN_ADDRESS(0));
+#else
+  __tgt_target_data_begin_internal(Loc, DeviceId, ArgNum, ArgsBase, Args,
+                                   ArgSizes, ArgTypes, ArgNames, ArgMappers,
+                                   false);
+#endif
+}
+
 EXTERN void __tgt_target_data_begin_nowait_mapper(
     ident_t *Loc, int64_t DeviceId, int32_t ArgNum, void **ArgsBase,
     void **Args, int64_t *ArgSizes, int64_t *ArgTypes, map_var_info_t *ArgNames,
@@ -107,19 +128,25 @@ EXTERN void __tgt_target_data_begin_nowait_mapper(
     void *NoAliasDepList) {
   TIMESCOPE_WITH_IDENT(Loc);
 
-  __tgt_target_data_begin_mapper(Loc, DeviceId, ArgNum, ArgsBase, Args,
-                                 ArgSizes, ArgTypes, ArgNames, ArgMappers);
+#if OMPTARGET_OMPT_SUPPORT
+  __tgt_target_data_begin_internal(Loc, DeviceId, ArgNum, ArgsBase, Args,
+                                   ArgSizes, ArgTypes, ArgNames, ArgMappers,
+                                   true, OMPT_GET_RETURN_ADDRESS(0));
+#else
+  __tgt_target_data_begin_internal(Loc, DeviceId, ArgNum, ArgsBase, Args,
+                                   ArgSizes, ArgTypes, ArgNames, ArgMappers,
+                                   true);
+#endif
 }
 
 /// passes data from the target, releases target memory and destroys
 /// the host-target mapping (top entry from the stack of data maps)
 /// created by the last __tgt_target_data_begin.
-EXTERN void __tgt_target_data_end_mapper(ident_t *Loc, int64_t DeviceId,
-                                         int32_t ArgNum, void **ArgsBase,
-                                         void **Args, int64_t *ArgSizes,
-                                         int64_t *ArgTypes,
-                                         map_var_info_t *ArgNames,
-                                         void **ArgMappers) {
+EXTERN void
+__tgt_target_data_end_internal(ident_t *Loc, int64_t DeviceId, int32_t ArgNum,
+                               void **ArgsBase, void **Args, int64_t *ArgSizes,
+                               int64_t *ArgTypes, map_var_info_t *ArgNames,
+                               void **ArgMappers, bool Nowait, void *CodePtr) {
   TIMESCOPE_WITH_IDENT(Loc);
   DP("Entering data end region with %d mappings\n", ArgNum);
   if (checkDeviceAndCtors(DeviceId, Loc)) {
@@ -149,6 +176,25 @@ EXTERN void __tgt_target_data_end_mapper(ident_t *Loc, int64_t DeviceId,
   handleTargetOutcome(Rc == OFFLOAD_SUCCESS, Loc);
 }
 
+EXTERN void __tgt_target_data_end_mapper(ident_t *Loc, int64_t DeviceId,
+                                         int32_t ArgNum, void **ArgsBase,
+                                         void **Args, int64_t *ArgSizes,
+                                         int64_t *ArgTypes,
+                                         map_var_info_t *ArgNames,
+                                         void **ArgMappers) {
+  TIMESCOPE_WITH_IDENT(Loc);
+
+#if OMPTARGET_OMPT_SUPPORT
+  __tgt_target_data_end_internal(Loc, DeviceId, ArgNum, ArgsBase, Args,
+                                 ArgSizes, ArgTypes, ArgNames, ArgMappers,
+                                 false, OMPT_GET_RETURN_ADDRESS(0));
+#else
+  __tgt_target_data_end_internal(Loc, DeviceId, ArgNum, ArgsBase, Args,
+                                 ArgSizes, ArgTypes, ArgNames, ArgMappers,
+                                 false);
+#endif
+}
+
 EXTERN void __tgt_target_data_end_nowait_mapper(
     ident_t *Loc, int64_t DeviceId, int32_t ArgNum, void **ArgsBase,
     void **Args, int64_t *ArgSizes, int64_t *ArgTypes, map_var_info_t *ArgNames,
@@ -156,16 +202,21 @@ EXTERN void __tgt_target_data_end_nowait_mapper(
     void *NoAliasDepList) {
   TIMESCOPE_WITH_IDENT(Loc);
 
-  __tgt_target_data_end_mapper(Loc, DeviceId, ArgNum, ArgsBase, Args, ArgSizes,
-                               ArgTypes, ArgNames, ArgMappers);
+#if OMPTARGET_OMPT_SUPPORT
+  __tgt_target_data_end_internal(Loc, DeviceId, ArgNum, ArgsBase, Args,
+                                 ArgSizes, ArgTypes, ArgNames, ArgMappers, true,
+                                 OMPT_GET_RETURN_ADDRESS(0));
+#else
+  __tgt_target_data_end_internal(Loc, DeviceId, ArgNum, ArgsBase, Args,
+                                 ArgSizes, ArgTypes, ArgNames, ArgMappers,
+                                 true);
+#endif
 }
 
-EXTERN void __tgt_target_data_update_mapper(ident_t *Loc, int64_t DeviceId,
-                                            int32_t ArgNum, void **ArgsBase,
-                                            void **Args, int64_t *ArgSizes,
-                                            int64_t *ArgTypes,
-                                            map_var_info_t *ArgNames,
-                                            void **ArgMappers) {
+EXTERN void __tgt_target_data_update_internal(
+    ident_t *Loc, int64_t DeviceId, int32_t ArgNum, void **ArgsBase,
+    void **Args, int64_t *ArgSizes, int64_t *ArgTypes, map_var_info_t *ArgNames,
+    void **ArgMappers, bool Nowait, void *CodePtr) {
   TIMESCOPE_WITH_IDENT(Loc);
   DP("Entering data update with %d mappings\n", ArgNum);
   if (checkDeviceAndCtors(DeviceId, Loc)) {
@@ -186,6 +237,25 @@ EXTERN void __tgt_target_data_update_mapper(ident_t *Loc, int64_t DeviceId,
   handleTargetOutcome(Rc == OFFLOAD_SUCCESS, Loc);
 }
 
+EXTERN void __tgt_target_data_update_mapper(ident_t *Loc, int64_t DeviceId,
+                                            int32_t ArgNum, void **ArgsBase,
+                                            void **Args, int64_t *ArgSizes,
+                                            int64_t *ArgTypes,
+                                            map_var_info_t *ArgNames,
+                                            void **ArgMappers) {
+  TIMESCOPE_WITH_IDENT(Loc);
+
+#if OMPTARGET_OMPT_SUPPORT
+  __tgt_target_data_update_internal(Loc, DeviceId, ArgNum, ArgsBase, Args,
+                                    ArgSizes, ArgTypes, ArgNames, ArgMappers,
+                                    false, OMPT_GET_RETURN_ADDRESS(0));
+#else
+  __tgt_target_data_update_internal(Loc, DeviceId, ArgNum, ArgsBase, Args,
+                                    ArgSizes, ArgTypes, ArgNames, ArgMappers,
+                                    false);
+#endif
+}
+
 EXTERN void __tgt_target_data_update_nowait_mapper(
     ident_t *Loc, int64_t DeviceId, int32_t ArgNum, void **ArgsBase,
     void **Args, int64_t *ArgSizes, int64_t *ArgTypes, map_var_info_t *ArgNames,
@@ -193,8 +263,15 @@ EXTERN void __tgt_target_data_update_nowait_mapper(
     void *NoAliasDepList) {
   TIMESCOPE_WITH_IDENT(Loc);
 
-  __tgt_target_data_update_mapper(Loc, DeviceId, ArgNum, ArgsBase, Args,
-                                  ArgSizes, ArgTypes, ArgNames, ArgMappers);
+#if OMPTARGET_OMPT_SUPPORT
+  __tgt_target_data_update_internal(Loc, DeviceId, ArgNum, ArgsBase, Args,
+                                    ArgSizes, ArgTypes, ArgNames, ArgMappers,
+                                    true, OMPT_GET_RETURN_ADDRESS(0));
+#else
+  __tgt_target_data_update_internal(Loc, DeviceId, ArgNum, ArgsBase, Args,
+                                    ArgSizes, ArgTypes, ArgNames, ArgMappers,
+                                    true);
+#endif
 }
 
 /// Implements a kernel entry that executes the target region on the specified
@@ -208,9 +285,11 @@ EXTERN void __tgt_target_data_update_nowait_mapper(
 ///                    launch, 0 indicates it was unspecified.
 /// \param HostPtr  The pointer to the host function registered with the kernel.
 /// \param Args     All arguments to this kernel launch (see struct definition).
-EXTERN int __tgt_target_kernel(ident_t *Loc, int64_t DeviceId, int32_t NumTeams,
-                               int32_t ThreadLimit, void *HostPtr,
-                               __tgt_kernel_arguments *Args) {
+EXTERN int __tgt_target_kernel_internal(ident_t *Loc, int64_t DeviceId,
+                                        int32_t NumTeams, int32_t ThreadLimit,
+                                        void *HostPtr,
+                                        __tgt_kernel_arguments *Args,
+                                        bool Nowait, void *CodePtr) {
   TIMESCOPE_WITH_IDENT(Loc);
   DP("Entering target region with entry point " DPxMOD " and device Id %" PRId64
      "\n",
@@ -255,14 +334,35 @@ EXTERN int __tgt_target_kernel(ident_t *Loc, int64_t DeviceId, int32_t NumTeams,
   return OMP_TGT_SUCCESS;
 }
 
+EXTERN int __tgt_target_kernel(ident_t *Loc, int64_t DeviceId, int32_t NumTeams,
+                               int32_t ThreadLimit, void *HostPtr,
+                               __tgt_kernel_arguments *Args) {
+  TIMESCOPE_WITH_IDENT(Loc);
+
+#if OMPTARGET_OMPT_SUPPORT
+  return __tgt_target_kernel_internal(Loc, DeviceId, NumTeams, ThreadLimit,
+                                      HostPtr, Args, false,
+                                      OMPT_GET_RETURN_ADDRESS(0));
+#else
+  return __tgt_target_kernel_internal(Loc, DeviceId, NumTeams, ThreadLimit,
+                                      HostPtr, Args, false);
+#endif
+}
+
 EXTERN int __tgt_target_kernel_nowait(
     ident_t *Loc, int64_t DeviceId, int32_t NumTeams, int32_t ThreadLimit,
     void *HostPtr, __tgt_kernel_arguments *Args, int32_t DepNum, void *DepList,
     int32_t NoAliasDepNum, void *NoAliasDepList) {
   TIMESCOPE_WITH_IDENT(Loc);
 
-  return __tgt_target_kernel(Loc, DeviceId, NumTeams, ThreadLimit, HostPtr,
-                             Args);
+#if OMPTARGET_OMPT_SUPPORT
+  return __tgt_target_kernel_internal(Loc, DeviceId, NumTeams, ThreadLimit,
+                                      HostPtr, Args, true,
+                                      OMPT_GET_RETURN_ADDRESS(0));
+#else
+  return __tgt_target_kernel_internal(Loc, DeviceId, NumTeams, ThreadLimit,
+                                      HostPtr, Args, true);
+#endif
 }
 
 // Get the current number of components for a user-defined mapper.

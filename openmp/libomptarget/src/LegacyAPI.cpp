@@ -13,12 +13,23 @@
 #include "omptarget.h"
 #include "private.h"
 
+#if OMPTARGET_OMPT_SUPPORT
+#include "ompt-target.h"
+#endif
+
 EXTERN void __tgt_target_data_begin(int64_t DeviceId, int32_t ArgNum,
                                     void **ArgsBase, void **Args,
                                     int64_t *ArgSizes, int64_t *ArgTypes) {
   TIMESCOPE();
-  __tgt_target_data_begin_mapper(nullptr, DeviceId, ArgNum, ArgsBase, Args,
-                                 ArgSizes, ArgTypes, nullptr, nullptr);
+
+#if OMPTARGET_OMPT_SUPPORT
+  __tgt_target_data_begin_internal(nullptr, DeviceId, ArgNum, ArgsBase, Args,
+                                   ArgSizes, ArgTypes, nullptr, nullptr, false,
+                                   OMPT_GET_RETURN_ADDRESS(0));
+#else
+  __tgt_target_data_begin_internal(nullptr, DeviceId, ArgNum, ArgsBase, Args,
+                                   ArgSizes, ArgTypes, nullptr, nullptr, false);
+#endif
 }
 
 EXTERN void __tgt_target_data_begin_nowait(int64_t DeviceId, int32_t ArgNum,
@@ -29,24 +40,46 @@ EXTERN void __tgt_target_data_begin_nowait(int64_t DeviceId, int32_t ArgNum,
                                            void *NoAliasDepList) {
   TIMESCOPE();
 
-  __tgt_target_data_begin_mapper(nullptr, DeviceId, ArgNum, ArgsBase, Args,
-                                 ArgSizes, ArgTypes, nullptr, nullptr);
+#if OMPTARGET_OMPT_SUPPORT
+  __tgt_target_data_begin_internal(nullptr, DeviceId, ArgNum, ArgsBase, Args,
+                                   ArgSizes, ArgTypes, nullptr, nullptr, true,
+                                   OMPT_GET_RETURN_ADDRESS(0));
+#else
+  __tgt_target_data_begin_internal(nullptr, DeviceId, ArgNum, ArgsBase, Args,
+                                   ArgSizes, ArgTypes, nullptr, nullptr, true);
+#endif
 }
 
 EXTERN void __tgt_target_data_end(int64_t DeviceId, int32_t ArgNum,
                                   void **ArgsBase, void **Args,
                                   int64_t *ArgSizes, int64_t *ArgTypes) {
   TIMESCOPE();
-  __tgt_target_data_end_mapper(nullptr, DeviceId, ArgNum, ArgsBase, Args,
-                               ArgSizes, ArgTypes, nullptr, nullptr);
+
+#if OMPTARGET_OMPT_SUPPORT
+  __tgt_target_data_end_internal(nullptr, DeviceId, ArgNum, ArgsBase, Args,
+                                 ArgSizes, ArgTypes, nullptr, nullptr, false,
+                                 OMPT_GET_RETURN_ADDRESS(0));
+
+#else
+  __tgt_target_data_end_internal(nullptr, DeviceId, ArgNum, ArgsBase, Args,
+                                 ArgSizes, ArgTypes, nullptr, nullptr, false);
+#endif
 }
 
 EXTERN void __tgt_target_data_update(int64_t DeviceId, int32_t ArgNum,
                                      void **ArgsBase, void **Args,
                                      int64_t *ArgSizes, int64_t *ArgTypes) {
   TIMESCOPE();
-  __tgt_target_data_update_mapper(nullptr, DeviceId, ArgNum, ArgsBase, Args,
-                                  ArgSizes, ArgTypes, nullptr, nullptr);
+
+#if OMPTARGET_OMPT_SUPPORT
+  __tgt_target_data_update_internal(nullptr, DeviceId, ArgNum, ArgsBase, Args,
+                                    ArgSizes, ArgTypes, nullptr, nullptr, false,
+                                    OMPT_GET_RETURN_ADDRESS(0));
+#else
+  __tgt_target_data_update_internal(nullptr, DeviceId, ArgNum, ArgsBase, Args,
+                                    ArgSizes, ArgTypes, nullptr, nullptr,
+                                    false);
+#endif
 }
 
 EXTERN void __tgt_target_data_update_nowait(
@@ -55,8 +88,14 @@ EXTERN void __tgt_target_data_update_nowait(
     int32_t NoAliasDepNum, void *NoAliasDepList) {
   TIMESCOPE();
 
-  __tgt_target_data_update_mapper(nullptr, DeviceId, ArgNum, ArgsBase, Args,
-                                  ArgSizes, ArgTypes, nullptr, nullptr);
+#if OMPTARGET_OMPT_SUPPORT
+  __tgt_target_data_update_internal(nullptr, DeviceId, ArgNum, ArgsBase, Args,
+                                    ArgSizes, ArgTypes, nullptr, nullptr, true,
+                                    OMPT_GET_RETURN_ADDRESS(0));
+#else
+  __tgt_target_data_update_internal(nullptr, DeviceId, ArgNum, ArgsBase, Args,
+                                    ArgSizes, ArgTypes, nullptr, nullptr, true);
+#endif
 }
 
 EXTERN void __tgt_target_data_end_nowait(int64_t DeviceId, int32_t ArgNum,
@@ -67,8 +106,14 @@ EXTERN void __tgt_target_data_end_nowait(int64_t DeviceId, int32_t ArgNum,
                                          void *NoAliasDepList) {
   TIMESCOPE();
 
-  __tgt_target_data_end_mapper(nullptr, DeviceId, ArgNum, ArgsBase, Args,
-                               ArgSizes, ArgTypes, nullptr, nullptr);
+#if OMPTARGET_OMPT_SUPPORT
+  __tgt_target_data_end_internal(nullptr, DeviceId, ArgNum, ArgsBase, Args,
+                                 ArgSizes, ArgTypes, nullptr, nullptr, true,
+                                 OMPT_GET_RETURN_ADDRESS(0));
+#else
+  __tgt_target_data_end_internal(nullptr, DeviceId, ArgNum, ArgsBase, Args,
+                                 ArgSizes, ArgTypes, nullptr, nullptr, true);
+#endif
 }
 
 EXTERN int __tgt_target_mapper(ident_t *Loc, int64_t DeviceId, void *HostPtr,
@@ -78,15 +123,32 @@ EXTERN int __tgt_target_mapper(ident_t *Loc, int64_t DeviceId, void *HostPtr,
   TIMESCOPE_WITH_IDENT(Loc);
   __tgt_kernel_arguments KernelArgs{
       1, ArgNum, ArgsBase, Args, ArgSizes, ArgTypes, ArgNames, ArgMappers, -1};
-  return __tgt_target_kernel(Loc, DeviceId, -1, -1, HostPtr, &KernelArgs);
+
+#if OMPTARGET_OMPT_SUPPORT
+  return __tgt_target_kernel_internal(Loc, DeviceId, -1, -1, HostPtr,
+                                      &KernelArgs, false,
+                                      OMPT_GET_RETURN_ADDRESS(0));
+#else
+  return __tgt_target_kernel_internal(Loc, DeviceId, -1, -1, HostPtr,
+                                      &KernelArgs, false);
+#endif
 }
 
 EXTERN int __tgt_target(int64_t DeviceId, void *HostPtr, int32_t ArgNum,
                         void **ArgsBase, void **Args, int64_t *ArgSizes,
                         int64_t *ArgTypes) {
   TIMESCOPE();
-  return __tgt_target_mapper(nullptr, DeviceId, HostPtr, ArgNum, ArgsBase, Args,
-                             ArgSizes, ArgTypes, nullptr, nullptr);
+  __tgt_kernel_arguments KernelArgs{1,        ArgNum,  ArgsBase, Args, ArgSizes,
+                                    ArgTypes, nullptr, nullptr,  -1};
+
+#if OMPTARGET_OMPT_SUPPORT
+  return __tgt_target_kernel_internal(nullptr, DeviceId, -1, -1, HostPtr,
+                                      &KernelArgs, false,
+                                      OMPT_GET_RETURN_ADDRESS(0));
+#else
+  return __tgt_target_kernel_internal(nullptr, DeviceId, -1, -1, HostPtr,
+                                      &KernelArgs, false);
+#endif
 }
 
 EXTERN int __tgt_target_nowait(int64_t DeviceId, void *HostPtr, int32_t ArgNum,
@@ -94,9 +156,17 @@ EXTERN int __tgt_target_nowait(int64_t DeviceId, void *HostPtr, int32_t ArgNum,
                                int64_t *ArgTypes, int32_t DepNum, void *DepList,
                                int32_t NoAliasDepNum, void *NoAliasDepList) {
   TIMESCOPE();
+  __tgt_kernel_arguments KernelArgs{1,        ArgNum,  ArgsBase, Args, ArgSizes,
+                                    ArgTypes, nullptr, nullptr,  -1};
 
-  return __tgt_target_mapper(nullptr, DeviceId, HostPtr, ArgNum, ArgsBase, Args,
-                             ArgSizes, ArgTypes, nullptr, nullptr);
+#if OMPTARGET_OMPT_SUPPORT
+  return __tgt_target_kernel_internal(nullptr, DeviceId, -1, -1, HostPtr,
+                                      &KernelArgs, true,
+                                      OMPT_GET_RETURN_ADDRESS(0));
+#else
+  return __tgt_target_kernel_internal(nullptr, DeviceId, -1, -1, HostPtr,
+                                      &KernelArgs, true);
+#endif
 }
 
 EXTERN int __tgt_target_nowait_mapper(
@@ -105,9 +175,17 @@ EXTERN int __tgt_target_nowait_mapper(
     map_var_info_t *ArgNames, void **ArgMappers, int32_t DepNum, void *DepList,
     int32_t NoAliasDepNum, void *NoAliasDepList) {
   TIMESCOPE_WITH_IDENT(Loc);
+  __tgt_kernel_arguments KernelArgs{
+      1, ArgNum, ArgsBase, Args, ArgSizes, ArgTypes, ArgNames, ArgMappers, -1};
 
-  return __tgt_target_mapper(Loc, DeviceId, HostPtr, ArgNum, ArgsBase, Args,
-                             ArgSizes, ArgTypes, ArgNames, ArgMappers);
+#if OMPTARGET_OMPT_SUPPORT
+  return __tgt_target_kernel_internal(Loc, DeviceId, -1, -1, HostPtr,
+                                      &KernelArgs, true,
+                                      OMPT_GET_RETURN_ADDRESS(0));
+#else
+  return __tgt_target_kernel_internal(Loc, DeviceId, -1, -1, HostPtr,
+                                      &KernelArgs, true);
+#endif
 }
 
 EXTERN int __tgt_target_teams_mapper(ident_t *Loc, int64_t DeviceId,
@@ -118,11 +196,17 @@ EXTERN int __tgt_target_teams_mapper(ident_t *Loc, int64_t DeviceId,
                                      void **ArgMappers, int32_t NumTeams,
                                      int32_t ThreadLimit) {
   TIMESCOPE_WITH_IDENT(Loc);
-
   __tgt_kernel_arguments KernelArgs{
       1, ArgNum, ArgsBase, Args, ArgSizes, ArgTypes, ArgNames, ArgMappers, -1};
-  return __tgt_target_kernel(Loc, DeviceId, NumTeams, ThreadLimit, HostPtr,
-                             &KernelArgs);
+
+#if OMPTARGET_OMPT_SUPPORT
+  return __tgt_target_kernel_internal(Loc, DeviceId, NumTeams, ThreadLimit,
+                                      HostPtr, &KernelArgs, false,
+                                      OMPT_GET_RETURN_ADDRESS(0));
+#else
+  return __tgt_target_kernel_internal(Loc, DeviceId, NumTeams, ThreadLimit,
+                                      HostPtr, &KernelArgs, false);
+#endif
 }
 
 EXTERN int __tgt_target_teams(int64_t DeviceId, void *HostPtr, int32_t ArgNum,
@@ -130,9 +214,17 @@ EXTERN int __tgt_target_teams(int64_t DeviceId, void *HostPtr, int32_t ArgNum,
                               int64_t *ArgTypes, int32_t NumTeams,
                               int32_t ThreadLimit) {
   TIMESCOPE();
-  return __tgt_target_teams_mapper(nullptr, DeviceId, HostPtr, ArgNum, ArgsBase,
-                                   Args, ArgSizes, ArgTypes, nullptr, nullptr,
-                                   NumTeams, ThreadLimit);
+  __tgt_kernel_arguments KernelArgs{1,        ArgNum,  ArgsBase, Args, ArgSizes,
+                                    ArgTypes, nullptr, nullptr,  -1};
+
+#if OMPTARGET_OMPT_SUPPORT
+  return __tgt_target_kernel_internal(nullptr, DeviceId, NumTeams, ThreadLimit,
+                                      HostPtr, &KernelArgs, false,
+                                      OMPT_GET_RETURN_ADDRESS(0));
+#else
+  return __tgt_target_kernel_internal(nullptr, DeviceId, NumTeams, ThreadLimit,
+                                      HostPtr, &KernelArgs, false);
+#endif
 }
 
 EXTERN int __tgt_target_teams_nowait(int64_t DeviceId, void *HostPtr,
@@ -143,10 +235,17 @@ EXTERN int __tgt_target_teams_nowait(int64_t DeviceId, void *HostPtr,
                                      void *DepList, int32_t NoAliasDepNum,
                                      void *NoAliasDepList) {
   TIMESCOPE();
+  __tgt_kernel_arguments KernelArgs{1,        ArgNum,  ArgsBase, Args, ArgSizes,
+                                    ArgTypes, nullptr, nullptr,  -1};
 
-  return __tgt_target_teams_mapper(nullptr, DeviceId, HostPtr, ArgNum, ArgsBase,
-                                   Args, ArgSizes, ArgTypes, nullptr, nullptr,
-                                   NumTeams, ThreadLimit);
+#if OMPTARGET_OMPT_SUPPORT
+  return __tgt_target_kernel_internal(nullptr, DeviceId, NumTeams, ThreadLimit,
+                                      HostPtr, &KernelArgs, true,
+                                      OMPT_GET_RETURN_ADDRESS(0));
+#else
+  return __tgt_target_kernel_internal(nullptr, DeviceId, NumTeams, ThreadLimit,
+                                      HostPtr, &KernelArgs, true);
+#endif
 }
 
 EXTERN int __tgt_target_teams_nowait_mapper(
@@ -156,10 +255,17 @@ EXTERN int __tgt_target_teams_nowait_mapper(
     int32_t ThreadLimit, int32_t DepNum, void *DepList, int32_t NoAliasDepNum,
     void *NoAliasDepList) {
   TIMESCOPE_WITH_IDENT(Loc);
+  __tgt_kernel_arguments KernelArgs{
+      1, ArgNum, ArgsBase, Args, ArgSizes, ArgTypes, ArgNames, ArgMappers, -1};
 
-  return __tgt_target_teams_mapper(Loc, DeviceId, HostPtr, ArgNum, ArgsBase,
-                                   Args, ArgSizes, ArgTypes, ArgNames,
-                                   ArgMappers, NumTeams, ThreadLimit);
+#if OMPTARGET_OMPT_SUPPORT
+  return __tgt_target_kernel_internal(Loc, DeviceId, NumTeams, ThreadLimit,
+                                      HostPtr, &KernelArgs, true,
+                                      OMPT_GET_RETURN_ADDRESS(0));
+#else
+  return __tgt_target_kernel_internal(Loc, DeviceId, NumTeams, ThreadLimit,
+                                      HostPtr, &KernelArgs, true);
+#endif
 }
 
 EXTERN void __kmpc_push_target_tripcount_mapper(ident_t *Loc, int64_t DeviceId,
