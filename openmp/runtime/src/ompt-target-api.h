@@ -30,4 +30,8 @@ libomp_ompt_callback_target_emi(ompt_target_t kind,
                                 ompt_scope_endpoint_t endpoint, int device_num,
                                 void *codeptr);
 
+_OMP_EXTERN OMPT_INTERFACE_ATTRIBUTE void
+libomp_ompt_callback_target_submit_emi(ompt_scope_endpoint_t endpoint,
+                                       unsigned int requested_num_teams);
+
 #endif // __OMPT_TARGET_API_H__

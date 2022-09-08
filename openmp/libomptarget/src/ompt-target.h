@@ -22,4 +22,13 @@ public:
   ~OmptTarget();
 };
 
+class OmptTargetSubmit {
+private:
+  unsigned int RequestedNumTeams;
+  bool Active;
+
+public:
+  OmptTargetSubmit(unsigned int RequestedNumTeams);
+  ~OmptTargetSubmit();
+};
 #endif // LIBOMPTARGET_OMPT_TARGET_H

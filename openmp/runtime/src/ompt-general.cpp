@@ -1090,3 +1090,15 @@ _OMP_EXTERN void libomp_ompt_callback_target_emi(ompt_target_t kind,
     break;
   }
 }
+
+_OMP_EXTERN void
+libomp_ompt_callback_target_submit_emi(ompt_scope_endpoint_t endpoint,
+                                       unsigned int requested_num_teams) {
+  ompt_data_t *target_data;
+  __ompt_get_target_data_info(nullptr, nullptr, &target_data, nullptr);
+  ompt_id_t *host_op_id;
+  kmp_info_t *thr = ompt_get_thread();
+  host_op_id = &thr->th.ompt_thread_info.host_op_id;
+  ompt_target_callbacks.ompt_callback(ompt_callback_target_submit_emi)(
+      endpoint, target_data, host_op_id, requested_num_teams);
+}
