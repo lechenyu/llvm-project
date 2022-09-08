@@ -25,4 +25,9 @@ typedef struct ompt_target_callbacks_active_s {
 _OMP_EXTERN OMPT_INTERFACE_ATTRIBUTE bool
 libomp_start_tool(ompt_target_callbacks_active_t *libomptarget_ompt_enabled);
 
+_OMP_EXTERN OMPT_INTERFACE_ATTRIBUTE void
+libomp_ompt_callback_target_emi(ompt_target_t kind,
+                                ompt_scope_endpoint_t endpoint, int device_num,
+                                void *codeptr);
+
 #endif // __OMPT_TARGET_API_H__

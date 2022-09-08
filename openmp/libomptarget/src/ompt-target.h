@@ -9,4 +9,17 @@
 
 extern ompt_target_callbacks_active_t OmptTargetEnabled;
 
+// RAII class for target event callbacks
+class OmptTarget {
+private:
+  ompt_target_t Kind;
+  int DeviceNum;
+  void *CodePtr;
+  bool Active;
+
+public:
+  OmptTarget(ompt_target_t Kind, int DeviceNum, void *CodePtr);
+  ~OmptTarget();
+};
+
 #endif // LIBOMPTARGET_OMPT_TARGET_H

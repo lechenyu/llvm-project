@@ -95,10 +95,20 @@ EXTERN void __tgt_target_data_begin_internal(
 #endif
 
   AsyncInfoTy AsyncInfo(Device);
-  int Rc = targetDataBegin(Loc, Device, ArgNum, ArgsBase, Args, ArgSizes,
-                           ArgTypes, ArgNames, ArgMappers, AsyncInfo);
-  if (Rc == OFFLOAD_SUCCESS)
-    Rc = AsyncInfo.synchronize();
+  int Rc;
+#if OMPTARGET_OMPT_SUPPORT
+  {
+    OmptTarget Callback{Nowait ? ompt_target_enter_data_nowait
+                               : ompt_target_enter_data,
+                        (int)DeviceId, CodePtr};
+#endif
+    Rc = targetDataBegin(Loc, Device, ArgNum, ArgsBase, Args, ArgSizes,
+                         ArgTypes, ArgNames, ArgMappers, AsyncInfo);
+    if (Rc == OFFLOAD_SUCCESS)
+      Rc = AsyncInfo.synchronize();
+#if OMPTARGET_OMPT_SUPPORT
+  }
+#endif
   handleTargetOutcome(Rc == OFFLOAD_SUCCESS, Loc);
 }
 
@@ -169,10 +179,20 @@ __tgt_target_data_end_internal(ident_t *Loc, int64_t DeviceId, int32_t ArgNum,
 #endif
 
   AsyncInfoTy AsyncInfo(Device);
-  int Rc = targetDataEnd(Loc, Device, ArgNum, ArgsBase, Args, ArgSizes,
-                         ArgTypes, ArgNames, ArgMappers, AsyncInfo);
-  if (Rc == OFFLOAD_SUCCESS)
-    Rc = AsyncInfo.synchronize();
+  int Rc;
+#if OMPTARGET_OMPT_SUPPORT
+  {
+    OmptTarget Callback{Nowait ? ompt_target_exit_data_nowait
+                               : ompt_target_exit_data,
+                        (int)DeviceId, CodePtr};
+#endif
+    Rc = targetDataEnd(Loc, Device, ArgNum, ArgsBase, Args, ArgSizes, ArgTypes,
+                       ArgNames, ArgMappers, AsyncInfo);
+    if (Rc == OFFLOAD_SUCCESS)
+      Rc = AsyncInfo.synchronize();
+#if OMPTARGET_OMPT_SUPPORT
+  }
+#endif
   handleTargetOutcome(Rc == OFFLOAD_SUCCESS, Loc);
 }
 
@@ -230,10 +250,19 @@ EXTERN void __tgt_target_data_update_internal(
 
   DeviceTy &Device = *PM->Devices[DeviceId];
   AsyncInfoTy AsyncInfo(Device);
-  int Rc = targetDataUpdate(Loc, Device, ArgNum, ArgsBase, Args, ArgSizes,
-                            ArgTypes, ArgNames, ArgMappers, AsyncInfo);
-  if (Rc == OFFLOAD_SUCCESS)
-    Rc = AsyncInfo.synchronize();
+  int Rc;
+#if OMPTARGET_OMPT_SUPPORT
+  {
+    OmptTarget Callback{Nowait ? ompt_target_update_nowait : ompt_target_update,
+                        (int)DeviceId, CodePtr};
+#endif
+    Rc = targetDataUpdate(Loc, Device, ArgNum, ArgsBase, Args, ArgSizes,
+                          ArgTypes, ArgNames, ArgMappers, AsyncInfo);
+    if (Rc == OFFLOAD_SUCCESS)
+      Rc = AsyncInfo.synchronize();
+#if OMPTARGET_OMPT_SUPPORT
+  }
+#endif
   handleTargetOutcome(Rc == OFFLOAD_SUCCESS, Loc);
 }
 
@@ -323,12 +352,21 @@ EXTERN int __tgt_target_kernel_internal(ident_t *Loc, int64_t DeviceId,
 
   DeviceTy &Device = *PM->Devices[DeviceId];
   AsyncInfoTy AsyncInfo(Device);
-  int Rc = target(Loc, Device, HostPtr, Args->NumArgs, Args->ArgBasePtrs,
-                  Args->ArgPtrs, Args->ArgSizes, Args->ArgTypes, Args->ArgNames,
-                  Args->ArgMappers, NumTeams, ThreadLimit, Args->Tripcount,
-                  IsTeams, AsyncInfo);
-  if (Rc == OFFLOAD_SUCCESS)
-    Rc = AsyncInfo.synchronize();
+  int Rc;
+#if OMPTARGET_OMPT_SUPPORT
+  {
+    OmptTarget Callback{Nowait ? ompt_target_nowait : ompt_target,
+                        (int)DeviceId, CodePtr};
+#endif
+    Rc = target(Loc, Device, HostPtr, Args->NumArgs, Args->ArgBasePtrs,
+                Args->ArgPtrs, Args->ArgSizes, Args->ArgTypes, Args->ArgNames,
+                Args->ArgMappers, NumTeams, ThreadLimit, Args->Tripcount,
+                IsTeams, AsyncInfo);
+    if (Rc == OFFLOAD_SUCCESS)
+      Rc = AsyncInfo.synchronize();
+#if OMPTARGET_OMPT_SUPPORT
+  }
+#endif
   handleTargetOutcome(Rc == OFFLOAD_SUCCESS, Loc);
   assert(Rc == OFFLOAD_SUCCESS && "__tgt_target_kernel unexpected failure!");
   return OMP_TGT_SUCCESS;

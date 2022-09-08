@@ -1029,3 +1029,64 @@ static ompt_interface_fn_t ompt_fn_lookup(const char *s) {
 
   return NULL;
 }
+
+static void __ompt_get_target_data_info(ompt_data_t **task_data,
+                                        ompt_data_t **target_task_data,
+                                        ompt_data_t **target_data,
+                                        bool *is_nowait) {
+  ompt_data_t *task_data_val, *target_task_data_val, *target_data_val;
+  kmp_info_t *thr = ompt_get_thread();
+  kmp_taskdata *current_task = thr->th.th_current_task;
+  ompt_task_info_t *current_task_info = OMPT_CUR_TASK_INFO(thr);
+  if (current_task_info->is_target_task) {
+    target_task_data_val = &current_task_info->task_data;
+    task_data_val = &current_task->td_parent->ompt_task_info.task_data;
+    target_data_val = &current_task_info->target_data;
+  } else {
+    target_task_data_val = NULL;
+    task_data_val = &current_task_info->task_data;
+    target_data_val = &current_task_info->target_data;
+  }
+  if (task_data) {
+    *task_data = task_data_val;
+  }
+  if (target_task_data) {
+    *target_task_data = target_task_data_val;
+  }
+  if (target_data) {
+    *target_data = target_data_val;
+  }
+  if (is_nowait) {
+    *is_nowait = current_task_info->is_target_task;
+  }
+}
+
+/*****************************************************************************
+ * Delegation of target-related OMPT callbacks
+ ****************************************************************************/
+_OMP_EXTERN void libomp_ompt_callback_target_emi(ompt_target_t kind,
+                                                 ompt_scope_endpoint_t endpoint,
+                                                 int device_num,
+                                                 void *codeptr) {
+  ompt_data_t *task_data, *target_task_data, *target_data;
+  bool is_nowait;
+  __ompt_get_target_data_info(&task_data, &target_task_data, &target_data,
+                              &is_nowait);
+  if (is_nowait) {
+    codeptr = nullptr;
+  }
+  switch (endpoint) {
+  case ompt_scope_begin:
+    *target_data = ompt_data_none;
+    ompt_target_callbacks.ompt_callback(ompt_callback_target_emi)(
+        kind, endpoint, device_num, task_data, target_task_data, target_data,
+        codeptr);
+    break;
+  case ompt_scope_end:
+    ompt_target_callbacks.ompt_callback(ompt_callback_target_emi)(
+        kind, endpoint, device_num, task_data, target_task_data, target_data,
+        codeptr);
+    *target_data = ompt_data_none;
+    break;
+  }
+}

@@ -713,6 +713,8 @@ static inline void __ompt_task_init(kmp_taskdata_t *task, int tid) {
       ompt_frame_runtime | ompt_frame_framepointer;
   task->ompt_task_info.dispatch_chunk.start = 0;
   task->ompt_task_info.dispatch_chunk.iterations = 0;
+  task->ompt_task_info.target_data.value = 0;
+  task->ompt_task_info.is_target_task = false;
 }
 
 // __ompt_task_start:
@@ -1602,8 +1604,16 @@ kmp_task_t *__kmpc_omp_target_task_alloc(ident_t *loc_ref, kmp_int32 gtid,
   if (__kmp_enable_hidden_helper)
     input_flags.hidden_helper = TRUE;
 
-  return __kmpc_omp_task_alloc(loc_ref, gtid, flags, sizeof_kmp_task_t,
-                               sizeof_shareds, task_entry);
+  kmp_task_t *retval = __kmpc_omp_task_alloc(
+      loc_ref, gtid, flags, sizeof_kmp_task_t, sizeof_shareds, task_entry);
+#if OMPT_SUPPORT
+  if (UNLIKELY(ompt_enabled.enabled)) {
+    kmp_taskdata_t *task_data = KMP_TASK_TO_TASKDATA(retval);
+    task_data->ompt_task_info.is_target_task = true;
+  }
+#endif
+
+  return retval;
 }
 
 /*!
@@ -1961,12 +1971,15 @@ kmp_int32 __kmpc_omp_task(ident_t *loc_ref, kmp_int32 gtid,
         parent->ompt_task_info.frame.enter_frame.ptr =
             OMPT_GET_FRAME_ADDRESS(0);
       }
+      int flag = ompt_task_explicit | TASK_TYPE_DETAILS_FORMAT(new_taskdata);
+      if (new_taskdata->ompt_task_info.is_target_task) {
+        flag |= ompt_task_target;
+      }
       if (ompt_enabled.ompt_callback_task_create) {
         ompt_callbacks.ompt_callback(ompt_callback_task_create)(
             &(parent->ompt_task_info.task_data),
             &(parent->ompt_task_info.frame),
-            &(new_taskdata->ompt_task_info.task_data),
-            ompt_task_explicit | TASK_TYPE_DETAILS_FORMAT(new_taskdata), 0,
+            &(new_taskdata->ompt_task_info.task_data), flag, 0,
             OMPT_LOAD_RETURN_ADDRESS(gtid));
       }
     } else {
