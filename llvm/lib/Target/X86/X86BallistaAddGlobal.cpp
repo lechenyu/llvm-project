@@ -34,10 +34,10 @@ INITIALIZE_PASS(
     false)
 
 bool X86BallistaAddGlobal::runOnModule(Module &M) {
-  for (auto Iter = M.global_begin(), End = M.global_end(); Iter != End; ++Iter) {
-    GlobalVariable &G = *Iter;
-    // G.print(errs());
-    // errs() << '\n';
-  }
+  // for (auto Iter = M.global_begin(), End = M.global_end(); Iter != End; ++Iter) {
+  //   GlobalVariable &G = *Iter;
+  //   G.print(errs());
+  //   errs() << '\n';
+  // }
   return true;
 }

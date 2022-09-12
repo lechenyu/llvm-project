@@ -51,13 +51,13 @@ bool NVPTXBallistaInstrument::runOnFunction(Function &F) {
   //   }
   // }
   // errs() << F.getParent()->getName() << " : " << F.getName() << "\n";
-  if (F.getName() == "__kmpc_target_deinit") {
-    for (auto Iter = F.getParent()->global_begin(), End = F.getParent()->global_end(); Iter != End; ++Iter) {
-      GlobalVariable &g = *Iter;
-      // g.print(errs());
-      // errs() << "\n";
-    }
-  }
+  // if (F.getName() == "__kmpc_target_deinit") {
+  //   for (auto Iter = F.getParent()->global_begin(), End = F.getParent()->global_end(); Iter != End; ++Iter) {
+  //     GlobalVariable &g = *Iter;
+  //     // g.print(errs());
+  //     // errs() << "\n";
+  //   }
+  // }
   return true;
 }
 

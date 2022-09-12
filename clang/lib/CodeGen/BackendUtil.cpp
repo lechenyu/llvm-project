@@ -74,6 +74,7 @@
 #include "llvm/Transforms/Instrumentation/MemorySanitizer.h"
 #include "llvm/Transforms/Instrumentation/SanitizerCoverage.h"
 #include "llvm/Transforms/Instrumentation/ThreadSanitizer.h"
+#include "llvm/Transforms/Instrumentation/BallistaInstrument.h"
 #include "llvm/Transforms/ObjCARC.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/EarlyCSE.h"
@@ -916,6 +917,27 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
     }
   }
 
+  // Add instrument pass for ballista
+  // if (LangOpts.OpenMPIsDevice && LangOpts.OMPTargetTriples.)
+  errs() << TheModule->getName() << "\n";
+  errs() << "is device" << LangOpts.OpenMPIsDevice << "\n";
+  for (auto TP : LangOpts.OMPTargetTriples) {
+    errs() << "triple: " << TP.getTriple() << "\n";
+  }
+  StringRef ModuleName(TheModule->getModuleIdentifier());
+  if (ModuleName.endswith(".cpp") || ModuleName.endswith(".c")) {
+    const std::string &ModuleTarget = TheModule->	getTargetTriple();
+    if (ModuleTarget == "nvptx64-nvidia-cuda") {
+      Device ModuleDevice = OMP_TARGET;
+      MPM.addPass(ModuleBallistaInstrumentPass(ModuleDevice));
+      MPM.addPass(createModuleToFunctionPassAdaptor(BallistaInstrumentPass(ModuleDevice)));
+    } else if (ModuleTarget == "x86_64-unknown-linux-gnu") {
+      Device ModuleDevice = OMP_HOST;
+      MPM.addPass(ModuleBallistaInstrumentPass(ModuleDevice));
+      MPM.addPass(createModuleToFunctionPassAdaptor(BallistaInstrumentPass(ModuleDevice)));
+    }
+  }
+
   // Add a verifier pass if requested. We don't have to do this if the action
   // requires code generation because there will already be a verifier pass in
   // the code-generation pipeline.
@@ -958,6 +980,19 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
   default:
     break;
   }
+  // errs() << "Optimization Pass\n";
+  // MPM.printPipeline(errs(), [&](StringRef s){return s;});
+  // errs() < "\n";
+  // std::error_code errco;
+  // std::string fb = ((TheModule->getModuleIdentifier().find(".bc") != -1) ? "bcfile" : TheModule->getModuleIdentifier()) + "-" + TheModule->getTargetTriple() + "-before.txt";
+  // errs() << "Before Optimization " << TheModule->getModuleIdentifier() << " " << fb << "\n";
+  // raw_fd_stream bout(fb, errco);
+  // TheModule->print(bout, nullptr);
+
+  // errs() << TheModule->getModuleIdentifier() << "\n";
+  // errs() << "Optimization pass pipeline:\n";
+  // MPM.printPipeline(errs(), [&](StringRef r){return r;});
+  // errs() << "\n";
 
   // Now that we have all of the passes ready, run them.
   {
@@ -965,6 +1000,10 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
     llvm::TimeTraceScope TimeScope("Optimizer");
     MPM.run(*TheModule, MAM);
   }
+  // std::string fa = ((TheModule->getModuleIdentifier().find(".bc") != -1) ? "bcfile" : TheModule->getModuleIdentifier()) + "-" + TheModule->getTargetTriple() + "-after.txt";
+  // errs() << "After Optimization " << TheModule->getModuleIdentifier() << " " << fa << "\n";
+  // raw_fd_stream aout(fa, errco);
+  // TheModule->print(aout, nullptr);
 }
 
 void EmitAssemblyHelper::RunCodegenPipeline(
@@ -1001,6 +1040,8 @@ void EmitAssemblyHelper::RunCodegenPipeline(
     llvm::TimeTraceScope TimeScope("CodeGenPasses");
     CodeGenPasses.run(*TheModule);
   }
+  //errs() << "After Codegen\n";
+  //TheModule->print(errs(), nullptr);
 }
 
 void EmitAssemblyHelper::EmitAssembly(BackendAction Action,
@@ -1137,7 +1178,7 @@ void clang::EmitBackendOutput(DiagnosticsEngine &Diags,
                               StringRef TDesc, Module *M,
                               BackendAction Action,
                               std::unique_ptr<raw_pwrite_stream> OS) {
-
+  
   llvm::TimeTraceScope TimeScope("Backend");
 
   std::unique_ptr<llvm::Module> EmptyModule;

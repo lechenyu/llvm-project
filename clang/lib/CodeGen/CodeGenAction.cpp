@@ -375,7 +375,6 @@ namespace clang {
       }
 
       EmbedBitcode(getModule(), CodeGenOpts, llvm::MemoryBufferRef());
-
       EmitBackendOutput(Diags, HeaderSearchOpts, CodeGenOpts, TargetOpts,
                         LangOpts, C.getTargetInfo().getDataLayoutString(),
                         getModule(), Action, std::move(AsmOutStream));
@@ -1207,7 +1206,6 @@ void CodeGenAction::ExecuteAction() {
   }
   std::unique_ptr<llvm::ToolOutputFile> OptRecordFile =
       std::move(*OptRecordFileOrErr);
-
   EmitBackendOutput(Diagnostics, CI.getHeaderSearchOpts(), CodeGenOpts,
                     TargetOpts, CI.getLangOpts(),
                     CI.getTarget().getDataLayoutString(), TheModule.get(), BA,
