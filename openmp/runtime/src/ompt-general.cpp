@@ -1102,3 +1102,17 @@ libomp_ompt_callback_target_submit_emi(ompt_scope_endpoint_t endpoint,
   ompt_target_callbacks.ompt_callback(ompt_callback_target_submit_emi)(
       endpoint, target_data, host_op_id, requested_num_teams);
 }
+
+_OMP_EXTERN void libomp_ompt_callback_target_map_emi(
+    unsigned int nitems, void **host_addr, void **device_addr, size_t *bytes,
+    unsigned int *mapping_flags, void *codeptr) {
+  ompt_data_t *target_data;
+  bool is_nowait;
+  __ompt_get_target_data_info(nullptr, nullptr, &target_data, &is_nowait);
+  if (is_nowait) {
+    codeptr = nullptr;
+  }
+  ompt_target_callbacks.ompt_callback(ompt_callback_target_map_emi)(
+      target_data, nitems, host_addr, device_addr, bytes, mapping_flags,
+      codeptr);
+}

@@ -24,18 +24,21 @@ extern int targetDataBegin(ident_t *Loc, DeviceTy &Device, int32_t ArgNum,
                            void **ArgsBase, void **Args, int64_t *ArgSizes,
                            int64_t *ArgTypes, map_var_info_t *ArgNames,
                            void **ArgMappers, AsyncInfoTy &AsyncInfo,
+                           void *CodePtr, bool ForTarget,
                            bool FromMapper = false);
 
 extern int targetDataEnd(ident_t *Loc, DeviceTy &Device, int32_t ArgNum,
                          void **ArgBases, void **Args, int64_t *ArgSizes,
                          int64_t *ArgTypes, map_var_info_t *ArgNames,
                          void **ArgMappers, AsyncInfoTy &AsyncInfo,
+                         void *CodePtr, bool ForTarget,
                          bool FromMapper = false);
 
 extern int targetDataUpdate(ident_t *Loc, DeviceTy &Device, int32_t ArgNum,
                             void **ArgsBase, void **Args, int64_t *ArgSizes,
                             int64_t *ArgTypes, map_var_info_t *ArgNames,
                             void **ArgMappers, AsyncInfoTy &AsyncInfo,
+                            void *CodePtr, bool ForTarget,
                             bool FromMapper = false);
 
 extern int target(ident_t *Loc, DeviceTy &Device, void *HostPtr, int32_t ArgNum,
@@ -43,7 +46,7 @@ extern int target(ident_t *Loc, DeviceTy &Device, void *HostPtr, int32_t ArgNum,
                   int64_t *ArgTypes, map_var_info_t *ArgNames,
                   void **ArgMappers, int32_t TeamNum, int32_t ThreadLimit,
                   uint64_t Tripcount, int IsTeamConstruct,
-                  AsyncInfoTy &AsyncInfo);
+                  AsyncInfoTy &AsyncInfo, void *CodePtr = nullptr);
 
 extern void handleTargetOutcome(bool Success, ident_t *Loc);
 extern bool checkDeviceAndCtors(int64_t &DeviceID, ident_t *Loc);
@@ -84,7 +87,7 @@ typedef void (*MapperFuncPtrTy)(void *, void *, void *, int64_t, int64_t,
 typedef int (*TargetDataFuncPtrTy)(ident_t *, DeviceTy &, int32_t, void **,
                                    void **, int64_t *, int64_t *,
                                    map_var_info_t *, void **, AsyncInfoTy &,
-                                   bool);
+                                   void *, bool, bool);
 
 // Implemented in libomp, they are called from within __tgt_* functions.
 #ifdef __cplusplus
