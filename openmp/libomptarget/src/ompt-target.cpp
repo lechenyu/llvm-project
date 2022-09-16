@@ -3,6 +3,8 @@
 
 ompt_target_callbacks_active_t OmptTargetEnabled;
 
+int HostDeviceNum;
+
 OmptTarget::OmptTarget(ompt_target_t Kind, int DeviceNum, void *CodePtr)
     : Kind(Kind), DeviceNum(DeviceNum), CodePtr(CodePtr) {
   this->Active =
@@ -31,6 +33,34 @@ OmptTargetSubmit::~OmptTargetSubmit() {
   if (Active) {
     libomp_ompt_callback_target_submit_emi(ompt_scope_end, RequestedNumTeams);
   }
+}
+
+OmptTargetDataOp::OmptTargetDataOp(ompt_target_data_op_t OpType, void *SrcAddr,
+                                   int SrcDeviceNum, void *DestAddr,
+                                   int DestDeviceNum, size_t Bytes,
+                                   bool OmpRoutine, void *CodePtr)
+    : OpType(OpType), SrcAddr(SrcAddr), SrcDeviceNum(SrcDeviceNum),
+      DestAddr(DestAddr), DestDeviceNum(DestDeviceNum), Bytes(Bytes),
+      OmpRoutine(OmpRoutine), CodePtr(CodePtr) {
+  this->Active = OmptTargetEnabled.enabled &&
+                 OmptTargetEnabled.ompt_callback_target_data_op_emi;
+  if (Active) {
+    libomp_ompt_callback_target_data_op_emi(
+        ompt_scope_begin, OpType, SrcAddr, SrcDeviceNum, DestAddr,
+        DestDeviceNum, Bytes, OmpRoutine, CodePtr);
+  }
+}
+
+OmptTargetDataOp::~OmptTargetDataOp() {
+  if (Active) {
+    libomp_ompt_callback_target_data_op_emi(
+        ompt_scope_end, OpType, SrcAddr, SrcDeviceNum, DestAddr, DestDeviceNum,
+        Bytes, OmpRoutine, CodePtr);
+  }
+}
+
+void OmptTargetDataOp::setDestAddr(void *DestAddr) {
+  this->DestAddr = DestAddr;
 }
 
 OmptTargetMapping::OmptTargetMapping(ConstructorType Ctor, int32_t Capacity,

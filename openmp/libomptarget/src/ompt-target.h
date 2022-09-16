@@ -9,6 +9,8 @@
 
 extern ompt_target_callbacks_active_t OmptTargetEnabled;
 
+extern int HostDeviceNum;
+
 // RAII class for target event callbacks
 class OmptTarget {
 private:
@@ -30,6 +32,26 @@ private:
 public:
   OmptTargetSubmit(unsigned int RequestedNumTeams);
   ~OmptTargetSubmit();
+};
+
+class OmptTargetDataOp {
+private:
+  ompt_target_data_op_t OpType;
+  void *SrcAddr;
+  int SrcDeviceNum;
+  void *DestAddr;
+  int DestDeviceNum;
+  size_t Bytes;
+  bool OmpRoutine;
+  void *CodePtr;
+  bool Active;
+
+public:
+  OmptTargetDataOp(ompt_target_data_op_t OpType, void *SrcAddr,
+                   int SrcDeviceNum, void *DestAddr, int DestDeviceNum,
+                   size_t Bytes, bool OmpRoutine, void *CodePtr);
+  ~OmptTargetDataOp();
+  void setDestAddr(void *DestAddr);
 };
 
 class OmptTargetMapping {

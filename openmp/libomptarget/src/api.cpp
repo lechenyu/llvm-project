@@ -15,6 +15,10 @@
 #include "private.h"
 #include "rtl.h"
 
+#if OMPTARGET_OMPT_SUPPORT
+#include "ompt-target.h"
+#endif
+
 #include <climits>
 #include <cstdlib>
 #include <cstring>
@@ -85,8 +89,12 @@ EXTERN void omp_target_free(void *DevicePtr, int DeviceNum) {
     DP("omp_target_free returns, nothing to do\n");
     return;
   }
-
-  PM->Devices[DeviceNum]->deleteData(DevicePtr);
+#if OMPTARGET_OMPT_SUPPORT
+  PM->Devices[DeviceNum]->deleteData(DevicePtr, nullptr, 0, true,
+                                     OMPT_GET_RETURN_ADDRESS(0));
+#else
+  PM->Devices[DeviceNum]->deleteData(DevicePtr, nullptr, 0, true);
+#endif
   DP("omp_target_free deallocated device ptr\n");
 }
 
@@ -180,12 +188,22 @@ EXTERN int omp_target_memcpy(void *Dst, const void *Src, size_t Length,
     DP("copy from host to device\n");
     DeviceTy &DstDev = *PM->Devices[DstDevice];
     AsyncInfoTy AsyncInfo(DstDev);
-    Rc = DstDev.submitData(DstAddr, SrcAddr, Length, AsyncInfo);
+#if OMPTARGET_OMPT_SUPPORT
+    Rc = DstDev.submitData(DstAddr, SrcAddr, Length, AsyncInfo, true,
+                           OMPT_GET_RETURN_ADDRESS(0));
+#else
+    Rc = DstDev.submitData(DstAddr, SrcAddr, Length, AsyncInfo, true);
+#endif
   } else if (DstDevice == omp_get_initial_device()) {
     DP("copy from device to host\n");
     DeviceTy &SrcDev = *PM->Devices[SrcDevice];
     AsyncInfoTy AsyncInfo(SrcDev);
-    Rc = SrcDev.retrieveData(DstAddr, SrcAddr, Length, AsyncInfo);
+#if OMPTARGET_OMPT_SUPPORT
+    Rc = SrcDev.retrieveData(DstAddr, SrcAddr, Length, AsyncInfo, true,
+                             OMPT_GET_RETURN_ADDRESS(0));
+#else
+    Rc = SrcDev.retrieveData(DstAddr, SrcAddr, Length, AsyncInfo, true);
+#endif
   } else {
     DP("copy from device to device\n");
     DeviceTy &SrcDev = *PM->Devices[SrcDevice];
@@ -194,7 +212,13 @@ EXTERN int omp_target_memcpy(void *Dst, const void *Src, size_t Length,
     // to unefficient way.
     if (SrcDev.isDataExchangable(DstDev)) {
       AsyncInfoTy AsyncInfo(SrcDev);
-      Rc = SrcDev.dataExchange(SrcAddr, DstDev, DstAddr, Length, AsyncInfo);
+#if OMPTARGET_OMPT_SUPPORT
+      Rc = SrcDev.dataExchange(SrcAddr, DstDev, DstAddr, Length, AsyncInfo,
+                               true, OMPT_GET_RETURN_ADDRESS(0));
+#else
+      Rc = SrcDev.dataExchange(SrcAddr, DstDev, DstAddr, Length, AsyncInfo,
+                               true);
+#endif
       if (Rc == OFFLOAD_SUCCESS)
         return OFFLOAD_SUCCESS;
     }
@@ -202,11 +226,21 @@ EXTERN int omp_target_memcpy(void *Dst, const void *Src, size_t Length,
     void *Buffer = malloc(Length);
     {
       AsyncInfoTy AsyncInfo(SrcDev);
-      Rc = SrcDev.retrieveData(Buffer, SrcAddr, Length, AsyncInfo);
+#if OMPTARGET_OMPT_SUPPORT
+      Rc = SrcDev.retrieveData(Buffer, SrcAddr, Length, AsyncInfo, true,
+                               OMPT_GET_RETURN_ADDRESS(0));
+#else
+      Rc = SrcDev.retrieveData(Buffer, SrcAddr, Length, AsyncInfo, true);
+#endif
     }
     if (Rc == OFFLOAD_SUCCESS) {
       AsyncInfoTy AsyncInfo(SrcDev);
-      Rc = DstDev.submitData(DstAddr, Buffer, Length, AsyncInfo);
+#if OMPTARGET_OMPT_SUPPORT
+      Rc = DstDev.submitData(DstAddr, Buffer, Length, AsyncInfo, true,
+                             OMPT_GET_RETURN_ADDRESS(0));
+#else
+      Rc = DstDev.submitData(DstAddr, Buffer, Length, AsyncInfo, true);
+#endif
     }
     free(Buffer);
   }
@@ -300,8 +334,14 @@ EXTERN int omp_target_associate_ptr(const void *HostPtr, const void *DevicePtr,
 
   DeviceTy &Device = *PM->Devices[DeviceNum];
   void *DeviceAddr = (void *)((uint64_t)DevicePtr + (uint64_t)DeviceOffset);
+#if OMPTARGET_OMPT_SUPPORT
   int Rc = Device.associatePtr(const_cast<void *>(HostPtr),
-                               const_cast<void *>(DeviceAddr), Size);
+                               const_cast<void *>(DeviceAddr), Size, true,
+                               OMPT_GET_RETURN_ADDRESS(0));
+#else
+  int Rc = Device.associatePtr(const_cast<void *>(HostPtr),
+                               const_cast<void *>(DeviceAddr), Size, true);
+#endif
   DP("omp_target_associate_ptr returns %d\n", Rc);
   return Rc;
 }
@@ -329,7 +369,12 @@ EXTERN int omp_target_disassociate_ptr(const void *HostPtr, int DeviceNum) {
   }
 
   DeviceTy &Device = *PM->Devices[DeviceNum];
-  int Rc = Device.disassociatePtr(const_cast<void *>(HostPtr));
+#if OMPTARGET_OMPT_SUPPORT
+  int Rc = Device.disassociatePtr(const_cast<void *>(HostPtr), true,
+                                  OMPT_GET_RETURN_ADDRESS(0));
+#else
+  int Rc = Device.disassociatePtr(const_cast<void *>(HostPtr), true);
+#endif
   DP("omp_target_disassociate_ptr returns %d\n", Rc);
   return Rc;
 }

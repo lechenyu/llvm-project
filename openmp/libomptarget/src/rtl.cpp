@@ -491,6 +491,12 @@ void RTLsTy::registerLib(__tgt_bin_desc *Desc) {
   }
   PM->RTLsMtx.unlock();
 
+#if OMPTARGET_OMPT_SUPPORT
+  if (OmptTargetEnabled.enabled) {
+    HostDeviceNum = omp_get_initial_device();
+  }
+#endif
+
   DP("Done registering entries!\n");
 }
 

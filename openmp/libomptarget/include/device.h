@@ -368,7 +368,7 @@ struct DeviceTy {
                    map_var_info_t HstPtrName, bool HasFlagTo,
                    bool HasFlagAlways, bool IsImplicit, bool UpdateRefCount,
                    bool HasCloseModifier, bool HasPresentModifier,
-                   bool HasHoldModifier, AsyncInfoTy &AsyncInfo);
+                   bool HasHoldModifier, AsyncInfoTy &AsyncInfo, void *CodePtr);
 
   /// Return the target pointer for \p HstPtrBegin in \p HDTTMap. The accessor
   /// ensures exclusive access to the HDTT map.
@@ -388,10 +388,13 @@ struct DeviceTy {
   /// not. It is the caller's responsibility to skip calling this function if
   /// the map entry is not expected to exist because \p HstPtrBegin uses shared
   /// memory.
-  int deallocTgtPtr(HDTTMapAccessorTy &HDTTMap, LookupResult LR, int64_t Size);
+  int deallocTgtPtr(HDTTMapAccessorTy &HDTTMap, LookupResult LR, int64_t Size,
+                    void *CodePtr);
 
-  int associatePtr(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size);
-  int disassociatePtr(void *HstPtrBegin);
+  int associatePtr(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
+                   bool OmpRoutine, void *CodePtr = nullptr);
+  int disassociatePtr(void *HstPtrBegin, bool OmpRoutine,
+                      void *CodePtr = nullptr);
 
   // calls to RTL
   int32_t initOnce();
@@ -406,23 +409,27 @@ struct DeviceTy {
   /// pointer association. Actually, all the __tgt_rtl_data_alloc
   /// implementations ignore \p HstPtr. \p Kind dictates what allocator should
   /// be used (host, shared, device).
-  void *allocData(int64_t Size, void *HstPtr = nullptr,
-                  int32_t Kind = TARGET_ALLOC_DEFAULT);
+  void *allocData(int64_t Size, bool OmpRoutine, void *CodePtr = nullptr,
+                  void *HstPtr = nullptr, int32_t Kind = TARGET_ALLOC_DEFAULT);
   /// Deallocates memory which \p TgtPtrBegin points at and returns
   /// OFFLOAD_SUCCESS/OFFLOAD_FAIL when succeeds/fails.
-  int32_t deleteData(void *TgtPtrBegin);
+  int32_t deleteData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
+                     bool OmpRoutine, void *CodePtr = nullptr);
 
   // Data transfer. When AsyncInfo is nullptr, the transfer will be
   // synchronous.
   // Copy data from host to device
   int32_t submitData(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size,
-                     AsyncInfoTy &AsyncInfo);
+                     AsyncInfoTy &AsyncInfo, bool OmpRoutine,
+                     void *CodePtr = nullptr);
   // Copy data from device back to host
   int32_t retrieveData(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size,
-                       AsyncInfoTy &AsyncInfo);
+                       AsyncInfoTy &AsyncInfo, bool OmpRoutine,
+                       void *CodePtr = nullptr);
   // Copy data from current device to destination device directly
   int32_t dataExchange(void *SrcPtr, DeviceTy &DstDev, void *DstPtr,
-                       int64_t Size, AsyncInfoTy &AsyncInfo);
+                       int64_t Size, AsyncInfoTy &AsyncInfo, bool OmpRoutine,
+                       void *CodePtr = nullptr);
 
   int32_t runRegion(void *TgtEntryPtr, void **TgtVarsPtr, ptrdiff_t *TgtOffsets,
                     int32_t TgtVarsSize, AsyncInfoTy &AsyncInfo);
