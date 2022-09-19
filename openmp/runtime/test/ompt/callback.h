@@ -67,7 +67,7 @@ static void format_task_type(int type, char *buffer) {
   if (type & ompt_task_explicit)
     progress += sprintf(progress, "ompt_task_explicit");
   if (type & ompt_task_target)
-    progress += sprintf(progress, "ompt_task_target");
+    progress += sprintf(progress, "|ompt_task_target");
   if (type & ompt_task_taskwait)
     progress += sprintf(progress, "ompt_task_taskwait");
   if (type & ompt_task_undeferred)
