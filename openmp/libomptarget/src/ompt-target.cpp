@@ -148,3 +148,27 @@ void OmptTargetMapping::invokeCallback() {
                                         MappingFlags, CodePtr);
   }
 }
+
+OmptDeviceMem::OmptDeviceMem(void *OrigBaseAddr, void *OrigAddr,
+                             int OrigDeviceNum, void *DestAddr,
+                             int DestDeviceNum, size_t Bytes, void *CodePtr)
+    : DeviceMemFlag(0), OrigBaseAddr(OrigBaseAddr), OrigAddr(OrigAddr),
+      OrigDeviceNum(OrigDeviceNum), DestAddr(DestAddr),
+      DestDeviceNum(DestDeviceNum), Bytes(Bytes), CodePtr(CodePtr) {
+  this->Active =
+      OmptTargetEnabled.enabled && OmptTargetEnabled.ompt_callback_device_mem;
+}
+
+void OmptDeviceMem::addTargetDataOp(unsigned int Flag) {
+  if (Active) {
+    DeviceMemFlag |= Flag;
+  }
+}
+
+OmptDeviceMem::~OmptDeviceMem() {
+  if (Active && DeviceMemFlag) {
+    libomp_ompt_callback_device_mem(DeviceMemFlag, OrigBaseAddr, OrigAddr,
+                                    OrigDeviceNum, DestAddr, DestDeviceNum,
+                                    Bytes, CodePtr);
+  }
+}

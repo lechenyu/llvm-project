@@ -31,6 +31,7 @@ VERSION {
         libomp_ompt_callback_target_submit_emi;   # delegate for ompt_callback_target_submit
         libomp_ompt_callback_target_data_op_emi;  # delegate for ompt_callback_target_data_op_emi
         libomp_ompt_callback_target_map_emi;      # delegate for ompt_callback_target_map
+        libomp_ompt_callback_device_mem;          # delegate for ompt_callback_device_mem
 
         ompc_*;    # omp.h renames some standard functions to ompc_*.
         kmp_*;     # Intel extensions.

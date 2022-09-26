@@ -556,6 +556,19 @@ int targetDataBegin(ident_t *Loc, DeviceTy &Device, int32_t ArgNum,
 #if OMPTARGET_OMPT_SUPPORT
     Mapping.addMapping(Args[I], (char *)TgtPtrBegin + Padding, ArgSizes[I],
                        ArgTypes[I]);
+    OmptDeviceMem Mem{ArgsBase[I],     Args[I],
+                      HostDeviceNum,   (char *)TgtPtrBegin + Padding,
+                      Device.DeviceID, (size_t)ArgSizes[I],
+                      CodePtr};
+    bool IsNew = TPR.Flags.IsNewEntry;
+    if (IsNew) {
+      Mem.addTargetDataOp(ompt_device_mem_flag_alloc |
+                          ompt_device_mem_flag_associate);
+    }
+
+    if (!IsHostPtr && HasFlagTo && (IsNew || HasFlagAlways)) {
+      Mem.addTargetDataOp(ompt_device_mem_flag_to);
+    }
 #endif
 
     if (ArgTypes[I] & OMP_TGT_MAPTYPE_RETURN_PARAM) {
@@ -817,6 +830,14 @@ int targetDataEnd(ident_t *Loc, DeviceTy &Device, int32_t ArgNum,
       Mapping.addMapping(Args[I], (char *)TgtPtrBegin + Padding, ArgSizes[I],
                          ArgTypes[I]);
     }
+    OmptDeviceMem Mem{ArgBases[I],     Args[I],
+                      HostDeviceNum,   (char *)TgtPtrBegin + Padding,
+                      Device.DeviceID, (size_t)ArgSizes[I],
+                      CodePtr};
+    if (DelEntry) {
+      Mem.addTargetDataOp(ompt_device_mem_flag_disassociate |
+                          ompt_device_mem_flag_release);
+    }
 #endif
 
     // If the last element from the mapper (for end transfer args comes in
@@ -843,7 +864,9 @@ int targetDataEnd(ident_t *Loc, DeviceTy &Device, int32_t ArgNum,
               return OFFLOAD_FAIL;
             }
           }
-
+#if OMPTARGET_OMPT_SUPPORT
+          Mem.addTargetDataOp(ompt_device_mem_flag_from);
+#endif
           Ret = Device.retrieveData(HstPtrBegin, TgtPtrBegin, DataSize,
                                     AsyncInfo, false, CodePtr);
           if (Ret != OFFLOAD_SUCCESS) {

@@ -79,4 +79,23 @@ public:
   void addMapping(void *HstAddr, void *TgtAddr, size_t Byte, int64_t ArgType);
   void invokeCallback();
 };
+
+class OmptDeviceMem {
+private:
+  unsigned int DeviceMemFlag;
+  void *OrigBaseAddr;
+  void *OrigAddr;
+  int OrigDeviceNum;
+  void *DestAddr;
+  int DestDeviceNum;
+  size_t Bytes;
+  void *CodePtr;
+  bool Active;
+
+public:
+  OmptDeviceMem(void *OrigBaseAddr, void *OrigAddr, int OrigDeviceNum,
+                void *DestAddr, int DestDeviceNum, size_t Bytes, void *CodePtr);
+  ~OmptDeviceMem();
+  void addTargetDataOp(unsigned int Flag);
+};
 #endif // LIBOMPTARGET_OMPT_TARGET_H
