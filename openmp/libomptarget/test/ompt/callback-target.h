@@ -370,7 +370,7 @@ static void on_ompt_callback_device_mem(
   format_device_mem_flag(device_mem_flag, buffer);
   printf("%" PRIu64 ":" _TOOL_PREFIX " ompt_event_device_mem: target_task_id=%" PRIu64 ", target_id=%" PRIu64
   ", device_mem_flag=%s, orig_base_addr=%p, orig_addr=%p, orig_device_num=%" PRIu32 ", dest_addr=%p, dest_device_num=%" PRIu32
-  ", bytes=%" PRIu64 ", codeptr_ra=%p" "\n", ompt_get_thread_data()->value, target_task_data->value, target_data->value,
+  ", bytes=%" PRIu64 ", codeptr_ra=%p" "\n", ompt_get_thread_data()->value, target_task_data ? target_task_data->value : 0, target_data->value,
   buffer, orig_base_addr, orig_addr, orig_device_num, dest_addr, dest_device_num, bytes, codeptr_ra);
 }
 #endif //__CALLBACK_TARGET_H__
