@@ -45,19 +45,36 @@ int main() {
   // CHECK-SAME: parallel_id=[[PARALLEL_ID:[0-9]+]], task_id=[[INITIAL_TASK_ID:[0-9]+]], actual_parallelism=1, index=1, flags=1
   // CHECK: host_num = [[HOST_NUM:[0-9]+]]
   
-
-  /** target 1 (target enter data) **/
+  /** target 0 (global variable initialization) **/
 
   // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_emi_begin
-  // SYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_task_id=0, target_id=[[TARGET_ID_1:[0-9]+]], device_num=[[DEVICE_NUM:[0-9]+]]
-  // SYNC-SAME: kind=ompt_target_enter_data, codeptr_ra=[[TARGET_RETURN_ADDRESS_1:0x[0-f]+]]{{[0-f][0-f]}}
-  
+  // SYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_task_id=0, target_id=[[TARGET_ID_0:[0-9]+]], device_num=[[DEVICE_NUM:[0-9]+]]
+  // SYNC-SAME: kind=ompt_target_enter_data, codeptr_ra=(nil)
+
   // ASYNC: {{^}}[[MASTER_ID]]: ompt_event_task_create
   // ASYNC-SAME: parent_task_id=[[INITIAL_TASK_ID]], parent_task_frame.exit=(nil), parent_task_frame.reenter=0x{{[0-f]+}}
   // ASYNC-SAME: new_task_id=[[TARGET_TASK_ID_1:[0-9]+]], codeptr_ra=0x{{[0-f]+}}
   // ASYNC-SAME: task_type=ompt_task_explicit|ompt_task_target
   // ASYNC: {{^}}[[THREAD_ID_1:[0-9]+]]: ompt_event_target_emi_begin
-  // ASYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_task_id=[[TARGET_TASK_ID_1]], target_id=[[TARGET_ID_1:[0-9]+]], device_num=[[DEVICE_NUM:[0-9]+]]
+  // ASYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_task_id=[[TARGET_TASK_ID_1]], target_id=[[TARGET_ID_0:[0-9]+]], device_num=[[DEVICE_NUM:[0-9]+]]
+  // ASYNC-SAME: kind=ompt_target_enter_data, codeptr_ra=(nil)
+
+  // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_emi_end
+  // SYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_task_id=0, target_id=[[TARGET_ID_0]], device_num=[[DEVICE_NUM]]
+  // SYNC-SAME: kind=ompt_target_enter_data, codeptr_ra=(nil)
+
+  // ASYNC: {{^}}[[THREAD_ID_1]]: ompt_event_target_emi_end
+  // ASYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_task_id=[[TARGET_TASK_ID_1]], target_id=[[TARGET_ID_0]], device_num=[[DEVICE_NUM]]
+  // ASYNC-SAME: kind=ompt_target_enter_data, codeptr_ra=(nil)
+
+  /** target 1 (target enter data) **/
+
+  // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_emi_begin
+  // SYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_task_id=0, target_id=[[TARGET_ID_1:[0-9]+]], device_num=[[DEVICE_NUM]]
+  // SYNC-SAME: kind=ompt_target_enter_data, codeptr_ra=[[TARGET_RETURN_ADDRESS_1:0x[0-f]+]]{{[0-f][0-f]}}
+  
+  // ASYNC: {{^}}[[THREAD_ID_1]]: ompt_event_target_emi_begin
+  // ASYNC-SAME: task_id=[[INITIAL_TASK_ID]], target_task_id=[[TARGET_TASK_ID_1]], target_id=[[TARGET_ID_1:[0-9]+]], device_num=[[DEVICE_NUM]]
   // ASYNC-SAME: kind=ompt_target_enter_data_nowait, codeptr_ra=(nil)
   
   // SYNC: {{^}}[[MASTER_ID]]: ompt_event_target_data_op_emi_begin

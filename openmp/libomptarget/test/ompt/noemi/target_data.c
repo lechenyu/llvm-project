@@ -35,11 +35,20 @@ int main() {
   // CHECK-SAME: parallel_id=[[PARALLEL_ID:[0-9]+]], task_id=[[INITIAL_TASK_ID:[0-9]+]], actual_parallelism=1, index=1, flags=1
   // CHECK: host_num = [[HOST_NUM:[0-9]+]]
 
+  /** target 0 (global variable initialization) **/
+  
+  // CHECK: {{^}}[[MASTER_ID]]: ompt_event_target_begin
+  // CHECK-SAME: task_id=[[INITIAL_TASK_ID]], target_id=[[TARGET_ID_0:[0-9]+]], device_num=[[DEVICE_NUM:[0-9]+]]
+  // CHECK-SAME: kind=ompt_target_enter_data, codeptr_ra=(nil)
+
+  // CHECK: {{^}}[[MASTER_ID]]: ompt_event_target_end
+  // CHECK-SAME: task_id=[[INITIAL_TASK_ID]], target_id=[[TARGET_ID_0]], device_num=[[DEVICE_NUM]]
+  // CHECK-SAME: kind=ompt_target_enter_data, codeptr_ra=(nil)
 
   /** target 1 (target enter data) **/
 
   // CHECK: {{^}}[[MASTER_ID]]: ompt_event_target_begin
-  // CHECK-SAME: task_id=[[INITIAL_TASK_ID]], target_id=[[TARGET_ID_1:[0-9]+]], device_num=[[DEVICE_NUM:[0-9]+]]
+  // CHECK-SAME: task_id=[[INITIAL_TASK_ID]], target_id=[[TARGET_ID_1:[0-9]+]], device_num=[[DEVICE_NUM]]
   // CHECK-SAME: kind=ompt_target_enter_data, codeptr_ra=[[TARGET_RETURN_ADDRESS_1:0x[0-f]+]]
 
   // CHECK: {{^}}[[MASTER_ID]]: ompt_event_target_data_op
