@@ -63,8 +63,8 @@ void OmptTargetDataOp::setDestAddr(void *DestAddr) {
   this->DestAddr = DestAddr;
 }
 
-OmptTargetMapping::OmptTargetMapping(ConstructorType Ctor, int32_t Capacity,
-                                     void *CodePtr)
+OmptTargetMapping::OmptTargetMapping(ConstructorType Ctor,
+                                     unsigned int Capacity, void *CodePtr)
     : Ctor(Ctor), Capacity(Capacity), Size(0), CodePtr(CodePtr) {
   this->Active = OmptTargetEnabled.enabled &&
                  OmptTargetEnabled.ompt_callback_target_map_emi;
@@ -143,7 +143,7 @@ void OmptTargetMapping::addMapping(void *HstAddr, void *TgtAddr, size_t Byte,
 }
 
 void OmptTargetMapping::invokeCallback() {
-  if (Active) {
+  if (Active && Size) {
     libomp_ompt_callback_target_map_emi(Size, HostAddr, DeviceAddr, Bytes,
                                         MappingFlags, CodePtr);
   }

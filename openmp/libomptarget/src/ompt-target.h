@@ -64,8 +64,8 @@ public:
 
 private:
   ConstructorType Ctor;
-  int32_t Capacity;
-  int32_t Size;
+  unsigned int Capacity;
+  unsigned int Size;
   void **HostAddr;
   void **DeviceAddr;
   size_t *Bytes;
@@ -74,7 +74,7 @@ private:
   bool Active;
 
 public:
-  OmptTargetMapping(ConstructorType Ctor, int32_t Capacity, void *CodePtr);
+  OmptTargetMapping(ConstructorType Ctor, unsigned int Capacity, void *CodePtr);
   ~OmptTargetMapping();
   void addMapping(void *HstAddr, void *TgtAddr, size_t Byte, int64_t ArgType);
   void invokeCallback();

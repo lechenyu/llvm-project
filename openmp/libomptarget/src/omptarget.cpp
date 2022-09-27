@@ -87,6 +87,13 @@ static int initLibrary(DeviceTy &Device) {
       Device.PendingGlobalsMtx);
   {
     std::lock_guard<decltype(PM->TrlTblMtx)> LG(PM->TrlTblMtx);
+#if OMPTARGET_OMPT_SUPPORT
+    OmptTarget MappingGlobals{ompt_target_enter_data, DeviceId, nullptr};
+    OmptTargetMapping Mapping{
+        OmptTargetMapping::TARGET_DATA_BEGIN,
+        (unsigned int)PM->HostEntriesBeginRegistrationOrder.size(), nullptr};
+#endif
+
     for (auto *HostEntriesBegin : PM->HostEntriesBeginRegistrationOrder) {
       TranslationTable *TransTable =
           &PM->HostEntriesBeginToTransTable[HostEntriesBegin];
@@ -174,9 +181,26 @@ static int initLibrary(DeviceTy &Device) {
               (uintptr_t)CurrDeviceEntry->addr /*TgtPtrBegin*/,
               false /*UseHoldRefCount*/, CurrHostEntry->name,
               true /*IsRefCountINF*/));
+#if OMPTARGET_OMPT_SUPPORT
+          Mapping.addMapping(CurrHostEntry->addr, CurrDeviceEntry->addr,
+                             CurrDeviceEntry->size, OMP_TGT_MAPTYPE_TO);
+          OmptDeviceMem Mem{CurrHostEntry->addr,
+                            CurrHostEntry->addr,
+                            HostDeviceNum,
+                            CurrDeviceEntry->addr,
+                            DeviceId,
+                            CurrDeviceEntry->size,
+                            nullptr};
+          Mem.addTargetDataOp(ompt_device_mem_flag_alloc |
+                              ompt_device_mem_flag_associate |
+                              ompt_device_mem_flag_to);
+#endif
         }
       }
     }
+#if OMPTARGET_OMPT_SUPPORT
+    Mapping.invokeCallback();
+#endif
   }
 
   if (Rc != OFFLOAD_SUCCESS) {
@@ -421,7 +445,7 @@ int targetDataBegin(ident_t *Loc, DeviceTy &Device, int32_t ArgNum,
 #if OMPTARGET_OMPT_SUPPORT
   OmptTargetMapping Mapping{ForTarget ? OmptTargetMapping::TARGET
                                       : OmptTargetMapping::TARGET_DATA_BEGIN,
-                            ArgNum, CodePtr};
+                            (unsigned int)ArgNum, CodePtr};
 #endif
   // process each input.
   for (int32_t I = 0; I < ArgNum; ++I) {
@@ -716,7 +740,7 @@ int targetDataEnd(ident_t *Loc, DeviceTy &Device, int32_t ArgNum,
 #if OMPTARGET_OMPT_SUPPORT
   OmptTargetMapping Mapping{ForTarget ? OmptTargetMapping::TARGET
                                       : OmptTargetMapping::TARGET_DATA_END,
-                            ForTarget ? 0 : ArgNum, CodePtr};
+                            ForTarget ? 0 : (unsigned int)ArgNum, CodePtr};
 #endif
 
   int Ret;
@@ -966,10 +990,9 @@ int targetDataEnd(ident_t *Loc, DeviceTy &Device, int32_t ArgNum,
   }
 
 #if OMPTARGET_OMPT_SUPPORT
-  if (!ForTarget) {
-    Mapping.invokeCallback();
-  }
+  Mapping.invokeCallback();
 #endif
+
   return Ret;
 }
 
