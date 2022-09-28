@@ -442,6 +442,7 @@ LANGOPT(RelativeCXXABIVTables, 1, 0,
 
 LANGOPT(VScaleMin, 32, 0, "Minimum vscale value")
 LANGOPT(VScaleMax, 32, 0, "Maximum vscale value")
+LANGOPT(EnableBallista, 1, 0, "Enable or disable Ballista data consistency checker")
 
 ENUM_LANGOPT(ExtendIntArgs, ExtendArgsKind, 1, ExtendArgsKind::ExtendTo32,
              "Controls how scalar integer arguments are extended in calls "

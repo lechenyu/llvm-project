@@ -6063,6 +6063,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   Args.AddLastArg(CmdArgs, options::OPT_fdiagnostics_show_template_tree);
   Args.AddLastArg(CmdArgs, options::OPT_fno_elide_type);
 
+  if (Args.hasFlag(options::OPT_fballista, options::OPT_fno_ballista, false)) {
+    CmdArgs.push_back("-fballista");
+  }
   // Forward flags for OpenMP. We don't do this if the current action is an
   // device offloading action other than OpenMP.
   if (Args.hasFlag(options::OPT_fopenmp, options::OPT_fopenmp_EQ,
@@ -8483,7 +8486,6 @@ void LinkerWrapper::ConstructJob(Compilation &C, const JobAction &JA,
   // Construct the link job so we can wrap around it.
   Linker->ConstructJob(C, JA, Output, Inputs, Args, LinkingOutput);
   const auto &LinkCommand = C.getJobs().getJobs().back();
-
   // Forward -Xoffload-linker<-triple> arguments to the device link job.
   for (Arg *A : Args.filtered(options::OPT_Xoffload_linker)) {
     StringRef Val = A->getValue(0);
@@ -8514,6 +8516,29 @@ void LinkerWrapper::ConstructJob(Compilation &C, const JobAction &JA,
 
   const char *Exec =
       Args.MakeArgString(getToolChain().GetProgramPath("clang-linker-wrapper"));
+
+  if (Args.hasFlag(options::OPT_fballista, options::OPT_fno_ballista, false)) {
+    std::string FS = llvm::sys::path::get_separator().str();
+    std::string BallistaObject = "ballista_global.o";
+    std::string RelativePath =
+        D.getInstalledDir() + FS + ".." + FS + "lib" + FS + BallistaObject;
+    SmallString<256> BallistaObjectRealPath;
+    llvm::sys::fs::real_path(RelativePath, BallistaObjectRealPath);
+    assert(llvm::sys::fs::exists(BallistaObjectRealPath) &&
+           "Ballista object file does not exist!");
+    StringRef FirstInput = LinkCommand->getInputInfos().front().getFilename();
+    ArgStringList::iterator Pos = CmdArgs.end();
+    for (auto Iter = CmdArgs.begin(), End = CmdArgs.end(); Iter != End;
+         ++Iter) {
+      if (StringRef(*Iter) == FirstInput) {
+        Pos = Iter;
+        break;
+      }
+    }
+    assert(Pos != CmdArgs.end() &&
+           "Fail to locate the first input file in arg list!");
+    CmdArgs.insert(Pos, BallistaObjectRealPath.c_str());
+  }
 
   // Replace the executable and arguments of the link job with the
   // wrapper.

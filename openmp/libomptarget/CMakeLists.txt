@@ -96,3 +96,6 @@ add_subdirectory(tools)
 
 # Add tests.
 add_subdirectory(test)
+
+# Add ballista
+add_subdirectory(ballista)

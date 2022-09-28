@@ -65,6 +65,7 @@
 #include "llvm/Transforms/Instrumentation.h"
 #include "llvm/Transforms/Instrumentation/AddressSanitizer.h"
 #include "llvm/Transforms/Instrumentation/AddressSanitizerOptions.h"
+#include "llvm/Transforms/Instrumentation/BallistaInstrument.h"
 #include "llvm/Transforms/Instrumentation/BoundsChecking.h"
 #include "llvm/Transforms/Instrumentation/DataFlowSanitizer.h"
 #include "llvm/Transforms/Instrumentation/GCOVProfiler.h"
@@ -924,6 +925,24 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
     if (!CodeGenOpts.MemoryProfileOutput.empty()) {
       MPM.addPass(createModuleToFunctionPassAdaptor(MemProfilerPass()));
       MPM.addPass(ModuleMemProfilerPass());
+    }
+  }
+
+  // Add instrument pass for ballista
+  if (LangOpts.EnableBallista) {
+    char *EnvVal = getenv("BALLISTA_VERBOSE");
+    bool IsVerbose = EnvVal && std::stoi(EnvVal) > 0 ? true : false;
+    StringRef ModuleName(TheModule->getModuleIdentifier());
+    if ((ModuleName.endswith(".cpp") || ModuleName.endswith(".c"))) {
+      const std::string &ModuleTarget = TheModule->getTargetTriple();
+      // errs() << ModuleName << " " << ModuleTarget << "\n";
+      if (ModuleTarget == "nvptx64-nvidia-cuda") {
+        MPM.addPass(BallistaTargetInstrumentPass(IsVerbose));
+        // MPM.addPass(createModuleToFunctionPassAdaptor(BallistaInstrumentPass(ModuleDevice)));
+      } else if (ModuleTarget == "x86_64-unknown-linux-gnu") {
+        MPM.addPass(BallistaHostInstrumentPass(IsVerbose));
+        // MPM.addPass(createModuleToFunctionPassAdaptor(BallistaInstrumentPass(ModuleDevice)));
+      }
     }
   }
 
