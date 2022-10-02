@@ -46,7 +46,7 @@ private:
   raw_ostream &verboseOuts() { return Verbose ? llvm::errs() : llvm::nulls(); }
   SmallVector<Function *> getFunctionsToInstrument(Module &M);
   GlobalVariable *addShadowMemPtr(Module &M, StringRef &VarName, Type *VarType);
-  void instrumentLoadOrStore(Module &M);
+  void instrumentLoadOrStore(SmallVector<Function *> &FuncList);
 
 public:
   BallistaTargetInstrumentPass(bool IsVerbose) : Verbose(IsVerbose) {

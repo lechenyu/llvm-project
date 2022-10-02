@@ -115,7 +115,18 @@ BallistaTargetInstrumentPass::addShadowMemPtr(Module &M, StringRef &VarName,
   return G;
 }
 
-void BallistaTargetInstrumentPass::instrumentLoadOrStore(Module &M) {}
+void BallistaTargetInstrumentPass::instrumentLoadOrStore(SmallVector<Function *> &FuncList) {
+  for (auto &F : FuncList) {
+    if (F->getName().startswith("__omp_offloading")) {
+      for (auto &BB : *F) {
+        unsigned int AccessId = 0;
+        for (auto &I : BB) {
+
+        }
+      }
+    }
+  }
+}
 
 PreservedAnalyses BallistaTargetInstrumentPass::run(Module &M,
                                                     ModuleAnalysisManager &AM) {
@@ -142,6 +153,9 @@ PreservedAnalyses BallistaTargetInstrumentPass::run(Module &M,
   Type *Int64Ty = Type::getInt64Ty(M.getContext());
   GlobalVariable *AppStart = addShadowMemPtr(M, AppStartName, Int64Ty);
   GlobalVariable *ShaStart = addShadowMemPtr(M, ShaStartName, Int64Ty);
+
+  // Instrument load/store
+  instrumentLoadOrStore(SelectedFunc);
   // std::error_code err;
   // raw_fd_ostream fs(M.getName().str() + "-target.after", err);
   // M.print(fs, nullptr);
