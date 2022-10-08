@@ -149,7 +149,7 @@ static_assert(sizeof(EventUnlock) == 8, "bad EventUnlock size");
 // Time change event.
 struct EventTime {
   static constexpr uptr kUnusedBits = 37;
-  static_assert(kUnusedBits + sizeof(Sid) * kByteBits + kEpochBits + 5 == 64,
+  static_assert(kUnusedBits + sizeof(Sid) * kByteBits + kEpochBits + 6 == 64,
                 "unused bits in EventTime");
 
   u64 is_access : 1;   // = 0

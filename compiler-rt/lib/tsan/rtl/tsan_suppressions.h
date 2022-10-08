@@ -25,6 +25,7 @@ const char kSuppressionThread[] = "thread";
 const char kSuppressionSignal[] = "signal";
 const char kSuppressionLib[] = "called_from_lib";
 const char kSuppressionDeadlock[] = "deadlock";
+const char kSuppressionDMI[] = "data_mapping_issue";
 
 void InitializeSuppressions();
 SuppressionContext *Suppressions();

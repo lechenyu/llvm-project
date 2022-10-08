@@ -168,6 +168,22 @@ NOINLINE void DoReportRace(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
     SlotLock(thr);
 }
 
+
+NOINLINE void DoReportDMI(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
+                           AccessType typ, DMIType dmi_typ) SANITIZER_NO_THREAD_SAFETY_ANALYSIS {
+  
+  thr->dmi_type = dmi_typ;
+
+  for (uptr i = 0; i < kShadowCnt; i++)
+    StoreShadow(&shadow_mem[i], i == 0 ? Shadow::kRodata : Shadow::kEmpty);
+  if (typ & kAccessSlotLocked)
+    SlotUnlock(thr);
+  ReportDMI(thr, shadow_mem, cur, typ);
+  if (typ & kAccessSlotLocked)
+    SlotLock(thr);
+}
+
+
 #if !TSAN_VECTORIZE
 ALWAYS_INLINE
 bool ContainsSameAccess(RawShadow* s, Shadow cur, int unused0, int unused1,
@@ -417,6 +433,184 @@ NOINLINE void TraceRestartMemoryAccess(ThreadState* thr, uptr pc, uptr addr,
   MemoryAccess(thr, pc, addr, size, typ);
 }
 
+ALWAYS_INLINE USED
+void CheckBound(uptr base, uptr addr, uptr size, AccessType typ) {
+  if (UNLIKELY(ctx->t2h.isOverflow(base, addr))) {
+    ThreadState *thr = cur_thread();
+    RawShadow* shadow_mem = MemToShadow(addr);
+    FastState fast_state = thr->fast_state;
+    Shadow cur(fast_state, addr, size, typ);
+    
+    cur.SetWrite(false);
+    cur.SetAtomic(true);
+
+    DoReportDMI(thr, shadow_mem, cur, typ, BUFFER_OVERFLOW);
+  }
+}
+
+
+ALWAYS_INLINE USED
+void CheckMapping(ThreadState* thr, uptr addr, uptr size, RawShadow* shadow_mem, Shadow& cur, AccessType typ) {
+
+  bool isOV, isCV, isOVinit, isCVinit;
+  getAllStateBits(shadow_mem, isOV, isCV, isOVinit, isCVinit);
+
+  //memory access checking, check weather the read see the latest value
+  if (thr->is_on_target) {
+    Node* mapping = ctx->t2h.find(addr, size);
+    if (mapping) {
+      uptr host_addr = mapping->info.start + (addr - mapping->interval.left_end);
+
+      if (UNLIKELY(!IsAppMem(host_addr))) {
+        Printf("[access on target (check mapping only)] target addr %012zx has a corresponding host addr %012zx, but the host addr is not in application memory\n",
+            addr, host_addr); 
+        return;
+      }
+      
+      RawShadow *host_shadow_mem = MemToShadow(host_addr);
+      if (UNLIKELY(!IsShadowMem(host_shadow_mem))) {
+        Printf("[access on target (check mapping only)] target addr %012zx has a corresponding host addr %012zx, but the shadow memory addr %p is invalid\n", 
+            addr, host_addr, (void*) host_shadow_mem);
+        return;
+      }
+
+      if (  !isCVinit ) {
+      // if (!s.isTargetInitialized()) {
+        //Printf("[access on target (check mapping only)] access uninitialized memory %012zx on target, access size: %d\n", addr, 1 << kAccessSizeLog);
+        //Printf("=======================================================\n");
+        //PrintCurrentStack(thr, TraceTopPC(thr));
+
+        cur.SetWrite(false);
+        cur.SetAtomic(true);
+        DoReportDMI(thr, shadow_mem, cur, typ, USE_OF_UNITITIALIZED_MEMORY);
+        return;
+      }
+
+      if (  !isCV ) {
+      // if (!s.isTargetLatest()) {
+        //Printf("[access on target (check mapping only)] read stale value from memory %012zx on target, access size: %d\n", addr, 1 << kAccessSizeLog); 
+        //Printf("=======================================================\n");
+        //PrintCurrentStack(thr, TraceTopPC(thr));
+
+        cur.SetWrite(false);
+        cur.SetAtomic(true);
+        DoReportDMI(thr, shadow_mem, cur, typ, USE_OF_STALE_DATA);
+        return;
+      }
+    }
+  } else {
+    Node* mapping = ctx->h2t.find(addr, size);
+    if (mapping) {
+
+      if (  !isOVinit ) {
+      // if (!s.isHostInitialized()) {
+        if (!IsLoAppMem(addr) && !thr->suppress_reports) {
+          //Printf("%016zx, %016zx, %016zx\n", addr, shadow_mem, s.raw());
+          //Printf("[access on host (check mapping only)] access uninitialized memory %012zx on host, access size: %d\n", addr, 1 << kAccessSizeLog); 
+          //Printf("=======================================================\n");
+          //PrintCurrentStack(thr, TraceTopPC(thr));
+
+          cur.SetWrite(false);
+          cur.SetAtomic(true);
+          DoReportDMI(thr, shadow_mem, cur, typ, USE_OF_UNITITIALIZED_MEMORY);
+          return;
+        }
+      }
+    
+      // if (!s.isHostLatest() && !thr->suppress_reports) {
+        // if (!IsLoAppMem(addr) || s.isHostInitialized()) {
+      if (  !isOV && !thr->suppress_reports ) {
+        if (  !IsLoAppMem(addr) || !isOVinit  ) {
+          //Printf("[access on host (check mapping only)] read stale value from memory %012zx on host, access size: %d\n", addr, 1 << kAccessSizeLog); 
+          //Printf("=======================================================\n");
+          //PrintCurrentStack(thr, TraceTopPC(thr));
+
+          cur.SetWrite(false);
+          cur.SetAtomic(true);
+          DoReportDMI(thr, shadow_mem, cur, typ, USE_OF_STALE_DATA);
+          return;
+        }
+      }
+    }
+  }
+}
+
+
+ALWAYS_INLINE USED
+void UpdateMapping(ThreadState *thr, uptr addr, uptr size, RawShadow* shadow_mem) {
+  if (thr->is_on_target) {
+    Node* mapping = ctx->t2h.find(addr, size);
+    if (mapping) {
+      uptr host_addr = mapping->info.start + (addr - mapping->interval.left_end);
+
+      if (UNLIKELY(!IsAppMem(host_addr))) {
+        Printf("[access on target (update mapping only)] target addr %012zx has a corresponding host addr %012zx, but the host addr is not in application memory\n",
+            addr, host_addr); 
+        return;
+      }
+
+      RawShadow *host_shadow_mem = MemToShadow(host_addr);
+      if (UNLIKELY(!IsShadowMem(host_shadow_mem))) {
+        Printf("[access on target (check mapping only)] target addr %012zx has a corresponding host addr %012zx, but the shadow memory addr %p is invalid\n", 
+            addr, host_addr, (void*) host_shadow_mem);
+        return;
+      }
+
+      // Shadow s = LoadShadow(host_shadow_mem);
+      // s.setTargetLatest();
+      // StoreShadow(host_shadow_mem, s.raw());
+
+      // 01x1
+      const m128 shadow = _mm_load_si128(reinterpret_cast<m128*>(shadow_mem));
+      u32 shadow_0 = _mm_extract_epi32(shadow, 0);
+      u32 shadow_1 = _mm_extract_epi32(shadow, 1);
+      u32 shadow_2 = _mm_extract_epi32(shadow, 2);
+      u32 shadow_3 = _mm_extract_epi32(shadow, 3);
+
+      shadow_0 = shadow_0 & ClearStateBitMasK;
+      shadow_1 = shadow_1 | GetStateBitMask;
+      shadow_3 = shadow_3 | GetStateBitMask;
+
+      const m128 new_shadow = _mm_setr_epi32(shadow_0,shadow_1,shadow_2,shadow_3);
+
+      _mm_store_si128(reinterpret_cast<m128*>(shadow_mem), new_shadow);
+    }
+  } else {
+    // u64 *shadow_mem = (u64*)MemToShadow(addr);
+    // Shadow s = LoadShadow(shadow_mem);
+    // s.setHostLatest(); 
+    // StoreShadow(shadow_mem, s.raw());
+
+    // 101x
+    const m128 shadow = _mm_load_si128(reinterpret_cast<m128*>(shadow_mem));
+    u32 shadow_0 = _mm_extract_epi32(shadow, 0);
+    u32 shadow_1 = _mm_extract_epi32(shadow, 1);
+    u32 shadow_2 = _mm_extract_epi32(shadow, 2);
+    u32 shadow_3 = _mm_extract_epi32(shadow, 3);
+
+    shadow_0 = shadow_0 | GetStateBitMask;
+    shadow_1 = shadow_1 & ClearStateBitMasK;
+    shadow_2 = shadow_2 | GetStateBitMask;
+    const m128 new_shadow = _mm_setr_epi32(shadow_0,shadow_1,shadow_2,shadow_3);
+
+    _mm_store_si128(reinterpret_cast<m128*>(shadow_mem), new_shadow);
+  }
+}
+
+
+void getAllStateBits(RawShadow* shadow_mem, bool &isOV, bool &isCV, bool &isOVinit, bool &isCVinit){
+  const m128 shadow = _mm_load_si128(reinterpret_cast<m128*>(shadow_mem));
+  u32 shadow_0 = _mm_extract_epi32(shadow, 0);
+  u32 shadow_1 = _mm_extract_epi32(shadow, 1);
+  u32 shadow_2 = _mm_extract_epi32(shadow, 2);
+  u32 shadow_3 = _mm_extract_epi32(shadow, 3);
+  isOV = shadow_0 & GetStateBitMask;
+  isCV = shadow_1 & GetStateBitMask;
+  isOVinit = shadow_2 & GetStateBitMask;
+  isCVinit = shadow_3 & GetStateBitMask;
+}
+
+
 ALWAYS_INLINE USED void MemoryAccess(ThreadState* thr, uptr pc, uptr addr,
                                      uptr size, AccessType typ) {
   RawShadow* shadow_mem = MemToShadow(addr);
@@ -439,7 +633,18 @@ ALWAYS_INLINE USED void MemoryAccess(ThreadState* thr, uptr pc, uptr addr,
     return;
   if (!TryTraceMemoryAccess(thr, pc, addr, size, typ))
     return TraceRestartMemoryAccess(thr, pc, addr, size, typ);
+
+  if (typ != kAccessWrite)
+  {
+    CheckMapping(thr, addr, size, shadow_mem, cur, typ);
+  }
+
   CheckRaces(thr, shadow_mem, cur, shadow, access, typ);
+
+  if (typ == kAccessWrite){
+    UpdateMapping(thr, addr, size, shadow_mem);
+  }
+  
 }
 
 void MemoryAccess16(ThreadState* thr, uptr pc, uptr addr, AccessType typ);

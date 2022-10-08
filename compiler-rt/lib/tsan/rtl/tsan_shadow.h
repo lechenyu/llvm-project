@@ -54,6 +54,11 @@ class FastState {
 
 static_assert(sizeof(FastState) == kShadowSize, "bad FastState size");
 
+// For each memory location, we have 4 shadows. Assume they are saved in shadow_mem[0], shadow_mem[1], shadow_mem[2], shadow_mem[3]
+// shadow_mem[0].stateBit() saves isOVvalid
+// shadow_mem[1].stateBit() saves isCVvalid
+// shadow_mem[2].stateBit() saves isOVinitialized
+// shadow_mem[3].stateBit() saves isCVinitialized
 class Shadow {
  public:
   static constexpr RawShadow kEmpty = static_cast<RawShadow>(0);
@@ -80,6 +85,23 @@ class Shadow {
   Sid sid() const { return part_.sid_; }
   Epoch epoch() const { return static_cast<Epoch>(part_.epoch_); }
   u8 access() const { return part_.access_; }
+  u8 stateBit() const {return part_.state_info; }
+
+  void setStateBit(){
+    part_.state_info = 1;
+  }
+
+  void clearStateBit(){
+    part_.state_info = 0;
+  }
+
+  void SetWrite(bool isWrite){
+    part_.is_read_ = !isWrite;
+  }
+
+  void SetAtomic(bool isAtomic){
+    part_.is_atomic_ = isAtomic;
+  }
 
   void GetAccess(uptr *addr, uptr *size, AccessType *typ) const {
     DCHECK(part_.access_ != 0 || raw_ == static_cast<u32>(Shadow::kRodata));
@@ -145,11 +167,19 @@ class Shadow {
     return s.raw();
   }
 
+ // Each shadow is 32 bits:
+ // 0 - 7 bits: access_
+ // 8 - 15 bits: sid_
+ // 16 - 28 bits: epoch_
+ // 29 bit: state_info
+ // 30 bit: is_read
+ // 31 bit: is_atomic_ 
  private:
   struct Parts {
     u8 access_;
     Sid sid_;
     u16 epoch_ : kEpochBits;
+    u16 state_info : 1;
     u16 is_read_ : 1;
     u16 is_atomic_ : 1;
   };
@@ -164,6 +194,7 @@ class Shadow {
   static constexpr uptr kAccessShift = 0;
   static constexpr uptr kIsReadShift = 30;
   static constexpr uptr kIsAtomicShift = 31;
+  static constexpr uptr kStateBitShift = 29;
 #else
   static constexpr uptr kAccessShift = 24;
   static constexpr uptr kIsReadShift = 1;

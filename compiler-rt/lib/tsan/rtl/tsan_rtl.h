@@ -47,6 +47,7 @@
 #include "tsan_sync.h"
 #include "tsan_trace.h"
 #include "tsan_vector_clock.h"
+#include "tsan_avltree.h"
 
 #if SANITIZER_WORDSIZE != 64
 # error "ThreadSanitizer is supported only on 64-bit platforms"
@@ -154,6 +155,12 @@ struct TidSlot {
   TidSlot();
 } ALIGNED(SANITIZER_CACHE_LINE_SIZE);
 
+enum DMIType {
+  USE_OF_UNITITIALIZED_MEMORY = 0,
+  USE_OF_STALE_DATA = 1,
+  BUFFER_OVERFLOW = 2
+};
+
 // This struct is stored in TLS.
 struct ThreadState {
   FastState fast_state;
@@ -232,6 +239,10 @@ struct ThreadState {
   const ReportDesc *current_report;
 
   explicit ThreadState(Tid tid);
+
+  bool is_on_target;
+  DMIType dmi_type;
+
 } ALIGNED(SANITIZER_CACHE_LINE_SIZE);
 
 #if !SANITIZER_GO
@@ -376,6 +387,8 @@ struct Context {
   uptr mapped_shadow_begin;
   uptr mapped_shadow_end;
 #endif
+  IntervalTree t2h;
+  IntervalTree h2t;
 };
 
 extern Context *ctx;  // The one and the only global runtime context.
@@ -496,6 +509,8 @@ bool OutputReport(ThreadState *thr, const ScopedReport &srep);
 bool IsFiredSuppression(Context *ctx, ReportType type, StackTrace trace);
 bool IsExpectedReport(uptr addr, uptr size);
 
+void ReportDMI(ThreadState *thr, RawShadow *shadow_mem, Shadow cur, AccessType typ);
+
 #if defined(TSAN_DEBUG_OUTPUT) && TSAN_DEBUG_OUTPUT >= 1
 # define DPrintf Printf
 #else
@@ -539,6 +554,18 @@ void MemoryAccessRange(ThreadState *thr, uptr pc, uptr addr, uptr size,
   else
     MemoryAccessRangeT<true>(thr, pc, addr, size);
 }
+
+void getAllStateBits(RawShadow* shadow_mem, bool &isOV, bool &isCV, bool &isOVinit, bool &isCVinit);
+
+void CheckMapping(ThreadState* thr, uptr addr, uptr size, RawShadow* shadow_mem, Shadow& cur, AccessType typ);
+
+void CheckMappingForUnaligned(ThreadState *thr, uptr pc, uptr addr, int size);
+
+void UpdateMapping(ThreadState *thr, uptr addr, uptr size, RawShadow* shadow_mem);
+
+void UpdateMappingForUnaligned(ThreadState *thr, uptr pc, uptr addr, int size);
+
+void CheckBound(uptr base, uptr addr);
 
 void ShadowSet(RawShadow *p, RawShadow *end, RawShadow v);
 void MemoryRangeFreed(ThreadState *thr, uptr pc, uptr addr, uptr size);

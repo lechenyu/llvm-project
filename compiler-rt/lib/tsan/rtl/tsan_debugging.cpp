@@ -35,6 +35,9 @@ static const char *ReportTypeDescription(ReportType typ) {
     case ReportTypeSignalUnsafe: return "signal-unsafe-call";
     case ReportTypeErrnoInSignal: return "errno-in-signal-handler";
     case ReportTypeDeadlock: return "lock-order-inversion";
+    case ReportTypeStaleAccess: return "stale-access";
+    case ReportTypeUninitializedAccess: return "uninitialized-access";
+    case ReportTypeBufferOverflow: return "buffer-overflow";
     // No default case so compiler warns us if we miss one
   }
   UNREACHABLE("missing case");

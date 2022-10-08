@@ -88,6 +88,10 @@ class Vector {
     }
   }
 
+  T& back() {
+    return end_[-1]; 
+  }
+  
  private:
   T *begin_;
   T *end_;

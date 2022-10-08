@@ -724,6 +724,26 @@ uptr MetaShadowBeg(void) { return SelectMapping<MappingField>(kMetaShadowBeg); }
 ALWAYS_INLINE
 uptr MetaShadowEnd(void) { return SelectMapping<MappingField>(kMetaShadowEnd); }
 
+template<typename Mapping>
+bool IsLoAppMemImpl(uptr mem) {
+    return (mem >= Mapping::kLoAppMemBeg && mem < Mapping::kLoAppMemEnd);
+}
+
+ALWAYS_INLINE
+bool IsLoAppMem(uptr mem) {
+    return IsLoAppMemImpl<Mapping48AddressSpace>(mem); 
+}
+
+template<typename Mapping>
+bool IsHiAppMemImpl(uptr mem) {
+    return (mem >= Mapping::kHiAppMemBeg && mem < Mapping::kHiAppMemEnd);
+}
+
+ALWAYS_INLINE
+bool IsHiAppMem(uptr mem) {
+    return IsHiAppMemImpl<Mapping48AddressSpace>(mem);
+}
+
 struct IsAppMemImpl {
   template <typename Mapping>
   static bool Apply(uptr mem) {

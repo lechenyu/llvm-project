@@ -20,12 +20,16 @@
 #include "tsan_mman.h"
 #include "tsan_flags.h"
 #include "tsan_platform.h"
+#include "tsan_avltree.h"
 
 #define CALLERPC ((uptr)__builtin_return_address(0))
 
 using namespace __tsan;
 
 namespace __tsan {
+
+const char *data_op_type[] = {"", "alloc", "transfer to device", 
+    "transfer from device", "delete", "associate", "disassociate"};
 
 class ScopedAnnotation {
  public:
@@ -344,6 +348,212 @@ void INTERFACE_ATTRIBUTE
 AnnotateMemoryIsInitialized(char *f, int l, uptr mem, uptr sz) {}
 void INTERFACE_ATTRIBUTE
 AnnotateMemoryIsUninitialized(char *f, int l, uptr mem, uptr sz) {}
+
+
+void INTERFACE_ATTRIBUTE
+AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 optype) {
+  SCOPED_ANNOTATION(AnnotateMapping);
+  
+  //Printf("data transfer between host and target, op %s, src is %p, dest is %p, size is %zu\n", data_op_type[(int)optype], src_addr, dest_addr, bytes);
+  
+  switch (optype) {
+  case ompt_mapping_alloc: {
+    ASSERT(ctx->h2t.insert({(uptr)src_addr, (uptr)src_addr + bytes}, {(uptr)dest_addr, bytes}), "[alloc] Host address %p is already involved in a mapping", src_addr);
+    ASSERT(ctx->t2h.insert({(uptr)dest_addr, (uptr)dest_addr + bytes}, {(uptr)src_addr, bytes}), "[alloc] Device address %p is already involved in a mapping", dest_addr);
+    break;
+  }
+  case ompt_mapping_transfer_to_device: {
+    ASSERT(ctx->h2t.find((uptr)src_addr, bytes), "[transfer to device] Missed data mapping, host: %p -> target: %p, size = %lu\n", src_addr, dest_addr, bytes);
+    ASSERT(ctx->t2h.find((uptr)dest_addr, bytes), "[transfer to device] Missed data mapping, target: %p -> host: %p, size = %lu\n", dest_addr, src_addr, bytes);
+    uptr size = ((bytes - 1) / kShadowCell + 1) * kShadowCell;
+    uptr host_start_addr = (uptr)src_addr;
+    for (uptr offset = 0; offset < size; offset += kShadowCell) {
+      uptr host_addr = host_start_addr + offset;
+      if (UNLIKELY(!IsAppMem(host_addr))) {
+        Printf("[transfer to device] target addr %zx has a corresponding host addr %zx, but the host addr is not in application memory\n",
+            (uptr)dest_addr + offset, host_addr); 
+        break;
+      }
+
+      RawShadow *shadow_mem = MemToShadow(host_addr);
+      const m128 shadow = _mm_load_si128(reinterpret_cast<m128*>(shadow_mem));
+      u32 shadow_0 = _mm_extract_epi32(shadow, 0);
+      u32 shadow_1 = _mm_extract_epi32(shadow, 1);
+      u32 shadow_2 = _mm_extract_epi32(shadow, 2);
+      u32 shadow_3 = _mm_extract_epi32(shadow, 3);
+      u32 isOVinit = shadow_2 & GetStateBitMask;
+
+      // X0Y0 to XXYY
+      // source is a global variable, it is always initialized
+      if (  !isOVinit && IsLoAppMem(host_addr)  ) {
+        shadow_0 = shadow_0 | GetStateBitMask;
+      }
+      
+      u32 t = (shadow_0 ^ shadow_1) & GetStateBitMask;
+      shadow_1 = shadow_1 ^ t;
+
+      t = (shadow_2 ^ shadow_3) & GetStateBitMask;
+      shadow_3 = shadow_3 ^ t;
+
+      const m128 new_shadow = _mm_setr_epi32(shadow_0,shadow_1,shadow_2,shadow_3);
+      _mm_store_si128(reinterpret_cast<m128*>(shadow_mem), new_shadow);
+
+      // // source is a global variable, it is always initialized
+      // if (!s.isHostInitialized() && IsLoAppMem(host_addr)) {
+      //   s.setHostLatest(); 
+      // }
+      // s.setTargetStateByHostState();
+      // StoreShadow(shadow_mem, s.raw());
+      // //Printf("[transfer to device] src_addr = %016zx, dest_addr = %016zx, shadow_aadr = %016zx, shadow = %016zx\n", host_addr, (uptr)dest_addr + offset, shadow_mem, s.raw());
+    }
+    break;
+  }
+  case ompt_mapping_transfer_from_device: {
+    ASSERT(ctx->h2t.find((uptr)dest_addr, bytes), "[transfer from device] Missed data mapping, host: %p -> target: %p, size = %lu\n", dest_addr, src_addr, bytes);
+    ASSERT(ctx->t2h.find((uptr)src_addr, bytes), "[transfer from device] Missed data mapping, target: %p -> host: %p, size = %lu\n", src_addr, dest_addr, bytes);
+    uptr size = ((bytes - 1) / kShadowCell + 1) * kShadowCell;
+    uptr host_start_addr = (uptr)dest_addr;
+    for (uptr offset = 0; offset < size; offset += kShadowCell) {
+      uptr host_addr = host_start_addr + offset;
+      if (UNLIKELY(!IsAppMem(host_addr))) {
+        Printf("[transfer from device] target addr %zx has a corresponding host addr %zx, but the host addr is not in application memory\n",
+            (uptr)src_addr + offset, host_addr); 
+        break;
+      }
+
+      // 0X0Y to XXYY
+      RawShadow *shadow_mem = MemToShadow(host_addr);
+      const m128 shadow = _mm_load_si128(reinterpret_cast<m128*>(shadow_mem));
+      u32 shadow_0 = _mm_extract_epi32(shadow, 0);
+      u32 shadow_1 = _mm_extract_epi32(shadow, 1);
+      u32 shadow_2 = _mm_extract_epi32(shadow, 2);
+      u32 shadow_3 = _mm_extract_epi32(shadow, 3);
+
+      u32 t = (shadow_0 ^ shadow_1) & GetStateBitMask;
+      shadow_0 = shadow_0 ^ t;
+
+      t = (shadow_2 ^ shadow_3) & GetStateBitMask;
+      shadow_2 = shadow_2 ^ t;
+
+      const m128 new_shadow = _mm_setr_epi32(shadow_0,shadow_1,shadow_2,shadow_3);
+      _mm_store_si128(reinterpret_cast<m128*>(shadow_mem), new_shadow);
+
+      // Shadow s = LoadShadow(shadow_mem);
+      // s.setHostStateByTargetState();
+      // StoreShadow(shadow_mem, s.raw());
+      // //Printf("[transfer from device] src_addr = %016zx, dest_addr = %016zx, shadow_aadr = %016zx, shadow = %016zx\n", (uptr)src_addr + offset, host_addr, shadow_mem, s.raw());
+    }
+    break;
+  }
+  case ompt_mapping_delete: {
+    Node *n = ctx->t2h.find((uptr)src_addr, 1);
+    ASSERT(n, "[delete] Missing data mapping for delete, target: %p\n", src_addr);
+    uptr host_start_addr = n->info.start;
+    uptr size = n->info.size;
+    ctx->t2h.remove({(uptr)src_addr, (uptr)src_addr + size});
+    // TODO: we temporatorily comment the following line, We need a third tree to record which host memory has been mapped
+    // ctx->h2t.remove({host_start_addr, host_start_addr + size});
+    size = ((size - 1) / kShadowCell + 1) * kShadowCell;
+    for (uptr offset = 0; offset < size; offset += kShadowCell) {
+      uptr host_addr = host_start_addr + offset;
+      if (UNLIKELY(!IsAppMem(host_addr))) {
+        Printf("[delete] target addr %zx has a corresponding host addr %zx, but the host addr is not in application memory\n",
+            (uptr)src_addr + offset, host_addr); 
+        break;
+      }
+
+      RawShadow *shadow_mem = MemToShadow(host_addr);
+
+      // target initialized to 0, target valid to 0
+      const m128 shadow = _mm_load_si128(reinterpret_cast<m128*>(shadow_mem));
+      u32 shadow_0 = _mm_extract_epi32(shadow, 0);
+      u32 shadow_1 = _mm_extract_epi32(shadow, 1);
+      u32 shadow_2 = _mm_extract_epi32(shadow, 2);
+      u32 shadow_3 = _mm_extract_epi32(shadow, 3);
+
+      shadow_1 = shadow_1 & ClearStateBitMasK;
+      shadow_3 = shadow_3 & ClearStateBitMasK;
+
+      const m128 new_shadow = _mm_setr_epi32(shadow_0,shadow_1,shadow_2,shadow_3);
+
+      _mm_store_si128(reinterpret_cast<m128*>(shadow_mem), new_shadow);
+
+      // Shadow s = LoadShadow(shadow_mem);
+      // s.resetTargetState();
+      // StoreShadow(shadow_mem, s.raw());
+    }
+    break;
+  }
+  case ompt_mapping_associate: {
+    // TODO: delete old in h2t
+    ASSERT(ctx->h2t.insert({(uptr)src_addr, (uptr)src_addr + bytes}, {(uptr)dest_addr, bytes}), "[associate] Host address %p is already involved in a mapping", src_addr);
+    ASSERT(ctx->t2h.insert({(uptr)dest_addr, (uptr)dest_addr + bytes}, {(uptr)src_addr, bytes}), "[associate] Device address %p is already involved in a mapping", dest_addr);
+    if (IsLoAppMem((uptr)src_addr)) {
+        // global variable
+      uptr size = ((bytes - 1) / kShadowCell + 1) * kShadowCell;
+      uptr host_start_addr = (uptr)src_addr;
+      
+      for (uptr offset = 0; offset < size; offset += kShadowCell) {
+        uptr host_addr = host_start_addr + offset;
+
+
+        RawShadow *shadow_mem = MemToShadow(host_addr);
+
+        // to 1111
+        const m128 shadow = _mm_load_si128(reinterpret_cast<m128*>(shadow_mem));
+        u32 shadow_0 = _mm_extract_epi32(shadow, 0);
+        u32 shadow_1 = _mm_extract_epi32(shadow, 1);
+        u32 shadow_2 = _mm_extract_epi32(shadow, 2);
+        u32 shadow_3 = _mm_extract_epi32(shadow, 3);
+
+        shadow_0 = shadow_0 | GetStateBitMask;
+        shadow_1 = shadow_1 | GetStateBitMask;
+        shadow_2 = shadow_2 | GetStateBitMask;
+        shadow_3 = shadow_3 | GetStateBitMask;
+
+        const m128 new_shadow = _mm_setr_epi32(shadow_0,shadow_1,shadow_2,shadow_3);
+
+        _mm_store_si128(reinterpret_cast<m128*>(shadow_mem), new_shadow);
+
+        // Shadow s = LoadShadow(shadow_mem);
+        // // FIXME: currently associate is only used for global variable mapping, so if it uninitialized, it means there is no write on host,
+        // // and both host and target should see the initial value. Otherwise, there is at least one write on host and target cannot see the 
+        // // latest value
+        // if (!s.isHostInitialized()) {
+        //   s.setMappingStates();
+        // } else {
+        //   s.setHostLatest();
+        //   s.setTargetInitialized();
+        // }
+        // StoreShadow(shadow_mem, s.raw());
+      }
+    }
+    break;
+  }
+  case ompt_mapping_disassociate: {
+    ASSERT(false, "Unsupported optype: %d\n", optype);
+    break;
+  }
+  default: {
+    ASSERT(false, "Unknown optype: %d\n", optype);
+  }
+  }
+}
+
+void INTERFACE_ATTRIBUTE
+AnnotateEnterTargetRegion() {
+  SCOPED_ANNOTATION(AnnotateEnterTargetRegion);
+  //Printf("enter target region\n");
+  thr->is_on_target = true;
+}
+
+
+void INTERFACE_ATTRIBUTE
+AnnotateExitTargetRegion() {
+  SCOPED_ANNOTATION(AnnotateExitTargetRegion)
+  //Printf("exit target region\n");
+  thr->is_on_target = false;
+}
 
 // Note: the parameter is called flagz, because flags is already taken
 // by the global function that returns flags.
