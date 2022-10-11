@@ -5,6 +5,7 @@
 namespace __tsan {
 
 void IntervalTree::print_by_height(Node* head, bool print_dpst){
+    Printf("\n");
     if(head == nullptr){
         return;
     }
@@ -22,12 +23,15 @@ void IntervalTree::print_by_height(Node* head, bool print_dpst){
         while (i < curr->Size())
         {
             Node* t = (*curr)[i];
+            if(t == nullptr){
+                break;
+            }
             if (print_dpst) {
                 if(t->parent == nullptr){
-                    Printf("%lu $$ %lu (i: %d, p: %d)      ", t->interval.left_end, t->interval.right_end, t->index, -1);
+                    Printf("%p $$ %p (i: %d, p: %d)      ", t->interval.left_end, t->interval.right_end, t->index, -1);
                 }
                 else{
-                    Printf("%lu $$ %lu (i: %d, p: %d)      ", t->interval.left_end, t->interval.right_end, t->index, t->parent->index);
+                    Printf("%p $$ %p (i: %d, p: %d)      ", t->interval.left_end, t->interval.right_end, t->index, t->parent->index);
                 }
                 
             }
@@ -41,37 +45,22 @@ void IntervalTree::print_by_height(Node* head, bool print_dpst){
             }
             i += 1;
         }
-        
-        
-        // for (Node *t : *curr) {
-        //     if (print_dpst) {
-        //         if(t->parent == nullptr){
-        //             Printf("%lu $$ %lu (i: %d, p: %d)      ", t->interval.left_end, t->interval.right_end, t->index, -1);
-        //         }
-        //         else{
-        //             Printf("%lu $$ %lu (i: %d, p: %d)      ", t->interval.left_end, t->interval.right_end, t->index, t->parent->index);
-        //         }
-                
-        //     }
-
-        //     if(t->left_child != nullptr){
-        //         next->PushBack(t->left_child);
-        //     }
-
-        //     if(t->right_child != nullptr){
-        //         next->PushBack(t->right_child);
-        //     }
-        // }
 
         level++;
         // curr->swap(*next);
-        internal_memcpy(curr, next, curr->Size());
+        if(next->Size() == 0){
+            break;
+        }
+        curr->Resize(next->Size());
+
+        internal_memcpy(curr, next, next->Size());
         next->Reset();
 
         if (print_dpst) {
             Printf("\n");
         }
     }
+    Printf("\n");
 
 }
 

@@ -627,9 +627,9 @@ static inline TaskData *ToTaskData(ompt_data_t *task_data) {
   return reinterpret_cast<TaskData *>(task_data->ptr);
 }
 
-static inline ThreadData* ToThreadData(ompt_data_t *thread_data) {
-  return reinterpret_cast<ThreadData *>(thread_data->ptr);
-}
+// static inline ThreadData* ToThreadData(ompt_data_t *thread_data) {
+//   return reinterpret_cast<ThreadData *>(thread_data->ptr);
+// }
 
 /// Store a mutex for each wait_id to resolve race condition with callbacks.
 std::unordered_map<ompt_wait_id_t, std::mutex> Locks;
@@ -652,11 +652,6 @@ static void ompt_tsan_thread_begin(ompt_thread_t thread_type,
   thread_data->value = my_next_id();
   thread_data->ptr = new ThreadData(my_next_id());
 
-  // TODO: decide if the following is necessary
-  // if (archer_flags->print_ompt_counters && ToThreadData(thread_data)->ThreadID < MAX_THREADS)
-  //   this_event_counter = &(all_counter[ToThreadData(thread_data)->ThreadID]);
-  // else
-  //   this_event_counter = NULL;
 }
 
 static void ompt_tsan_thread_end(ompt_data_t *thread_data) {
@@ -686,8 +681,8 @@ static void ompt_tsan_parallel_begin(ompt_data_t *parent_task_data,
   //FIXME: a workaround to fix the missing implicit task event for parent_task_data
   if (!Task) {
     ompt_data_t *parent_task = nullptr;
-    int ret = ompt_get_task_info(1, NULL, &parent_task, NULL, NULL, NULL);
-    assert(ret == 2 && "parent task must exist");
+    // int ret = ompt_get_task_info(1, NULL, &parent_task, NULL, NULL, NULL);
+    // assert(ret == 2 && "parent task must exist");
     Task = ToTaskData(parent_task);
   }
 
@@ -729,7 +724,6 @@ static void ompt_tsan_implicit_task(ompt_scope_endpoint_t endpoint,
   switch (endpoint) {
   case ompt_scope_begin:{
     if (type & ompt_task_initial) {
-      printf("initial task starts \n");
       parallel_data->ptr = ParallelData::New(nullptr);
     }
     TaskData* Task = TaskData::New(ToParallelData(parallel_data), type);
@@ -1128,12 +1122,45 @@ static void ompt_tsan_mutex_released(ompt_mutex_t kind, ompt_wait_id_t wait_id,
 }
 
 // TODO: change this to dev mem
-static void ompt_tsan_target_data_op(ompt_id_t target_id, ompt_id_t host_op_id,
-                              ompt_target_data_op_t optype, void *src_addr,
-                              int src_device_num, void *dest_addr,
-                              int dest_device_num, size_t bytes,
-                              const void *codeptr_ra) {
-    AnnotateMapping(src_addr, dest_addr, bytes, optype);
+// static void ompt_tsan_target_data_op(ompt_id_t target_id, ompt_id_t host_op_id,
+//                               ompt_target_data_op_t optype, void *src_addr,
+//                               int src_device_num, void *dest_addr,
+//                               int dest_device_num, size_t bytes,
+//                               const void *codeptr_ra) {
+//     AnnotateMapping(src_addr, dest_addr, bytes, optype);
+// }
+
+static void ompt_tsan_device_mem(ompt_data_t *target_task_data,
+                                ompt_data_t *target_data,
+                                unsigned int device_mem_flag,
+                                void *orig_base_addr, void *orig_addr,
+                                int orig_device_num, void *dest_addr,
+                                int dest_device_num, size_t bytes,
+                                const void *codeptr_ra) {
+    printf("ompt tsan device mem, orig_addr is %p, dev_addr is %p, size is %lu \n  ", orig_addr, dest_addr, bytes);
+
+    if (device_mem_flag & ompt_device_mem_flag_to) {
+      printf("ompt_device_mem_flag_to | ");
+    }
+
+    if (device_mem_flag & ompt_device_mem_flag_from) {
+      printf("ompt_device_mem_flag_from | ");
+    }
+    if (device_mem_flag & ompt_device_mem_flag_alloc) {
+      printf("ompt_device_mem_flag_alloc | ");
+    }
+    if (device_mem_flag & ompt_device_mem_flag_release) {
+      printf("ompt_device_mem_flag_release | ");
+    }
+    if (device_mem_flag & ompt_device_mem_flag_associate) {
+      printf("ompt_device_mem_flag_associate | ");
+    }
+    if (device_mem_flag & ompt_device_mem_flag_disassociate) {
+      printf("ompt_device_mem_flag_disassociate | ");
+    }
+    printf("\n");
+
+    AnnotateMapping(orig_addr, dest_addr, bytes, device_mem_flag);
 }
 
 static void ompt_tsan_target(ompt_target_t kind, ompt_scope_endpoint_t endpoint,
@@ -1158,16 +1185,16 @@ static void ompt_tsan_target(ompt_target_t kind, ompt_scope_endpoint_t endpoint,
 
 }
 
-static void ompt_tsan_device_initialize(int device_num, const char *type,
-                                 ompt_device_t *device,
-                                 ompt_function_lookup_t lookup,
-                                 const char *documentation) {
-    printf("device %d initialize\n", device_num);
-}
+// static void ompt_tsan_device_initialize(int device_num, const char *type,
+//                                  ompt_device_t *device,
+//                                  ompt_function_lookup_t lookup,
+//                                  const char *documentation) {
+//     printf("device %d initialize\n", device_num);
+// }
 
-static void ompt_tsan_device_finalize(int device_num) {
-    printf("device %d finalize\n", device_num);
-}
+// static void ompt_tsan_device_finalize(int device_num) {
+//     printf("device %d finalize\n", device_num);
+// }
 
 // callback , signature , variable to store result , required support level
 #define SET_OPTIONAL_CALLBACK_T(event, type, result, level)                    \
@@ -1265,9 +1292,8 @@ static int ompt_tsan_initialize(ompt_function_lookup_t lookup, int device_num,
 
   // callbacks for target constructs
   
-  // SET_CALLBACK(device_initialize);
-  // SET_CALLBACK(device_finalize);
-  SET_CALLBACK(target_data_op);
+  // SET_CALLBACK(target_data_op);
+  SET_CALLBACK(device_mem);
   SET_CALLBACK(target);
   InitialDevice = device_num;
 

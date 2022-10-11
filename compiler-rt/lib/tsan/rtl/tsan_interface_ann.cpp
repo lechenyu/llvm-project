@@ -354,15 +354,12 @@ void INTERFACE_ATTRIBUTE
 AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 optype) {
   SCOPED_ANNOTATION(AnnotateMapping);
   
-  //Printf("data transfer between host and target, op %s, src is %p, dest is %p, size is %zu\n", data_op_type[(int)optype], src_addr, dest_addr, bytes);
-  
-  switch (optype) {
-  case ompt_mapping_alloc: {
-    ASSERT(ctx->h2t.insert({(uptr)src_addr, (uptr)src_addr + bytes}, {(uptr)dest_addr, bytes}), "[alloc] Host address %p is already involved in a mapping", src_addr);
-    ASSERT(ctx->t2h.insert({(uptr)dest_addr, (uptr)dest_addr + bytes}, {(uptr)src_addr, bytes}), "[alloc] Device address %p is already involved in a mapping", dest_addr);
-    break;
+  if (optype & ompt_device_mem_flag_alloc){
+    ASSERT(ctx->h2t.insert({(uptr)src_addr, (uptr)src_addr + bytes}, {(uptr)dest_addr, bytes}), "[alloc] Host address %p is already involved in a mapping \n", src_addr);
+    ASSERT(ctx->t2h.insert({(uptr)dest_addr, (uptr)dest_addr + bytes}, {(uptr)src_addr, bytes}), "[alloc] Device address %p is already involved in a mapping \n", dest_addr);
   }
-  case ompt_mapping_transfer_to_device: {
+  
+  if (optype & ompt_device_mem_flag_to) {
     ASSERT(ctx->h2t.find((uptr)src_addr, bytes), "[transfer to device] Missed data mapping, host: %p -> target: %p, size = %lu\n", src_addr, dest_addr, bytes);
     ASSERT(ctx->t2h.find((uptr)dest_addr, bytes), "[transfer to device] Missed data mapping, target: %p -> host: %p, size = %lu\n", dest_addr, src_addr, bytes);
     uptr size = ((bytes - 1) / kShadowCell + 1) * kShadowCell;
@@ -381,7 +378,7 @@ AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 opty
       u32 shadow_1 = _mm_extract_epi32(shadow, 1);
       u32 shadow_2 = _mm_extract_epi32(shadow, 2);
       u32 shadow_3 = _mm_extract_epi32(shadow, 3);
-      u32 isOVinit = shadow_2 & GetStateBitMask;
+      u32 isOVinit = (bool)(shadow_2 & GetStateBitMask);
 
       // X0Y0 to XXYY
       // source is a global variable, it is always initialized
@@ -406,13 +403,16 @@ AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 opty
       // StoreShadow(shadow_mem, s.raw());
       // //Printf("[transfer to device] src_addr = %016zx, dest_addr = %016zx, shadow_aadr = %016zx, shadow = %016zx\n", host_addr, (uptr)dest_addr + offset, shadow_mem, s.raw());
     }
-    break;
   }
-  case ompt_mapping_transfer_from_device: {
-    ASSERT(ctx->h2t.find((uptr)dest_addr, bytes), "[transfer from device] Missed data mapping, host: %p -> target: %p, size = %lu\n", dest_addr, src_addr, bytes);
-    ASSERT(ctx->t2h.find((uptr)src_addr, bytes), "[transfer from device] Missed data mapping, target: %p -> host: %p, size = %lu\n", src_addr, dest_addr, bytes);
+
+  if(optype & ompt_device_mem_flag_from) {
+    ASSERT(ctx->h2t.find((uptr)src_addr, bytes), "[transfer from device] Missed data mapping, host: %p -> target: %p, size = %lu\n", src_addr, dest_addr, bytes);
+    ASSERT(ctx->t2h.find((uptr)dest_addr, bytes), "[transfer from device] Missed data mapping, target: %p -> host: %p, size = %lu\n", dest_addr, src_addr, bytes);
+    // ASSERT(ctx->h2t.find((uptr)dest_addr, bytes), "[transfer from device] Missed data mapping, host: %p -> target: %p, size = %lu\n", dest_addr, src_addr, bytes);
+    // ASSERT(ctx->t2h.find((uptr)src_addr, bytes), "[transfer from device] Missed data mapping, target: %p -> host: %p, size = %lu\n", src_addr, dest_addr, bytes);
     uptr size = ((bytes - 1) / kShadowCell + 1) * kShadowCell;
-    uptr host_start_addr = (uptr)dest_addr;
+    // uptr host_start_addr = (uptr)dest_addr;
+    uptr host_start_addr = (uptr)src_addr;
     for (uptr offset = 0; offset < size; offset += kShadowCell) {
       uptr host_addr = host_start_addr + offset;
       if (UNLIKELY(!IsAppMem(host_addr))) {
@@ -429,6 +429,9 @@ AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 opty
       u32 shadow_2 = _mm_extract_epi32(shadow, 2);
       u32 shadow_3 = _mm_extract_epi32(shadow, 3);
 
+      // Printf("  isOV %d, isCV %d, isOVinit %d, isCVinit %d, host_addr is %p, shadow is %lu \n", (bool)(shadow_0 & GetStateBitMask), (bool)(shadow_1 & GetStateBitMask), 
+      //   (bool)(shadow_2 & GetStateBitMask), (bool)(shadow_3 & GetStateBitMask), host_addr, shadow_mem);
+
       u32 t = (shadow_0 ^ shadow_1) & GetStateBitMask;
       shadow_0 = shadow_0 ^ t;
 
@@ -443,14 +446,16 @@ AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 opty
       // StoreShadow(shadow_mem, s.raw());
       // //Printf("[transfer from device] src_addr = %016zx, dest_addr = %016zx, shadow_aadr = %016zx, shadow = %016zx\n", (uptr)src_addr + offset, host_addr, shadow_mem, s.raw());
     }
-    break;
   }
-  case ompt_mapping_delete: {
-    Node *n = ctx->t2h.find((uptr)src_addr, 1);
+  
+  if(optype & ompt_device_mem_flag_release) {
+    // Node *n = ctx->t2h.find((uptr)src_addr, 1);
+    Node *n = ctx->t2h.find((uptr)dest_addr, 1);
     ASSERT(n, "[delete] Missing data mapping for delete, target: %p\n", src_addr);
     uptr host_start_addr = n->info.start;
     uptr size = n->info.size;
-    ctx->t2h.remove({(uptr)src_addr, (uptr)src_addr + size});
+    ctx->t2h.remove({(uptr)dest_addr, (uptr)dest_addr + size});
+    // ctx->t2h.remove({(uptr)src_addr, (uptr)src_addr + size});
     // TODO: we temporatorily comment the following line, We need a third tree to record which host memory has been mapped
     // ctx->h2t.remove({host_start_addr, host_start_addr + size});
     size = ((size - 1) / kShadowCell + 1) * kShadowCell;
@@ -471,23 +476,23 @@ AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 opty
       u32 shadow_2 = _mm_extract_epi32(shadow, 2);
       u32 shadow_3 = _mm_extract_epi32(shadow, 3);
 
+      // Printf("  isOV %d, isCV %d, isOVinit %d, isCVinit %d, host_addr is %p, shadow_mem is %lu \n", (bool)(shadow_0 & GetStateBitMask), (bool)(shadow_1 & GetStateBitMask), 
+      //       (bool)(shadow_2 & GetStateBitMask), (bool)(shadow_3 & GetStateBitMask), host_addr, shadow_mem);
       shadow_1 = shadow_1 & ClearStateBitMasK;
       shadow_3 = shadow_3 & ClearStateBitMasK;
 
       const m128 new_shadow = _mm_setr_epi32(shadow_0,shadow_1,shadow_2,shadow_3);
 
       _mm_store_si128(reinterpret_cast<m128*>(shadow_mem), new_shadow);
-
-      // Shadow s = LoadShadow(shadow_mem);
-      // s.resetTargetState();
-      // StoreShadow(shadow_mem, s.raw());
     }
-    break;
   }
-  case ompt_mapping_associate: {
-    // TODO: delete old in h2t
-    ASSERT(ctx->h2t.insert({(uptr)src_addr, (uptr)src_addr + bytes}, {(uptr)dest_addr, bytes}), "[associate] Host address %p is already involved in a mapping", src_addr);
-    ASSERT(ctx->t2h.insert({(uptr)dest_addr, (uptr)dest_addr + bytes}, {(uptr)src_addr, bytes}), "[associate] Device address %p is already involved in a mapping", dest_addr);
+
+  if(optype & ompt_device_mem_flag_associate) {
+    if(! (optype & ompt_device_mem_flag_alloc)){
+      ASSERT(ctx->h2t.insert({(uptr)src_addr, (uptr)src_addr + bytes}, {(uptr)dest_addr, bytes}), "[associate] Host address %p is already involved in a mapping", src_addr);
+      ASSERT(ctx->t2h.insert({(uptr)dest_addr, (uptr)dest_addr + bytes}, {(uptr)src_addr, bytes}), "[associate] Device address %p is already involved in a mapping", dest_addr);
+    }
+
     if (IsLoAppMem((uptr)src_addr)) {
         // global variable
       uptr size = ((bytes - 1) / kShadowCell + 1) * kShadowCell;
@@ -528,15 +533,11 @@ AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 opty
         // StoreShadow(shadow_mem, s.raw());
       }
     }
-    break;
   }
-  case ompt_mapping_disassociate: {
-    ASSERT(false, "Unsupported optype: %d\n", optype);
-    break;
-  }
-  default: {
-    ASSERT(false, "Unknown optype: %d\n", optype);
-  }
+
+  if(optype & ompt_device_mem_flag_disassociate) {
+    // Printf("  Disassociate is Unsupported \n");
+    // ASSERT(false, "Disassociate is Unsupported: %d\n", optype);
   }
 }
 

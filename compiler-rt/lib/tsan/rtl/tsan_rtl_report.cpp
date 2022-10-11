@@ -629,6 +629,24 @@ static bool HandleRacyStacks(ThreadState *thr, VarSizeStackTrace traces[2]) {
   return false;
 }
 
+static bool HandleRacyStacks_dmi(ThreadState *thr, VarSizeStackTrace traces[1]) {
+  if (!flags()->suppress_equal_stacks)
+    return false;
+  RacyStacks hash;
+  hash.hash[0] = md5_hash(traces[0].trace, traces[0].size * sizeof(uptr));
+  hash.hash[1] = md5_hash(traces[0].trace, traces[0].size * sizeof(uptr));
+  {
+    ReadLock lock(&ctx->racy_mtx);
+    if (FindRacyStacks(hash))
+      return true;
+  }
+  Lock lock(&ctx->racy_mtx);
+  if (FindRacyStacks(hash))
+    return true;
+  ctx->racy_stacks.PushBack(hash);
+  return false;
+}
+
 bool OutputReport(ThreadState *thr, const ScopedReport &srep) {
   // These should have been checked in ShouldReport.
   // It's too late to check them here, we have already taken locks.
@@ -871,21 +889,28 @@ void ReportDMI(ThreadState *thr, RawShadow *shadow_mem, Shadow cur, AccessType t
   switch (thr->dmi_type)
   {
   case USE_OF_UNITITIALIZED_MEMORY:
+    // Printf("USE_OF_UNITITIALIZED_MEMORY");
     rep_typ = ReportTypeUninitializedAccess;
     break;
   
   case USE_OF_STALE_DATA:
+    // Printf("USE_OF_STALE_DATA");
     rep_typ = ReportTypeStaleAccess;
     break;
 
   case BUFFER_OVERFLOW:
+    // Printf("BUFFER_OVERFLOW");
     rep_typ = ReportTypeBufferOverflow;
     break;
 
   default:
-    DPrintf2("unsupported dmi_type \n");
+    // Printf("unsupported dmi_type \n");
     return;
   }
+
+  // if(rep_typ != 16){
+  //   Printf("find DMI other than uninitialized \n");
+  // }
 
   // ReportType rep_typ = ReportTypeRace;
   // if ((typ0 & kAccessVptr) && (typ1 & kAccessFree))
@@ -917,9 +942,9 @@ void ReportDMI(ThreadState *thr, RawShadow *shadow_mem, Shadow cur, AccessType t
 
   // We need to lock the slot during RestoreStack because it protects
   // the slot journal.
-  // Lock slot_lock(&ctx->slots[static_cast<uptr>(s[1].sid())].mtx);
-  // ThreadRegistryLock l0(&ctx->thread_registry);
-  // Lock slots_lock(&ctx->slot_mtx);
+  Lock slot_lock(&ctx->slots[static_cast<uptr>(s[0].sid())].mtx);
+  ThreadRegistryLock l0(&ctx->thread_registry);
+  Lock slots_lock(&ctx->slot_mtx);
   // if (SpuriousRace(old))
   //   return;
   // if (!RestoreStack(EventType::kAccessExt, s[1].sid(), s[1].epoch(), addr1,
@@ -931,7 +956,8 @@ void ReportDMI(ThreadState *thr, RawShadow *shadow_mem, Shadow cur, AccessType t
   // if (IsFiredSuppression(ctx, rep_typ, traces[1]))
   //   return;
 
-  if (HandleRacyStacks(thr, traces))
+  // TODO: fix the following, handleracystack tries to hash the traces[1]
+  if (HandleRacyStacks_dmi(thr, traces))
     return;
 
 

@@ -452,9 +452,6 @@ void CheckBound(uptr base, uptr addr, uptr size, AccessType typ) {
 ALWAYS_INLINE USED
 void CheckMapping(ThreadState* thr, uptr addr, uptr size, RawShadow* shadow_mem, Shadow& cur, AccessType typ) {
 
-  bool isOV, isCV, isOVinit, isCVinit;
-  getAllStateBits(shadow_mem, isOV, isCV, isOVinit, isCVinit);
-
   //memory access checking, check weather the read see the latest value
   if (thr->is_on_target) {
     Node* mapping = ctx->t2h.find(addr, size);
@@ -474,42 +471,38 @@ void CheckMapping(ThreadState* thr, uptr addr, uptr size, RawShadow* shadow_mem,
         return;
       }
 
+      bool isOV, isCV, isOVinit, isCVinit;
+      getAllStateBits(host_shadow_mem, isOV, isCV, isOVinit, isCVinit);
+
       if (  !isCVinit ) {
       // if (!s.isTargetInitialized()) {
-        //Printf("[access on target (check mapping only)] access uninitialized memory %012zx on target, access size: %d\n", addr, 1 << kAccessSizeLog);
-        //Printf("=======================================================\n");
-        //PrintCurrentStack(thr, TraceTopPC(thr));
 
         cur.SetWrite(false);
         cur.SetAtomic(true);
-        DoReportDMI(thr, shadow_mem, cur, typ, USE_OF_UNITITIALIZED_MEMORY);
+        DoReportDMI(thr, host_shadow_mem, cur, typ, USE_OF_UNITITIALIZED_MEMORY);
         return;
       }
 
       if (  !isCV ) {
       // if (!s.isTargetLatest()) {
-        //Printf("[access on target (check mapping only)] read stale value from memory %012zx on target, access size: %d\n", addr, 1 << kAccessSizeLog); 
-        //Printf("=======================================================\n");
-        //PrintCurrentStack(thr, TraceTopPC(thr));
 
         cur.SetWrite(false);
         cur.SetAtomic(true);
-        DoReportDMI(thr, shadow_mem, cur, typ, USE_OF_STALE_DATA);
+        DoReportDMI(thr, host_shadow_mem, cur, typ, USE_OF_STALE_DATA);
         return;
       }
     }
   } else {
     Node* mapping = ctx->h2t.find(addr, size);
     if (mapping) {
+      bool isOV, isCV, isOVinit, isCVinit;
+      getAllStateBits(shadow_mem, isOV, isCV, isOVinit, isCVinit);
+
+      // Printf("Read on host \n   isOV %d, isCV %d, isOVinit %d, isCVinit %d, addr is %p, shadow is %lu \n", isOV, isCV, isOVinit, isCVinit, addr, shadow_mem);
 
       if (  !isOVinit ) {
       // if (!s.isHostInitialized()) {
         if (!IsLoAppMem(addr) && !thr->suppress_reports) {
-          //Printf("%016zx, %016zx, %016zx\n", addr, shadow_mem, s.raw());
-          //Printf("[access on host (check mapping only)] access uninitialized memory %012zx on host, access size: %d\n", addr, 1 << kAccessSizeLog); 
-          //Printf("=======================================================\n");
-          //PrintCurrentStack(thr, TraceTopPC(thr));
-
           cur.SetWrite(false);
           cur.SetAtomic(true);
           DoReportDMI(thr, shadow_mem, cur, typ, USE_OF_UNITITIALIZED_MEMORY);
@@ -521,10 +514,6 @@ void CheckMapping(ThreadState* thr, uptr addr, uptr size, RawShadow* shadow_mem,
         // if (!IsLoAppMem(addr) || s.isHostInitialized()) {
       if (  !isOV && !thr->suppress_reports ) {
         if (  !IsLoAppMem(addr) || !isOVinit  ) {
-          //Printf("[access on host (check mapping only)] read stale value from memory %012zx on host, access size: %d\n", addr, 1 << kAccessSizeLog); 
-          //Printf("=======================================================\n");
-          //PrintCurrentStack(thr, TraceTopPC(thr));
-
           cur.SetWrite(false);
           cur.SetAtomic(true);
           DoReportDMI(thr, shadow_mem, cur, typ, USE_OF_STALE_DATA);
@@ -561,11 +550,14 @@ void UpdateMapping(ThreadState *thr, uptr addr, uptr size, RawShadow* shadow_mem
       // StoreShadow(host_shadow_mem, s.raw());
 
       // 01x1
-      const m128 shadow = _mm_load_si128(reinterpret_cast<m128*>(shadow_mem));
+      const m128 shadow = _mm_load_si128(reinterpret_cast<m128*>(host_shadow_mem));
       u32 shadow_0 = _mm_extract_epi32(shadow, 0);
       u32 shadow_1 = _mm_extract_epi32(shadow, 1);
       u32 shadow_2 = _mm_extract_epi32(shadow, 2);
       u32 shadow_3 = _mm_extract_epi32(shadow, 3);
+
+      // Printf(" Write on Target \n   isOV %d, isCV %d, isOVinit %d, isCVinit %d, host_addr is %p, shadow_mem is %lu \n", (bool)(shadow_0 & GetStateBitMask), (bool)(shadow_1 & GetStateBitMask), 
+      // (bool)(shadow_2 & GetStateBitMask), (bool)(shadow_3 & GetStateBitMask), host_addr, host_shadow_mem);
 
       shadow_0 = shadow_0 & ClearStateBitMasK;
       shadow_1 = shadow_1 | GetStateBitMask;
@@ -573,7 +565,7 @@ void UpdateMapping(ThreadState *thr, uptr addr, uptr size, RawShadow* shadow_mem
 
       const m128 new_shadow = _mm_setr_epi32(shadow_0,shadow_1,shadow_2,shadow_3);
 
-      _mm_store_si128(reinterpret_cast<m128*>(shadow_mem), new_shadow);
+      _mm_store_si128(reinterpret_cast<m128*>(host_shadow_mem), new_shadow);
     }
   } else {
     // u64 *shadow_mem = (u64*)MemToShadow(addr);

@@ -14,14 +14,23 @@
     
 namespace __tsan {
 
-typedef enum ompt_mapping_op_t {
-    ompt_mapping_alloc                   = 1,
-    ompt_mapping_transfer_to_device      = 2,
-    ompt_mapping_transfer_from_device    = 3,
-    ompt_mapping_delete                  = 4,
-    ompt_mapping_associate               = 5,
-    ompt_mapping_disassociate            = 6
-} ompt_mapping_op_t;
+// typedef enum ompt_mapping_op_t {
+//     ompt_mapping_alloc                   = 1,
+//     ompt_mapping_transfer_to_device      = 2,
+//     ompt_mapping_transfer_from_device    = 3,
+//     ompt_mapping_delete                  = 4,
+//     ompt_mapping_associate               = 5,
+//     ompt_mapping_disassociate            = 6
+// } ompt_mapping_op_t;
+
+typedef enum ompt_device_mem_flag_t {
+  ompt_device_mem_flag_to             = 0x01,
+  ompt_device_mem_flag_from           = 0x02,
+  ompt_device_mem_flag_alloc          = 0x04,
+  ompt_device_mem_flag_release        = 0x08,
+  ompt_device_mem_flag_associate      = 0x10,
+  ompt_device_mem_flag_disassociate   = 0x20
+} ompt_device_mem_flag_t;
 
 struct Interval {
     uptr left_end;   // included
@@ -135,6 +144,7 @@ public:
     }
 
     bool insert(const Interval &interval, const MapInfo &info){
+        // Printf("try to insert interval: %p %p \n", interval.left_end, interval.right_end);
         Node* n = insertUtil(root, interval, info);
         if (n == nullptr){
             return false;

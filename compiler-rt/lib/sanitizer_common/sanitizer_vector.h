@@ -66,6 +66,13 @@ class Vector {
     return p;
   }
 
+  T *PushBack(T& v) {
+    EnsureSize(Size() + 1);
+    T *p = &end_[-1];
+    internal_memcpy(p, &v, sizeof(*p));
+    return p;
+  }
+
   void PopBack() {
     DCHECK_GT(end_, begin_);
     end_--;
