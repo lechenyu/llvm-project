@@ -434,11 +434,13 @@ NOINLINE void TraceRestartMemoryAccess(ThreadState* thr, uptr pc, uptr addr,
 }
 
 ALWAYS_INLINE USED
-void CheckBound(uptr base, uptr addr, uptr size, AccessType typ) {
+void CheckBound(uptr base, uptr addr, uptr size) {
   if (UNLIKELY(ctx->t2h.isOverflow(base, addr))) {
     ThreadState *thr = cur_thread();
     RawShadow* shadow_mem = MemToShadow(addr);
     FastState fast_state = thr->fast_state;
+
+    AccessType typ = kAccessCheckOnly;
     Shadow cur(fast_state, addr, size, typ);
     
     cur.SetWrite(false);
@@ -494,11 +496,12 @@ void CheckMapping(ThreadState* thr, uptr addr, uptr size, RawShadow* shadow_mem,
     }
   } else {
     Node* mapping = ctx->h2t.find(addr, size);
+    // Printf(" Read on host \n");
     if (mapping) {
       bool isOV, isCV, isOVinit, isCVinit;
       getAllStateBits(shadow_mem, isOV, isCV, isOVinit, isCVinit);
 
-      // Printf("Read on host \n   isOV %d, isCV %d, isOVinit %d, isCVinit %d, addr is %p, shadow is %lu \n", isOV, isCV, isOVinit, isCVinit, addr, shadow_mem);
+      // Printf("  isOV %d, isCV %d, isOVinit %d, isCVinit %d, addr is %p, shadow is %lu \n", isOV, isCV, isOVinit, isCVinit, addr, shadow_mem);
 
       if (  !isOVinit ) {
       // if (!s.isHostInitialized()) {
@@ -528,6 +531,7 @@ void CheckMapping(ThreadState* thr, uptr addr, uptr size, RawShadow* shadow_mem,
 ALWAYS_INLINE USED
 void UpdateMapping(ThreadState *thr, uptr addr, uptr size, RawShadow* shadow_mem) {
   if (thr->is_on_target) {
+    // Printf(" Write on Target \n");
     Node* mapping = ctx->t2h.find(addr, size);
     if (mapping) {
       uptr host_addr = mapping->info.start + (addr - mapping->interval.left_end);
@@ -556,7 +560,7 @@ void UpdateMapping(ThreadState *thr, uptr addr, uptr size, RawShadow* shadow_mem
       u32 shadow_2 = _mm_extract_epi32(shadow, 2);
       u32 shadow_3 = _mm_extract_epi32(shadow, 3);
 
-      // Printf(" Write on Target \n   isOV %d, isCV %d, isOVinit %d, isCVinit %d, host_addr is %p, shadow_mem is %lu \n", (bool)(shadow_0 & GetStateBitMask), (bool)(shadow_1 & GetStateBitMask), 
+      // Printf("  isOV %d, isCV %d, isOVinit %d, isCVinit %d, host_addr is %p, shadow_mem is %lu \n", (bool)(shadow_0 & GetStateBitMask), (bool)(shadow_1 & GetStateBitMask), 
       // (bool)(shadow_2 & GetStateBitMask), (bool)(shadow_3 & GetStateBitMask), host_addr, host_shadow_mem);
 
       shadow_0 = shadow_0 & ClearStateBitMasK;
@@ -568,6 +572,7 @@ void UpdateMapping(ThreadState *thr, uptr addr, uptr size, RawShadow* shadow_mem
       _mm_store_si128(reinterpret_cast<m128*>(host_shadow_mem), new_shadow);
     }
   } else {
+    // Printf(" Write on Host, addr is %p, thread tid is %lu \n",addr, thr->tid);
     // u64 *shadow_mem = (u64*)MemToShadow(addr);
     // Shadow s = LoadShadow(shadow_mem);
     // s.setHostLatest(); 

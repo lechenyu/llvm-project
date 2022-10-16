@@ -565,7 +565,7 @@ void UpdateMapping(ThreadState *thr, uptr addr, uptr size, RawShadow* shadow_mem
 
 void UpdateMappingForUnaligned(ThreadState *thr, uptr pc, uptr addr, int size);
 
-void CheckBound(uptr base, uptr addr);
+void CheckBound(uptr base, uptr addr, uptr size);
 
 void ShadowSet(RawShadow *p, RawShadow *end, RawShadow v);
 void MemoryRangeFreed(ThreadState *thr, uptr pc, uptr addr, uptr size);

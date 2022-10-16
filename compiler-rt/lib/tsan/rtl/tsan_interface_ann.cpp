@@ -544,7 +544,7 @@ AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 opty
 void INTERFACE_ATTRIBUTE
 AnnotateEnterTargetRegion() {
   SCOPED_ANNOTATION(AnnotateEnterTargetRegion);
-  //Printf("enter target region\n");
+  //Printf("enter target region, tid %d \n", thr->tid);
   thr->is_on_target = true;
 }
 
@@ -552,7 +552,7 @@ AnnotateEnterTargetRegion() {
 void INTERFACE_ATTRIBUTE
 AnnotateExitTargetRegion() {
   SCOPED_ANNOTATION(AnnotateExitTargetRegion)
-  //Printf("exit target region\n");
+  //Printf("exit target region, tid %d \n", thr->tid);
   thr->is_on_target = false;
 }
 

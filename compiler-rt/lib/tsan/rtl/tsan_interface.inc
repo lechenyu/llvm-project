@@ -18,6 +18,10 @@
 
 using namespace __tsan;
 
+void __tsan_check_bound(void *base, void *addr, uptr size){
+  CheckBound((uptr)base,(uptr)addr,size);
+}
+
 void __tsan_read1(void *addr) {
   MemoryAccess(cur_thread(), CALLERPC, (uptr)addr, 1, kAccessRead);
 }

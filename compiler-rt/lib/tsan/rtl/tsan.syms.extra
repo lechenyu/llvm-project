@@ -29,3 +29,4 @@ Annotate*
 WTFAnnotate*
 RunningOnValgrind
 ValgrindSlowdown
+__tsan_check_bound

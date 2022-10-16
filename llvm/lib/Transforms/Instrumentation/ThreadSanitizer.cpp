@@ -134,6 +134,9 @@ private:
   };
 
   void initialize(Module &M);
+  bool instrumentCheckBound(Instruction *I, const DataLayout &DL);
+  bool instrumentFiltered(Instruction *I, const DataLayout &DL);
+  int getMemoryAccessSize(Type *origTy, const DataLayout &dl);
   bool instrumentLoadOrStore(const InstructionInfo &II, const DataLayout &DL);
   bool instrumentAtomic(Instruction *I, const DataLayout &DL);
   bool instrumentMemIntrinsic(Instruction *I);
@@ -171,6 +174,13 @@ private:
   FunctionCallee TsanVptrUpdate;
   FunctionCallee TsanVptrLoad;
   FunctionCallee MemmoveFn, MemcpyFn, MemsetFn;
+
+  // Callbacks for tsan filtered memory accesses, only used by Arbalest 
+  FunctionCallee TsanFilteredRead[kNumberOfAccessSizes];
+  FunctionCallee TsanFilteredUnalignedRead[kNumberOfAccessSizes];
+  FunctionCallee TsanFilteredWrite[kNumberOfAccessSizes];
+  FunctionCallee TsanFilteredUnalignedWrite[kNumberOfAccessSizes];
+  FunctionCallee TsanCheckBound;
 };
 
 void insertModuleCtor(Module &M) {
@@ -349,6 +359,9 @@ void ThreadSanitizer::initialize(Module &M) {
   MemsetFn =
       M.getOrInsertFunction("memset", Attr, IRB.getInt8PtrTy(),
                             IRB.getInt8PtrTy(), IRB.getInt32Ty(), IntptrTy);
+
+  TsanCheckBound = M.getOrInsertFunction("__tsan_check_bound", Attr, IRB.getVoidTy(), 
+                            IRB.getInt8PtrTy(), IRB.getInt8PtrTy());
 }
 
 static bool isVtableAccess(Instruction *I) {
@@ -522,10 +535,22 @@ bool ThreadSanitizer::sanitizeFunction(Function &F,
   SmallVector<Instruction*, 8> LocalLoadsAndStores;
   SmallVector<Instruction*, 8> AtomicAccesses;
   SmallVector<Instruction*, 8> MemIntrinCalls;
+  SmallVector<Instruction*, 8> GetElem;
   bool Res = false;
   bool HasCalls = false;
   bool SanitizeFunction = F.hasFnAttribute(Attribute::SanitizeThread);
   const DataLayout &DL = F.getParent()->getDataLayout();
+
+  // Insert a boundary check for all pointers related to target offloading
+  if (F.getName().startswith(".omp_outlined._debug__.")) {
+    for (auto &BB : F) {
+      for (auto &Inst : BB) {
+        if (isa<GetElementPtrInst>(Inst)) {
+          GetElem.push_back(&Inst);
+        }
+      }
+    }
+  }
 
   // Traverse all instructions, collect loads/stores/returns, check for calls.
   for (auto &BB : F) {
@@ -551,6 +576,10 @@ bool ThreadSanitizer::sanitizeFunction(Function &F,
   // We have collected all loads and stores.
   // FIXME: many of these accesses do not need to be checked for races
   // (e.g. variables that do not escape, etc).
+
+  for (auto Inst : GetElem) {
+    Res |= instrumentCheckBound(Inst, DL);    
+  }
 
   // Instrument memory accesses only if we want to report bugs in the function.
   if (ClInstrumentMemoryAccesses && SanitizeFunction)
@@ -592,6 +621,36 @@ bool ThreadSanitizer::sanitizeFunction(Function &F,
     Res = true;
   }
   return Res;
+}
+
+bool ThreadSanitizer::instrumentCheckBound(Instruction* Inst, 
+                                            const DataLayout &DL) {
+  GetElementPtrInst *GEP = dyn_cast<GetElementPtrInst>(Inst);
+  Value *basePtr = GEP->getOperand(0);
+  BasicBlock::iterator it(GEP);
+  it++;
+  IRBuilder<> IRB(&(*it));
+
+  Type *origTy = getLoadStoreType(&(*it));
+  int size = getMemoryAccessSize(origTy, DL);
+  assert(size > 0);
+
+  IRB.CreateCall(TsanCheckBound, {IRB.CreatePointerCast(basePtr, IRB.getInt8PtrTy()), IRB.CreatePointerCast(GEP, IRB.getInt8PtrTy()), IRB.getInt32(size)});
+
+  return true;
+}
+
+int ThreadSanitizer::getMemoryAccessSize(Type *origTy, const DataLayout &dl) {
+  // Type *origPtrTy = addr->getType();
+  // Type *origTy = cast<PointerType>(origPtrTy)->getElementType();
+  // assert(origTy->isSized());
+  uint32_t typeSize = dl.getTypeStoreSizeInBits(origTy);
+  if (typeSize != 8  && typeSize != 16 &&
+      typeSize != 32 && typeSize != 64 && typeSize != 128) {
+    // Ignore all unusual sizes.
+    return -1;
+  }
+  return typeSize / 8;
 }
 
 bool ThreadSanitizer::instrumentLoadOrStore(const InstructionInfo &II,

@@ -662,7 +662,9 @@ static void ompt_tsan_thread_end(ompt_data_t *thread_data) {
   delete DependencyDataPool::ThreadDataPool;
 
   // TODO: decide if the following is necessary
-  delete thread_data->ptr;
+  if (thread_data->ptr) {
+    delete (ThreadData *)thread_data->ptr;
+  }
   TsanIgnoreWritesEnd();
 }
 
@@ -730,6 +732,24 @@ static void ompt_tsan_implicit_task(ompt_scope_endpoint_t endpoint,
     task_data->ptr = Task;
     TsanHappensAfter(ToParallelData(parallel_data)->GetParallelPtr());
     TsanFuncEntry(ToParallelData(parallel_data)->codePtr);
+
+    // ompt_get_task_info(level,flags,task_data,task_frame,parallel_data,thread_num)
+    // level 0 is the current task, level 1 is the paret task.
+    if (type & ompt_task_initial) {
+      int dd = 1;
+      int r;
+      ompt_data_t *spt = nullptr;
+      r = ompt_get_task_info(dd, NULL, &spt, NULL, NULL, NULL);
+      if (spt) {
+        printf("    Parent task in depth %d: %p \n", dd, spt);
+        TaskData* parent_task = (TaskData*) spt->ptr;
+        if (parent_task->IsOnTarget)
+        {
+          Task->IsOnTarget = true;
+        }
+        
+      }
+    }
 
     if (Task->IsOnTarget) {
       AnnotateEnterTargetRegion();
