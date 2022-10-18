@@ -313,6 +313,7 @@ EXTERN int omp_target_associate_ptr(const void *HostPtr, const void *DevicePtr,
                                     size_t Size, size_t DeviceOffset,
                                     int DeviceNum) {
   TIMESCOPE();
+  assert(false);
   DP("Call to omp_target_associate_ptr with host_ptr " DPxMOD ", "
      "device_ptr " DPxMOD ", size %zu, device_offset %zu, device_num %d\n",
      DPxPTR(HostPtr), DPxPTR(DevicePtr), Size, DeviceOffset, DeviceNum);

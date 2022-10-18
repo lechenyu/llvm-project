@@ -355,6 +355,7 @@ AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 opty
   SCOPED_ANNOTATION(AnnotateMapping);
   
   if (optype & ompt_device_mem_flag_alloc){
+    // TODO: check if already exists, if exists, delete it and reset the shadow memory.
     ASSERT(ctx->h2t.insert({(uptr)src_addr, (uptr)src_addr + bytes}, {(uptr)dest_addr, bytes}), "[alloc] Host address %p is already involved in a mapping \n", src_addr);
     ASSERT(ctx->t2h.insert({(uptr)dest_addr, (uptr)dest_addr + bytes}, {(uptr)src_addr, bytes}), "[alloc] Device address %p is already involved in a mapping \n", dest_addr);
   }
@@ -493,46 +494,46 @@ AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 opty
       ASSERT(ctx->t2h.insert({(uptr)dest_addr, (uptr)dest_addr + bytes}, {(uptr)src_addr, bytes}), "[associate] Device address %p is already involved in a mapping", dest_addr);
     }
 
-    if (IsLoAppMem((uptr)src_addr)) {
-        // global variable
-      uptr size = ((bytes - 1) / kShadowCell + 1) * kShadowCell;
-      uptr host_start_addr = (uptr)src_addr;
+    // if (IsLoAppMem((uptr)src_addr)) {
+    //     // global variable
+    //   uptr size = ((bytes - 1) / kShadowCell + 1) * kShadowCell;
+    //   uptr host_start_addr = (uptr)src_addr;
       
-      for (uptr offset = 0; offset < size; offset += kShadowCell) {
-        uptr host_addr = host_start_addr + offset;
+    //   for (uptr offset = 0; offset < size; offset += kShadowCell) {
+    //     uptr host_addr = host_start_addr + offset;
 
 
-        RawShadow *shadow_mem = MemToShadow(host_addr);
+    //     RawShadow *shadow_mem = MemToShadow(host_addr);
 
-        // to 1111
-        const m128 shadow = _mm_load_si128(reinterpret_cast<m128*>(shadow_mem));
-        u32 shadow_0 = _mm_extract_epi32(shadow, 0);
-        u32 shadow_1 = _mm_extract_epi32(shadow, 1);
-        u32 shadow_2 = _mm_extract_epi32(shadow, 2);
-        u32 shadow_3 = _mm_extract_epi32(shadow, 3);
+    //     // to 1111
+    //     const m128 shadow = _mm_load_si128(reinterpret_cast<m128*>(shadow_mem));
+    //     u32 shadow_0 = _mm_extract_epi32(shadow, 0);
+    //     u32 shadow_1 = _mm_extract_epi32(shadow, 1);
+    //     u32 shadow_2 = _mm_extract_epi32(shadow, 2);
+    //     u32 shadow_3 = _mm_extract_epi32(shadow, 3);
 
-        shadow_0 = shadow_0 | GetStateBitMask;
-        shadow_1 = shadow_1 | GetStateBitMask;
-        shadow_2 = shadow_2 | GetStateBitMask;
-        shadow_3 = shadow_3 | GetStateBitMask;
+    //     shadow_0 = shadow_0 | GetStateBitMask;
+    //     shadow_1 = shadow_1 | GetStateBitMask;
+    //     shadow_2 = shadow_2 | GetStateBitMask;
+    //     shadow_3 = shadow_3 | GetStateBitMask;
 
-        const m128 new_shadow = _mm_setr_epi32(shadow_0,shadow_1,shadow_2,shadow_3);
+    //     // const m128 new_shadow = _mm_setr_epi32(shadow_0,shadow_1,shadow_2,shadow_3);
 
-        _mm_store_si128(reinterpret_cast<m128*>(shadow_mem), new_shadow);
+    //     // _mm_store_si128(reinterpret_cast<m128*>(shadow_mem), new_shadow);
 
-        // Shadow s = LoadShadow(shadow_mem);
-        // // FIXME: currently associate is only used for global variable mapping, so if it uninitialized, it means there is no write on host,
-        // // and both host and target should see the initial value. Otherwise, there is at least one write on host and target cannot see the 
-        // // latest value
-        // if (!s.isHostInitialized()) {
-        //   s.setMappingStates();
-        // } else {
-        //   s.setHostLatest();
-        //   s.setTargetInitialized();
-        // }
-        // StoreShadow(shadow_mem, s.raw());
-      }
-    }
+    //     // Shadow s = LoadShadow(shadow_mem);
+    //     // // FIXME: currently associate is only used for global variable mapping, so if it uninitialized, it means there is no write on host,
+    //     // // and both host and target should see the initial value. Otherwise, there is at least one write on host and target cannot see the 
+    //     // // latest value
+    //     // if (!s.isHostInitialized()) {
+    //     //   s.setMappingStates();
+    //     // } else {
+    //     //   s.setHostLatest();
+    //     //   s.setTargetInitialized();
+    //     // }
+    //     // StoreShadow(shadow_mem, s.raw());
+    //   }
+    // }
   }
 
   if(optype & ompt_device_mem_flag_disassociate) {

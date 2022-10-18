@@ -18,6 +18,39 @@
 
 using namespace __tsan;
 
+// TODO: write a new function instead of using MemoryAccess
+void __tsan_filtered_read1(void *addr) {
+  MemoryAccess_onlyMapping(cur_thread(), CALLERPC, (uptr)addr, 1, kAccessRead);
+}
+
+void __tsan_filtered_read2(void *addr) {
+  MemoryAccess_onlyMapping(cur_thread(), CALLERPC, (uptr)addr, 2, kAccessRead);
+}
+
+void __tsan_filtered_read4(void *addr) {
+  MemoryAccess_onlyMapping(cur_thread(), CALLERPC, (uptr)addr, 4, kAccessRead);
+}
+
+void __tsan_filtered_read8(void *addr) {
+  MemoryAccess_onlyMapping(cur_thread(), CALLERPC, (uptr)addr, 8, kAccessRead);
+}
+
+void __tsan_filtered_write1(void *addr) {
+  MemoryAccess_onlyMapping(cur_thread(), CALLERPC, (uptr)addr, 1, kAccessWrite);
+}
+
+void __tsan_filtered_write2(void *addr) {
+  MemoryAccess_onlyMapping(cur_thread(), CALLERPC, (uptr)addr, 2, kAccessWrite);
+}
+
+void __tsan_filtered_write4(void *addr) {
+  MemoryAccess_onlyMapping(cur_thread(), CALLERPC, (uptr)addr, 4, kAccessWrite);
+}
+
+void __tsan_filtered_write8(void *addr) {
+  MemoryAccess_onlyMapping(cur_thread(), CALLERPC, (uptr)addr, 8, kAccessWrite);
+}
+
 void __tsan_check_bound(void *base, void *addr, uptr size){
   CheckBound((uptr)base,(uptr)addr,size);
 }

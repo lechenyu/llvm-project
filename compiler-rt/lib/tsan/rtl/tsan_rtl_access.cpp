@@ -458,6 +458,7 @@ void CheckMapping(ThreadState* thr, uptr addr, uptr size, RawShadow* shadow_mem,
   if (thr->is_on_target) {
     Node* mapping = ctx->t2h.find(addr, size);
     if (mapping) {
+      // Printf("read on target, address is %p, size is %d \n",addr,size);
       uptr host_addr = mapping->info.start + (addr - mapping->interval.left_end);
 
       if (UNLIKELY(!IsAppMem(host_addr))) {
@@ -605,6 +606,77 @@ void getAllStateBits(RawShadow* shadow_mem, bool &isOV, bool &isCV, bool &isOVin
   isCV = shadow_1 & GetStateBitMask;
   isOVinit = shadow_2 & GetStateBitMask;
   isCVinit = shadow_3 & GetStateBitMask;
+}
+
+
+ALWAYS_INLINE USED void MemoryAccess_onlyMapping(ThreadState* thr, uptr pc, uptr addr,
+                                     uptr size, AccessType typ) {
+  RawShadow* shadow_mem = MemToShadow(addr);
+  UNUSED char memBuf[4][64];
+
+  FastState fast_state = thr->fast_state;
+  Shadow cur(fast_state, addr, size, typ);
+
+  LOAD_CURRENT_SHADOW(cur, shadow_mem);
+  if (LIKELY(ContainsSameAccess(shadow_mem, cur, shadow, access, typ)))
+    return;
+  if (UNLIKELY(fast_state.GetIgnoreBit()))
+    return;
+  if (!TryTraceMemoryAccess(thr, pc, addr, size, typ))
+    return TraceRestartMemoryAccess(thr, pc, addr, size, typ);
+
+  if (!(typ & kAccessWrite))
+  {
+    CheckMapping(thr, addr, size, shadow_mem, cur, typ);
+  }
+  else{
+    UpdateMapping(thr, addr, size, shadow_mem);
+  }
+  
+}
+
+
+// TODO: update UnalignedMemoryAccess to only check Mapping
+NOINLINE
+void RestartUnalignedMemoryAccess_onlyMapping(ThreadState* thr, uptr pc, uptr addr,
+                                  uptr size, AccessType typ) {
+  TraceSwitchPart(thr);
+  UnalignedMemoryAccess_onlyMapping(thr, pc, addr, size, typ);
+}
+
+ALWAYS_INLINE USED void UnalignedMemoryAccess_onlyMapping(ThreadState* thr, uptr pc,
+                                              uptr addr, uptr size,
+                                              AccessType typ) {
+  DCHECK_LE(size, 8);
+  FastState fast_state = thr->fast_state;
+  if (UNLIKELY(fast_state.GetIgnoreBit()))
+    return;
+  RawShadow* shadow_mem = MemToShadow(addr);
+  bool traced = false;
+  uptr size1 = Min<uptr>(size, RoundUp(addr + 1, kShadowCell) - addr);
+  {
+    Shadow cur(fast_state, addr, size1, typ);
+    LOAD_CURRENT_SHADOW(cur, shadow_mem);
+    if (LIKELY(ContainsSameAccess(shadow_mem, cur, shadow, access, typ)))
+      goto SECOND;
+    if (!TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
+      return RestartUnalignedMemoryAccess_onlyMapping(thr, pc, addr, size, typ);
+    traced = true;
+    if (UNLIKELY(CheckRaces(thr, shadow_mem, cur, shadow, access, typ)))
+      return;
+  }
+SECOND:
+  uptr size2 = size - size1;
+  if (LIKELY(size2 == 0))
+    return;
+  shadow_mem += kShadowCnt;
+  Shadow cur(fast_state, 0, size2, typ);
+  LOAD_CURRENT_SHADOW(cur, shadow_mem);
+  if (LIKELY(ContainsSameAccess(shadow_mem, cur, shadow, access, typ)))
+    return;
+  if (!traced && !TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
+    return RestartUnalignedMemoryAccess_onlyMapping(thr, pc, addr, size, typ);
+  CheckRaces(thr, shadow_mem, cur, shadow, access, typ);
 }
 
 

@@ -30,3 +30,6 @@ WTFAnnotate*
 RunningOnValgrind
 ValgrindSlowdown
 __tsan_check_bound
+__tsan_filtered_read*
+__tsan_filtered_write*
+__tsan_filtered_unaligned*

@@ -540,6 +540,12 @@ void MemoryAccess(ThreadState *thr, uptr pc, uptr addr, uptr size,
                   AccessType typ);
 void UnalignedMemoryAccess(ThreadState *thr, uptr pc, uptr addr, uptr size,
                            AccessType typ);
+
+void MemoryAccess_onlyMapping(ThreadState *thr, uptr pc, uptr addr, uptr size,
+                  AccessType typ);
+
+void UnalignedMemoryAccess_onlyMapping(ThreadState *thr, uptr pc, uptr addr, uptr size,
+                           AccessType typ);
 // This creates 2 non-inlined specialized versions of MemoryAccessRange.
 template <bool is_read>
 void MemoryAccessRangeT(ThreadState *thr, uptr pc, uptr addr, uptr size);
@@ -559,11 +565,7 @@ void getAllStateBits(RawShadow* shadow_mem, bool &isOV, bool &isCV, bool &isOVin
 
 void CheckMapping(ThreadState* thr, uptr addr, uptr size, RawShadow* shadow_mem, Shadow& cur, AccessType typ);
 
-void CheckMappingForUnaligned(ThreadState *thr, uptr pc, uptr addr, int size);
-
 void UpdateMapping(ThreadState *thr, uptr addr, uptr size, RawShadow* shadow_mem);
-
-void UpdateMappingForUnaligned(ThreadState *thr, uptr pc, uptr addr, int size);
 
 void CheckBound(uptr base, uptr addr, uptr size);
 

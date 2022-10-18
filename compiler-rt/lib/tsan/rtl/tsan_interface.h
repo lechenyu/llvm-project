@@ -35,6 +35,29 @@ SANITIZER_INTERFACE_ATTRIBUTE void __tsan_init();
 SANITIZER_INTERFACE_ATTRIBUTE void __tsan_flush_memory();
 
 SANITIZER_INTERFACE_ATTRIBUTE void __tsan_check_bound(void *base, void *addr, uptr size);
+SANITIZER_INTERFACE_ATTRIBUTE void __tsan_filtered_read1(void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __tsan_filtered_read2(void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __tsan_filtered_read4(void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __tsan_filtered_read8(void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __tsan_filtered_read16(void *addr);
+
+SANITIZER_INTERFACE_ATTRIBUTE void __tsan_filtered_write1(void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __tsan_filtered_write2(void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __tsan_filtered_write4(void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __tsan_filtered_write8(void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __tsan_filtered_write16(void *addr);
+
+SANITIZER_INTERFACE_ATTRIBUTE void __tsan_filtered_unaligned_read1(const void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __tsan_filtered_unaligned_read2(const void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __tsan_filtered_unaligned_read4(const void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __tsan_filtered_unaligned_read8(const void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __tsan_filtered_unaligned_read16(const void *addr);
+
+SANITIZER_INTERFACE_ATTRIBUTE void __tsan_filtered_unaligned_write1(const void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __tsan_filtered_unaligned_write2(const void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __tsan_filtered_unaligned_write4(const void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __tsan_filtered_unaligned_write8(const void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __tsan_filtered_unaligned_write16(const void *addr);
 
 SANITIZER_INTERFACE_ATTRIBUTE void __tsan_read1(void *addr);
 SANITIZER_INTERFACE_ATTRIBUTE void __tsan_read2(void *addr);

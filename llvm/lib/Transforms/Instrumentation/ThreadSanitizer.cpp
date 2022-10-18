@@ -135,13 +135,14 @@ private:
 
   void initialize(Module &M);
   bool instrumentCheckBound(Instruction *I, const DataLayout &DL);
-  bool instrumentFiltered(Instruction *I, const DataLayout &DL);
+  bool instrumentFiltered(InstructionInfo II, const DataLayout &DL);
   int getMemoryAccessSize(Type *origTy, const DataLayout &dl);
   bool instrumentLoadOrStore(const InstructionInfo &II, const DataLayout &DL);
   bool instrumentAtomic(Instruction *I, const DataLayout &DL);
   bool instrumentMemIntrinsic(Instruction *I);
   void chooseInstructionsToInstrument(SmallVectorImpl<Instruction *> &Local,
                                       SmallVectorImpl<InstructionInfo> &All,
+                                      SmallVectorImpl<InstructionInfo> &Filtered,
                                       const DataLayout &DL);
   bool addrPointsToConstantData(Value *Addr);
   int getMemoryAccessFuncIndex(Type *OrigTy, Value *Addr, const DataLayout &DL);
@@ -228,6 +229,23 @@ void ThreadSanitizer::initialize(Module &M) {
     const unsigned BitSize = ByteSize * 8;
     std::string ByteSizeStr = utostr(ByteSize);
     std::string BitSizeStr = utostr(BitSize);
+
+    SmallString<64> FilteredReadName("__tsan_filtered_read" + ByteSizeStr);
+    TsanFilteredRead[i] = M.getOrInsertFunction(FilteredReadName, Attr, IRB.getVoidTy(),
+                                        IRB.getInt8PtrTy());
+
+    SmallString<64> FilteredUnalignedReadName("__tsan_filtered_unaligned_read" + ByteSizeStr);
+    TsanFilteredUnalignedRead[i] = M.getOrInsertFunction(
+        FilteredUnalignedReadName, Attr, IRB.getVoidTy(), IRB.getInt8PtrTy());
+
+    SmallString<64> FilteredWriteName("__tsan_filtered_write" + ByteSizeStr);
+    TsanFilteredWrite[i] = M.getOrInsertFunction(FilteredWriteName, Attr, IRB.getVoidTy(),
+                                         IRB.getInt8PtrTy());
+
+    SmallString<64> FilteredUnalignedWriteName("__tsan_filtered_unaligned_write" + ByteSizeStr);
+    TsanFilteredUnalignedWrite[i] = M.getOrInsertFunction(
+        FilteredUnalignedWriteName, Attr, IRB.getVoidTy(), IRB.getInt8PtrTy());
+
     SmallString<32> ReadName("__tsan_read" + ByteSizeStr);
     TsanRead[i] = M.getOrInsertFunction(ReadName, Attr, IRB.getVoidTy(),
                                         IRB.getInt8PtrTy());
@@ -438,7 +456,8 @@ bool ThreadSanitizer::addrPointsToConstantData(Value *Addr) {
 // 'All' is a vector of insns that will be instrumented.
 void ThreadSanitizer::chooseInstructionsToInstrument(
     SmallVectorImpl<Instruction *> &Local,
-    SmallVectorImpl<InstructionInfo> &All, const DataLayout &DL) {
+    SmallVectorImpl<InstructionInfo> &All, 
+    SmallVectorImpl<InstructionInfo> &Filtered, const DataLayout &DL) {
   DenseMap<Value *, size_t> WriteTargets; // Map of addresses to index in All
   // Iterate from the end.
   for (Instruction *I : reverse(Local)) {
@@ -463,6 +482,7 @@ void ThreadSanitizer::chooseInstructionsToInstrument(
           // Mark the write instruction as compound.
           WI.Flags |= InstructionInfo::kCompoundRW;
           NumOmittedReadsBeforeWrite++;
+          Filtered.emplace_back(I);
           continue;
         }
       }
@@ -479,6 +499,7 @@ void ThreadSanitizer::chooseInstructionsToInstrument(
       // referenced from a different thread and participate in a data race
       // (see llvm/Analysis/CaptureTracking.h for details).
       NumOmittedNonCaptured++;
+      Filtered.emplace_back(I);
       continue;
     }
 
@@ -535,6 +556,7 @@ bool ThreadSanitizer::sanitizeFunction(Function &F,
   SmallVector<Instruction*, 8> LocalLoadsAndStores;
   SmallVector<Instruction*, 8> AtomicAccesses;
   SmallVector<Instruction*, 8> MemIntrinCalls;
+  SmallVector<InstructionInfo, 8> Filtered;  
   SmallVector<Instruction*, 8> GetElem;
   bool Res = false;
   bool HasCalls = false;
@@ -567,10 +589,10 @@ bool ThreadSanitizer::sanitizeFunction(Function &F,
           MemIntrinCalls.push_back(&Inst);
         HasCalls = true;
         chooseInstructionsToInstrument(LocalLoadsAndStores, AllLoadsAndStores,
-                                       DL);
+                                       Filtered, DL);
       }
     }
-    chooseInstructionsToInstrument(LocalLoadsAndStores, AllLoadsAndStores, DL);
+    chooseInstructionsToInstrument(LocalLoadsAndStores, AllLoadsAndStores, Filtered, DL);
   }
 
   // We have collected all loads and stores.
@@ -579,6 +601,13 @@ bool ThreadSanitizer::sanitizeFunction(Function &F,
 
   for (auto Inst : GetElem) {
     Res |= instrumentCheckBound(Inst, DL);    
+  }
+
+  // Instrument memory accesses that are filtered by tsan. Those memory accesses may 
+  // still operate with uninitialized and staled value. We add 
+  // additional checking in crossbowman to detect uninitialized and staled memory access
+  for (const auto &II : Filtered) {
+    Res |= instrumentFiltered(II, DL); 
   }
 
   // Instrument memory accesses only if we want to report bugs in the function.
@@ -639,6 +668,76 @@ bool ThreadSanitizer::instrumentCheckBound(Instruction* Inst,
 
   return true;
 }
+
+bool ThreadSanitizer::instrumentFiltered(InstructionInfo II, 
+                                            const DataLayout &DL) {
+  InstrumentationIRBuilder IRB(II.Inst);
+  const bool IsWrite = isa<StoreInst>(*II.Inst);
+  Value *Addr = IsWrite ? cast<StoreInst>(II.Inst)->getPointerOperand()
+                        : cast<LoadInst>(II.Inst)->getPointerOperand();
+  Type *OrigTy = getLoadStoreType(II.Inst);
+
+  // swifterror memory addresses are mem2reg promoted by instruction selection.
+  // As such they cannot have regular uses like an instrumentation function and
+  // it makes no sense to track them as memory.
+  if (Addr->isSwiftError())
+    return false;
+
+  int Idx = getMemoryAccessFuncIndex(OrigTy, Addr, DL);
+  if (Idx < 0)
+    return false;
+
+  /*
+  if (IsWrite && isVtableAccess(II.Inst)) {
+    LLVM_DEBUG(dbgs() << "  VPTR : " << *II.Inst << "\n");
+    Value *StoredValue = cast<StoreInst>(II.Inst)->getValueOperand();
+    // StoredValue may be a vector type if we are storing several vptrs at once.
+    // In this case, just take the first element of the vector since this is
+    // enough to find vptr races.
+    if (isa<VectorType>(StoredValue->getType()))
+      StoredValue = IRB.CreateExtractElement(
+          StoredValue, ConstantInt::get(IRB.getInt32Ty(), 0));
+    if (StoredValue->getType()->isIntegerTy())
+      StoredValue = IRB.CreateIntToPtr(StoredValue, IRB.getInt8PtrTy());
+    // Call TsanVptrUpdate.
+    IRB.CreateCall(TsanVptrUpdate,
+                   {IRB.CreatePointerCast(Addr, IRB.getInt8PtrTy()),
+                    IRB.CreatePointerCast(StoredValue, IRB.getInt8PtrTy())});
+    NumInstrumentedVtableWrites++;
+    return true;
+  }
+  if (!IsWrite && isVtableAccess(II.Inst)) {
+    IRB.CreateCall(TsanVptrLoad,
+                   IRB.CreatePointerCast(Addr, IRB.getInt8PtrTy()));
+    NumInstrumentedVtableReads++;
+    return true;
+  }
+  */
+
+  const Align Alignment = IsWrite ? cast<StoreInst>(II.Inst)->getAlign()
+                                  : cast<LoadInst>(II.Inst)->getAlign();
+  const bool IsCompoundRW =
+      ClCompoundReadBeforeWrite && (II.Flags & InstructionInfo::kCompoundRW);
+  const bool IsVolatile = ClDistinguishVolatile &&
+                          (IsWrite ? cast<StoreInst>(II.Inst)->isVolatile()
+                                   : cast<LoadInst>(II.Inst)->isVolatile());
+  assert((!IsVolatile || !IsCompoundRW) && "Compound volatile invalid!");
+
+  const uint32_t TypeSize = DL.getTypeStoreSizeInBits(OrigTy);
+  FunctionCallee OnAccessFunc = nullptr;
+  if (Alignment >= Align(8) || (Alignment.value() % (TypeSize / 8)) == 0) {
+    OnAccessFunc = IsWrite ? TsanFilteredWrite[Idx] : TsanFilteredRead[Idx];
+  } else {
+    OnAccessFunc = IsWrite ? TsanFilteredUnalignedWrite[Idx] : TsanFilteredUnalignedRead[Idx];
+  }
+  IRB.CreateCall(OnAccessFunc, IRB.CreatePointerCast(Addr, IRB.getInt8PtrTy()));
+  if (IsCompoundRW || IsWrite)
+    NumInstrumentedWrites++;
+  if (IsCompoundRW || !IsWrite)
+    NumInstrumentedReads++;
+  return true;
+}
+
 
 int ThreadSanitizer::getMemoryAccessSize(Type *origTy, const DataLayout &dl) {
   // Type *origPtrTy = addr->getType();
