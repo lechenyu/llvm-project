@@ -625,11 +625,11 @@ ALWAYS_INLINE USED void MemoryAccess_onlyMapping(ThreadState* thr, uptr pc, uptr
   if (!TryTraceMemoryAccess(thr, pc, addr, size, typ))
     return TraceRestartMemoryAccess(thr, pc, addr, size, typ);
 
-  if (!(typ & kAccessWrite))
+  if (typ & kAccessRead)
   {
     CheckMapping(thr, addr, size, shadow_mem, cur, typ);
   }
-  else{
+  else if(typ == kAccessWrite){
     UpdateMapping(thr, addr, size, shadow_mem);
   }
   
@@ -662,8 +662,15 @@ ALWAYS_INLINE USED void UnalignedMemoryAccess_onlyMapping(ThreadState* thr, uptr
     if (!TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
       return RestartUnalignedMemoryAccess_onlyMapping(thr, pc, addr, size, typ);
     traced = true;
-    if (UNLIKELY(CheckRaces(thr, shadow_mem, cur, shadow, access, typ)))
-      return;
+    // if (UNLIKELY(CheckRaces(thr, shadow_mem, cur, shadow, access, typ)))
+    //   return;
+    if (typ & kAccessRead )
+    {
+      CheckMapping(thr,addr,size1,shadow_mem,cur,typ);
+    }
+    else if(typ == kAccessWrite){
+      UpdateMapping(thr,addr,size1,shadow_mem);
+    }
   }
 SECOND:
   uptr size2 = size - size1;
@@ -676,7 +683,15 @@ SECOND:
     return;
   if (!traced && !TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
     return RestartUnalignedMemoryAccess_onlyMapping(thr, pc, addr, size, typ);
-  CheckRaces(thr, shadow_mem, cur, shadow, access, typ);
+  // CheckRaces(thr, shadow_mem, cur, shadow, access, typ);
+  if (typ & kAccessRead )
+  {
+    CheckMapping(thr,addr+size1,size2,shadow_mem,cur,typ);
+  }
+  else if(typ == kAccessWrite){
+    UpdateMapping(thr,addr+size1,size2,shadow_mem);
+  }
+  
 }
 
 
@@ -703,7 +718,7 @@ ALWAYS_INLINE USED void MemoryAccess(ThreadState* thr, uptr pc, uptr addr,
   if (!TryTraceMemoryAccess(thr, pc, addr, size, typ))
     return TraceRestartMemoryAccess(thr, pc, addr, size, typ);
 
-  if (typ != kAccessWrite)
+  if (typ & kAccessRead)
   {
     CheckMapping(thr, addr, size, shadow_mem, cur, typ);
   }
