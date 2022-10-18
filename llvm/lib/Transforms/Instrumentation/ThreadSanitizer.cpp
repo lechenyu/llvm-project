@@ -605,7 +605,7 @@ bool ThreadSanitizer::sanitizeFunction(Function &F,
 
   // Instrument memory accesses that are filtered by tsan. Those memory accesses may 
   // still operate with uninitialized and staled value. We add 
-  // additional checking in crossbowman to detect uninitialized and staled memory access
+  // additional checking in arbalest to detect uninitialized and staled memory access
   for (const auto &II : Filtered) {
     Res |= instrumentFiltered(II, DL); 
   }

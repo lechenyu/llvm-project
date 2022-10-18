@@ -480,15 +480,6 @@ struct Taskgroup final : DataPoolEntry<Taskgroup> {
 
 static int InitialDevice;
 
-struct ThreadData {
-  uint64_t ThreadID;
-  int DeviceID;
-
-  ThreadData(uint64_t ThreadID): ThreadID(ThreadID), DeviceID(InitialDevice) {
-  
-  }
-};
-
 struct TaskData;
 typedef DataPool<TaskData> TaskDataPool;
 template <> __thread TaskDataPool *TaskDataPool::ThreadDataPool = nullptr;
@@ -627,9 +618,6 @@ static inline TaskData *ToTaskData(ompt_data_t *task_data) {
   return reinterpret_cast<TaskData *>(task_data->ptr);
 }
 
-// static inline ThreadData* ToThreadData(ompt_data_t *thread_data) {
-//   return reinterpret_cast<ThreadData *>(thread_data->ptr);
-// }
 
 /// Store a mutex for each wait_id to resolve race condition with callbacks.
 std::unordered_map<ompt_wait_id_t, std::mutex> Locks;
@@ -650,7 +638,6 @@ static void ompt_tsan_thread_begin(ompt_thread_t thread_type,
   TsanNewMemory(DependencyDataPool::ThreadDataPool,
                 sizeof(DependencyDataPool::ThreadDataPool));
   thread_data->value = my_next_id();
-  thread_data->ptr = new ThreadData(my_next_id());
 
 }
 
@@ -661,10 +648,6 @@ static void ompt_tsan_thread_end(ompt_data_t *thread_data) {
   delete TaskDataPool::ThreadDataPool;
   delete DependencyDataPool::ThreadDataPool;
 
-  // TODO: decide if the following is necessary
-  if (thread_data->ptr) {
-    delete (ThreadData *)thread_data->ptr;
-  }
   TsanIgnoreWritesEnd();
 }
 
@@ -737,11 +720,10 @@ static void ompt_tsan_implicit_task(ompt_scope_endpoint_t endpoint,
     // level 0 is the current task, level 1 is the paret task.
     if (type & ompt_task_initial) {
       int dd = 1;
-      int r;
       ompt_data_t *spt = nullptr;
-      r = ompt_get_task_info(dd, NULL, &spt, NULL, NULL, NULL);
+      ompt_get_task_info(dd, NULL, &spt, NULL, NULL, NULL);
       if (spt) {
-        printf("    Parent task in depth %d: %p \n", dd, spt);
+        // printf("    Parent task in depth %d: %p \n", dd, spt);
         TaskData* parent_task = (TaskData*) spt->ptr;
         if (parent_task->IsOnTarget)
         {
@@ -939,7 +921,6 @@ static void ompt_tsan_task_create(
   assert(new_task_data->ptr == NULL &&
          "Task data should be initialized to NULL");
   if (type & ompt_task_initial) {
-    printf("initial task create \n");
     ompt_data_t *parallel_data;
     int team_size = 1;
     ompt_get_parallel_info(0, &parallel_data, &team_size);
@@ -1005,8 +986,6 @@ static void ompt_tsan_task_schedule(ompt_data_t *first_task_data,
   //    ompt_task_switch        = 7
   //     -> first suspended, second starts
   //
-
-  // TODO: update isOnTarget in tsan
 
   if (prior_task_status == ompt_task_early_fulfill)
     return;
@@ -1084,6 +1063,14 @@ static void ompt_tsan_task_schedule(ompt_data_t *first_task_data,
   // 1. Task will begin execution after it has been created.
   // 2. Task will resume after it has been switched away.
   TsanHappensAfter(ToTask->GetTaskPtr());
+
+  // Update isOnTarget in tsan
+  if(ToTask->IsOnTarget){
+    AnnotateEnterTargetRegion();
+  }
+  else if(!ToTask->IsOnTarget){
+    AnnotateExitTargetRegion();
+  }
 }
 
 static void ompt_tsan_dependences(ompt_data_t *task_data,
@@ -1141,14 +1128,6 @@ static void ompt_tsan_mutex_released(ompt_mutex_t kind, ompt_wait_id_t wait_id,
   Lock.unlock();
 }
 
-// TODO: change this to dev mem
-// static void ompt_tsan_target_data_op(ompt_id_t target_id, ompt_id_t host_op_id,
-//                               ompt_target_data_op_t optype, void *src_addr,
-//                               int src_device_num, void *dest_addr,
-//                               int dest_device_num, size_t bytes,
-//                               const void *codeptr_ra) {
-//     AnnotateMapping(src_addr, dest_addr, bytes, optype);
-// }
 
 static void ompt_tsan_device_mem(ompt_data_t *target_task_data,
                                 ompt_data_t *target_data,
@@ -1157,28 +1136,28 @@ static void ompt_tsan_device_mem(ompt_data_t *target_task_data,
                                 int orig_device_num, void *dest_addr,
                                 int dest_device_num, size_t bytes,
                                 const void *codeptr_ra) {
-    printf("ompt tsan device mem, orig_addr is %p, dev_addr is %p, size is %lu \n  ", orig_addr, dest_addr, bytes);
+    // printf("ompt tsan device mem, orig_addr is %p, dev_addr is %p, size is %lu \n  ", orig_addr, dest_addr, bytes);
 
-    if (device_mem_flag & ompt_device_mem_flag_to) {
-      printf("ompt_device_mem_flag_to | ");
-    }
+    // if (device_mem_flag & ompt_device_mem_flag_to) {
+    //   printf("ompt_device_mem_flag_to | ");
+    // }
 
-    if (device_mem_flag & ompt_device_mem_flag_from) {
-      printf("ompt_device_mem_flag_from | ");
-    }
-    if (device_mem_flag & ompt_device_mem_flag_alloc) {
-      printf("ompt_device_mem_flag_alloc | ");
-    }
-    if (device_mem_flag & ompt_device_mem_flag_release) {
-      printf("ompt_device_mem_flag_release | ");
-    }
-    if (device_mem_flag & ompt_device_mem_flag_associate) {
-      printf("ompt_device_mem_flag_associate | ");
-    }
-    if (device_mem_flag & ompt_device_mem_flag_disassociate) {
-      printf("ompt_device_mem_flag_disassociate | ");
-    }
-    printf("\n");
+    // if (device_mem_flag & ompt_device_mem_flag_from) {
+    //   printf("ompt_device_mem_flag_from | ");
+    // }
+    // if (device_mem_flag & ompt_device_mem_flag_alloc) {
+    //   printf("ompt_device_mem_flag_alloc | ");
+    // }
+    // if (device_mem_flag & ompt_device_mem_flag_release) {
+    //   printf("ompt_device_mem_flag_release | ");
+    // }
+    // if (device_mem_flag & ompt_device_mem_flag_associate) {
+    //   printf("ompt_device_mem_flag_associate | ");
+    // }
+    // if (device_mem_flag & ompt_device_mem_flag_disassociate) {
+    //   printf("ompt_device_mem_flag_disassociate | ");
+    // }
+    // printf("\n");
 
     AnnotateMapping(orig_addr, dest_addr, bytes, device_mem_flag);
 }

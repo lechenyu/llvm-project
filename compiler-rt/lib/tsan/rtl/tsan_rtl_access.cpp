@@ -636,7 +636,6 @@ ALWAYS_INLINE USED void MemoryAccess_onlyMapping(ThreadState* thr, uptr pc, uptr
 }
 
 
-// TODO: update UnalignedMemoryAccess to only check Mapping
 NOINLINE
 void RestartUnalignedMemoryAccess_onlyMapping(ThreadState* thr, uptr pc, uptr addr,
                                   uptr size, AccessType typ) {

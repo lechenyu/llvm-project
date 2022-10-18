@@ -355,9 +355,21 @@ AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 opty
   SCOPED_ANNOTATION(AnnotateMapping);
   
   if (optype & ompt_device_mem_flag_alloc){
-    // TODO: check if already exists, if exists, delete it and reset the shadow memory.
-    ASSERT(ctx->h2t.insert({(uptr)src_addr, (uptr)src_addr + bytes}, {(uptr)dest_addr, bytes}), "[alloc] Host address %p is already involved in a mapping \n", src_addr);
-    ASSERT(ctx->t2h.insert({(uptr)dest_addr, (uptr)dest_addr + bytes}, {(uptr)src_addr, bytes}), "[alloc] Device address %p is already involved in a mapping \n", dest_addr);
+    // ASSERT(ctx->h2t.insert({(uptr)src_addr, (uptr)src_addr + bytes}, {(uptr)dest_addr, bytes}), "[alloc] Host address %p is already involved in a mapping \n", src_addr);
+    // ASSERT(ctx->t2h.insert({(uptr)dest_addr, (uptr)dest_addr + bytes}, {(uptr)src_addr, bytes}), "[alloc] Device address %p is already involved in a mapping \n", dest_addr);
+    bool a = ctx->h2t.insert({(uptr)src_addr, (uptr)src_addr + bytes}, {(uptr)dest_addr, bytes});
+    bool b = ctx->t2h.insert({(uptr)dest_addr, (uptr)dest_addr + bytes}, {(uptr)src_addr, bytes});
+
+    // check if already exists, if exists, delete it and reset the shadow memory.
+    if(!a){
+      ctx->h2t.remove({(uptr)src_addr, (uptr)src_addr + bytes});
+      ctx->h2t.insert({(uptr)src_addr, (uptr)src_addr + bytes}, {(uptr)dest_addr, bytes});
+    }
+
+    if(!b){
+      ctx->t2h.remove({(uptr)dest_addr, (uptr)dest_addr + bytes});
+      ctx->t2h.insert({(uptr)dest_addr, (uptr)dest_addr + bytes}, {(uptr)src_addr, bytes});
+    }
   }
   
   if (optype & ompt_device_mem_flag_to) {
