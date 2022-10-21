@@ -1,8 +1,10 @@
 #include "llvm/Transforms/Instrumentation/BallistaInstrument.h"
+#include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Demangle/Demangle.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Type.h"
+#include "llvm/Transforms/Instrumentation.h"
 
 using namespace llvm;
 
@@ -23,7 +25,7 @@ bool BallistaHostInstrumentPass::shouldInstrument(Module &M) {
   return false;
 }
 
-GlobalVariable *BallistaHostInstrumentPass::addShadowMemPtr(
+GlobalVariable *BallistaHostInstrumentPass::addGlobPtr(
     Module &M, OpenMPIRBuilder &OMPBuilder, StringRef &VarName, Type *VarType,
     uint64_t VarSize) {
   GlobalVariable *G = new GlobalVariable(
@@ -34,7 +36,14 @@ GlobalVariable *BallistaHostInstrumentPass::addShadowMemPtr(
   return G;
 }
 
-void BallistaHostInstrumentPass::instrumentLoadOrStore(Module &M) {}
+void BallistaHostInstrumentPass::insertBallistaRoutines(Module &M) {
+  for (auto &F : M) {
+    if (F.getName() == "main") {
+      IRBuilder<> IRB(&F.getEntryBlock().front());
+      IRB.CreateCall(RegisterGlobPtrs, {AppMemStart, AppShdwStart});
+    }
+  }
+}
 
 PreservedAnalyses BallistaHostInstrumentPass::run(Module &M,
                                                   ModuleAnalysisManager &AM) {
@@ -50,19 +59,27 @@ PreservedAnalyses BallistaHostInstrumentPass::run(Module &M,
   verboseOuts() << "Instrument " << M.getModuleIdentifier() << " for target "
                 << M.getTargetTriple() << "(host device)"
                 << "\n";
-  std::string Var1 = "app_start_";
-  std::string Var2 = "shadow_start_";
-  StringRef AppStartName(Var1);
-  StringRef ShaStartName(Var2);
+  StringRef Var1("app_mem_start_"), Var2("app_shdw_start_"),
+      Var3("glob_mem_start_"), Var4("glob_mem_end_"), Var5("glob_shdw_start_");
   Type *Int64Ty = Type::getInt64Ty(M.getContext());
 
   OpenMPIRBuilder OMPBuilder(M);
   OMPBuilder.initialize();
-  GlobalVariable *AppStart =
-      addShadowMemPtr(M, OMPBuilder, AppStartName, Int64Ty, 8);
-  GlobalVariable *ShaStart =
-      addShadowMemPtr(M, OMPBuilder, ShaStartName, Int64Ty, 8);
-  instrumentLoadOrStore(M);
+  AppMemStart = addGlobPtr(M, OMPBuilder, Var1, Int64Ty, 8);
+  AppShdwStart = addGlobPtr(M, OMPBuilder, Var2, Int64Ty, 8);
+  // GlobMemStart = addGlobPtr(M, OMPBuilder, Var3, Int64Ty, 8);
+  // GlobMemEnd = addGlobPtr(M, OMPBuilder, Var4, Int64Ty, 8);
+  // GlobShdwStart = addGlobPtr(M, OMPBuilder, Var5, Int64Ty, 8);
+  // unsigned LongSize = M.getDataLayout().getPointerSizeInBits();
+  // IntegerType IntPtrTy = Type::getIntNTy(IRB.getContext(), LongSize);
+  
+  IRBuilder<> IRB(M.getContext());
+  AttributeList Attr;
+  Attr = Attr.addFnAttribute(M.getContext(), Attribute::NoUnwind);
+  SmallString<32> FuncName("ballista_register_glob_ptrs");
+  RegisterGlobPtrs = M.getOrInsertFunction(FuncName, Attr, IRB.getVoidTy(), IRB.getPtrTy(), IRB.getPtrTy());
+
+  insertBallistaRoutines(M);
   // std::error_code err;
   // raw_fd_ostream fs(M.getName().str() + "-host.after", err);
   // M.print(fs, nullptr);
@@ -106,7 +123,7 @@ BallistaTargetInstrumentPass::getFunctionsToInstrument(Module &M) {
 }
 
 GlobalVariable *
-BallistaTargetInstrumentPass::addShadowMemPtr(Module &M, StringRef &VarName,
+BallistaTargetInstrumentPass::addGlobPtr(Module &M, StringRef &VarName,
                                               Type *VarType) {
   GlobalVariable *G = new GlobalVariable(
       M, VarType, false, GlobalVariable::ExternalLinkage, nullptr, VarName);
@@ -115,17 +132,55 @@ BallistaTargetInstrumentPass::addShadowMemPtr(Module &M, StringRef &VarName,
   return G;
 }
 
-void BallistaTargetInstrumentPass::instrumentLoadOrStore(SmallVector<Function *> &FuncList) {
-  for (auto &F : FuncList) {
-    if (F->getName().startswith("__omp_offloading")) {
-      for (auto &BB : *F) {
-        unsigned int AccessId = 0;
-        for (auto &I : BB) {
-
-        }
-      }
+bool BallistaTargetInstrumentPass::aliasWithMappedVariables(AAResults &AA, Function &F, Instruction &I) {
+  bool MayAlias = false;
+  for (auto &Arg : F.args()) {
+    AliasResult AR = AA.alias(MemoryLocation::get(&I), MemoryLocation::getBeforeOrAfter(&Arg));
+    if (AR != AliasResult::NoAlias) {
+      MayAlias = true;
+      break;
     }
   }
+  return MayAlias;
+}
+
+void BallistaTargetInstrumentPass::instrumentLoadOrStore(Instruction &I, BallistaShadow &AccessId) {
+  IRBuilder<> IRB(&I);
+  const bool IsWrite = isa<StoreInst>(&I);
+  Value *Addr = IsWrite ? cast<StoreInst>(&I)->getPointerOperand()
+                        : cast<LoadInst>(&I)->getPointerOperand();
+  // locate shadow cell
+  IntegerType *I64 = Type::getInt64Ty(IRB.getContext());
+  IntegerType *Shadow = Type::getIntNTy(IRB.getContext(), kShadowSize);
+  PointerType *ShadowPtr = Shadow->getPointerTo();
+
+  LoadInst *ShdwStart = IRB.CreateLoad(I64, AppShdwStart, "load shadow mem start");
+  LoadInst *MemStart = IRB.CreateLoad(I64, AppMemStart, "load app mem start");
+  Value *AddrVal = IRB.CreatePtrToInt(Addr, I64);
+  Value *Delta = IRB.CreateSub(AddrVal, MemStart);
+  Value *Offset = IRB.CreateUDiv(Delta, ConstantInt::get(I64, kShadowCell));
+  Value *ShdwStartPtr = IRB.CreateIntToPtr(ShdwStart, ShadowPtr);
+  Value *CellPtr = IRB.CreateGEP(Shadow, ShdwStartPtr, Offset, "", true);
+  LoadInst *CellVal = IRB.CreateLoad(Shadow, CellPtr);
+  Value *State = IRB.CreateAnd(CellVal, kStateMask);
+  Value *NewState;
+  if (IsWrite) {
+    NewState = IRB.CreateOr(State, kWriteMask);
+  } else {
+    Value *Xor = IRB.CreateXor(State, ConstantInt::getSigned(Shadow, -1));
+    Value *SW = IRB.CreateAnd(Xor, kWriteMask);
+    Value *SRbw = IRB.CreateAShr(SW, kWriteMask - kReadBeforeWriteMask);
+    Value *SWRbw = IRB.CreateOr(SRbw, kReadMask);
+    NewState = IRB.CreateOr(State, SWRbw);
+  }
+  if (AccessId >= 1 << 12 ) {
+    llvm::errs() << "Warning: Reset AccessId to 1, there are more than " << (1 << 12) << "load/store instructions in Function " << I.getParent()->getName() << "\n"; 
+    AccessId = 1;
+  }
+  Value *Dbg = ConstantInt::get(Shadow, AccessId << kDbgShift);
+  AccessId += 1;
+  Value *NewCellVal = IRB.CreateOr(Dbg, NewState);
+  IRB.CreateStore(NewCellVal, CellPtr);
 }
 
 PreservedAnalyses BallistaTargetInstrumentPass::run(Module &M,
@@ -143,19 +198,36 @@ PreservedAnalyses BallistaTargetInstrumentPass::run(Module &M,
   verboseOuts() << "Instrument " << M.getModuleIdentifier() << " for target "
                 << M.getTargetTriple() << "(target device)"
                 << "\n";
-
+  auto &FAM = AM.getResult<FunctionAnalysisManagerModuleProxy>(M).getManager();
   // Insert global pointers to store the start address of application memory and
   // shadow memory
-  std::string Var1 = "app_start_";
-  std::string Var2 = "shadow_start_";
-  StringRef AppStartName(Var1);
-  StringRef ShaStartName(Var2);
+  StringRef Var1("app_mem_start_"), Var2("app_shdw_start_"),
+      Var3("glob_mem_start_"), Var4("glob_mem_end_"), Var5("glob_shdw_start_");
   Type *Int64Ty = Type::getInt64Ty(M.getContext());
-  GlobalVariable *AppStart = addShadowMemPtr(M, AppStartName, Int64Ty);
-  GlobalVariable *ShaStart = addShadowMemPtr(M, ShaStartName, Int64Ty);
+
+  AppMemStart = addGlobPtr(M, Var1, Int64Ty);
+  AppShdwStart = addGlobPtr(M, Var2, Int64Ty);
+  // GlobMemStart = addGlobPtr(M, Var3, Int64Ty);
+  // GlobMemEnd = addGlobPtr(M, Var4, Int64Ty);
+  // GlobShdwStart = addGlobPtr(M, Var5, Int64Ty);
 
   // Instrument load/store
-  instrumentLoadOrStore(SelectedFunc);
+  for (auto &F : SelectedFunc) {
+    if (F->getName().startswith("__omp_offloading")) {
+      llvm::errs() << "Instrument " << F->getName() << "\n";
+      AAResults &AA = FAM.getResult<AAManager>(*F);
+      for (auto &BB : *F) {
+        BallistaShadow AccessId = 1;
+        for (auto &I : BB) {
+          if ((isa<LoadInst>(&I) || isa<StoreInst>(&I)) &&
+              aliasWithMappedVariables(AA, *F, I)) {
+            instrumentLoadOrStore(I, AccessId);
+          }
+        }
+      }
+    }
+  }
+
   // std::error_code err;
   // raw_fd_ostream fs(M.getName().str() + "-target.after", err);
   // M.print(fs, nullptr);

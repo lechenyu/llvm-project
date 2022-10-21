@@ -36,7 +36,8 @@
 #include "llvm/Frontend/OpenMP/OMPConstants.h"
 
 using namespace llvm;
-
+using MemoryManagerTy = ReservedMemoryManagerTy;
+//using MemoryManagerTy = DefaultMemoryManagerTy;
 // Utility for retrieving and printing CUDA error string.
 #ifdef OMPTARGET_DEBUG
 #define CUDA_ERR_STRING(err)                                                   \
@@ -1513,6 +1514,13 @@ public:
 
     return OFFLOAD_SUCCESS;
   }
+
+  void *initShadowMemory(int32_t DeviceId, void *GlobalStart) {
+    if (UseMemoryManager) {
+      return MemoryManagers[DeviceId]->initializeShadowMemory(GlobalStart);
+    }
+    return nullptr;
+  }
 };
 
 DeviceRTLTy DeviceRTL;
@@ -1863,6 +1871,14 @@ int32_t __tgt_rtl_init_device_info(int32_t DeviceId,
     return OFFLOAD_FAIL;
 
   return DeviceRTL.initDeviceInfo(DeviceId, DeviceInfoPtr, ErrStr);
+}
+
+void *__tgt_rtl_init_shadow_memory(int32_t DeviceId, void *GlobalStart) {
+  assert(DeviceRTL.isValidDeviceId(DeviceId) && "device_id is invalid");
+
+  if (DeviceRTL.setContext(DeviceId) != OFFLOAD_SUCCESS)
+    return nullptr;
+  return DeviceRTL.initShadowMemory(DeviceId, GlobalStart);
 }
 
 #ifdef __cplusplus

@@ -15,6 +15,7 @@
 #include "device.h"
 #include "private.h"
 #include "rtl.h"
+#include "ballista.h"
 
 #include <cassert>
 #include <cstdint>
@@ -78,6 +79,20 @@ static int initLibrary(DeviceTy &Device) {
   int Rc = OFFLOAD_SUCCESS;
   bool SupportsEmptyImages = Device.RTL->supports_empty_images &&
                              Device.RTL->supports_empty_images() > 0;
+                             
+  void *GlobalStart = reinterpret_cast<void *>((1UL << 48) - 1);
+  void *AppStartTgtPtr = nullptr, *ShdwStartTgtPtr = nullptr;
+  if (BallistaEnabled) {
+    int32_t ExpectedBID = InvalidDeviceID;
+    if (!BallistaEnabledDeviceID.compare_exchange_strong(
+            ExpectedBID, DeviceId, std::memory_order_acq_rel) &&
+        ExpectedBID != DeviceId) {
+      REPORT("Use multiple devices in device offloading when enabling "
+             "Ballista. Detected devices: [%d, %d]\n",
+             ExpectedBID, DeviceId);
+      return OFFLOAD_FAIL;
+    }
+  }
 
   std::lock_guard<decltype(Device.PendingGlobalsMtx)> LG(
       Device.PendingGlobalsMtx);
@@ -137,7 +152,6 @@ static int initLibrary(DeviceTy &Device) {
 
       DeviceTy::HDTTMapAccessorTy HDTTMap =
           Device.HostDataToTargetMap.getExclusiveAccessor();
-
       __tgt_target_table *HostTable = &TransTable->HostTable;
       for (__tgt_offload_entry *CurrDeviceEntry = TargetTable->EntriesBegin,
                                *CurrHostEntry = HostTable->EntriesBegin,
@@ -148,7 +162,18 @@ static int initLibrary(DeviceTy &Device) {
           // has data.
           assert(CurrDeviceEntry->size == CurrHostEntry->size &&
                  "data size mismatch");
-
+          if (BallistaEnabled) {
+            void *HS = CurrHostEntry->addr;
+            void *DS = CurrDeviceEntry->addr;
+            if (HS == AppStartPtr) {
+              AppStartTgtPtr = DS;
+            } else if (HS == ShdwStartPtr) {
+              ShdwStartTgtPtr = DS;
+            }
+            GlobalStart = DS < GlobalStart ? DS : GlobalStart;
+          }
+          //printf("global var %s: %p, %p, %lu\n", CurrDeviceEntry->name, CurrHostEntry->addr, CurrDeviceEntry->addr, CurrDeviceEntry->size);
+          
           // Fortran may use multiple weak declarations for the same symbol,
           // therefore we must allow for multiple weak symbols to be loaded from
           // the fat binary. Treat these mappings as any other "regular"
@@ -177,6 +202,31 @@ static int initLibrary(DeviceTy &Device) {
 
   if (Rc != OFFLOAD_SUCCESS) {
     return Rc;
+  }
+
+  if (BallistaEnabled) {
+    assert(GlobalStart != ((1UL << 48) - 1) && "Invaild global start address");
+    assert(AppStartTgtPtr);
+    assert(ShdwStartTgtPtr);
+    // make GlobalStart 8-byte aligned
+    void *RoundGlobalStart = reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(GlobalStart) & 0xFFFFFFFFFFFFFFF8UL);
+    void *ShdwStart = Device.RTL->init_shadow_memory(DeviceId, RoundGlobalStart);
+    if (ShdwStart) {
+      Rc = Device.RTL->data_submit(DeviceId, AppStartTgtPtr, &RoundGlobalStart, sizeof(void *));
+      if (Rc == OFFLOAD_SUCCESS) {
+        Rc = Device.RTL->data_submit(DeviceId, ShdwStartTgtPtr, &ShdwStart, sizeof(void *));
+      }
+    } else {
+      Rc = OFFLOAD_FAIL;
+    }
+  }
+  
+  if (Rc != OFFLOAD_SUCCESS) {
+    return Rc;
+  }
+
+  if (BallistaEnabled) {
+    DP("Successfully initialized Ballista\n");
   }
 
   /*

@@ -22,7 +22,8 @@ add_llvm_library(omptarget
   omptarget.cpp
   rtl.cpp
   LegacyAPI.cpp
-
+  ballista.cpp
+  
   ADDITIONAL_HEADER_DIRS
   ${LIBOMPTARGET_INCLUDE_DIR}
 

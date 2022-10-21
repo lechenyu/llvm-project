@@ -222,6 +222,8 @@ void RTLsTy::loadRTLs() {
         dlsym(DynlibHandle, "__tgt_rtl_init_async_info");
     *((void **)&R.init_device_info) =
         dlsym(DynlibHandle, "__tgt_rtl_init_device_info");
+    *((void **)&R.init_shadow_memory) =
+        dlsym(DynlibHandle, "__tgt_rtl_init_shadow_memory");
   }
 
   DP("RTLs loaded!\n");
