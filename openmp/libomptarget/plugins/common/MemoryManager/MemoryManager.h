@@ -481,7 +481,7 @@ class ReservedMemoryManagerTy {
     if (Ptr) {
       StartAddr = Ptr;
       ReservedList.emplace_back(InitialReservedSize, reinterpret_cast<char *>(Ptr));
-      printf("ReservedMemoryManager: address = [%p, %p]\n", Ptr, (char *)Ptr + InitialReservedSize);
+      DP("%s::constructor: reserved address = [%p, %p]\n", Name, Ptr, (char *)Ptr + InitialReservedSize);
     }
   }
 
@@ -615,6 +615,7 @@ public:
       deleteOnDevice(ShdwStartAddr);
       ShdwStartAddr = nullptr;
     }
+    DP("%s::initializeShadowMemory: shadow memory = [%p, %p]\n", Name, ShdwStartAddr, (char *)ShdwStartAddr + RoundShdwMemSize);
     return ShdwStartAddr;
   }
 

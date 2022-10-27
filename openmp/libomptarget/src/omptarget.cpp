@@ -212,9 +212,9 @@ static int initLibrary(DeviceTy &Device) {
     void *RoundGlobalStart = reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(GlobalStart) & 0xFFFFFFFFFFFFFFF8UL);
     void *ShdwStart = Device.RTL->init_shadow_memory(DeviceId, RoundGlobalStart);
     if (ShdwStart) {
-      Rc = Device.RTL->data_submit(DeviceId, AppStartTgtPtr, &RoundGlobalStart, sizeof(void *));
+      Rc = Device.RTL->data_submit(DeviceId, reinterpret_cast<uintptr_t *>(AppStartTgtPtr), &RoundGlobalStart, sizeof(uintptr_t));
       if (Rc == OFFLOAD_SUCCESS) {
-        Rc = Device.RTL->data_submit(DeviceId, ShdwStartTgtPtr, &ShdwStart, sizeof(void *));
+        Rc = Device.RTL->data_submit(DeviceId, reinterpret_cast<uintptr_t *>(ShdwStartTgtPtr), &ShdwStart, sizeof(uintptr_t));
       }
     } else {
       Rc = OFFLOAD_FAIL;

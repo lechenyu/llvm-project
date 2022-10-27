@@ -36,6 +36,7 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/InstrTypes.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/AtomicOrdering.h"
 #include "llvm/Support/Format.h"
@@ -1270,16 +1271,62 @@ llvm::Function *CGOpenMPRuntime::emitParallelOutlinedFunction(
     const OMPExecutableDirective &D, const VarDecl *ThreadIDVar,
     OpenMPDirectiveKind InnermostKind, const RegionCodeGenTy &CodeGen) {
   const CapturedStmt *CS = D.getCapturedStmt(OMPD_parallel);
-  return emitParallelOrTeamsOutlinedFunction(
+  llvm::Function *F = emitParallelOrTeamsOutlinedFunction(
       CGM, D, CS, ThreadIDVar, InnermostKind, getOutlinedHelperName(), CodeGen);
+  llvm::LLVMContext &C = F->getContext();
+  llvm::MDNode *MD = llvm::MDNode::get(C, llvm::MDString::get(C, "parallel"));
+  llvm::Function *Debug = nullptr;
+  for (auto &BB : *F) {
+    for (auto &I : BB) {
+      if (isa<llvm::CallInst>(&I)) {
+        llvm::CallInst *CI = cast<llvm::CallInst>(&I);
+        llvm::Function *Callee = CI->getCalledFunction();
+        if (Callee && Callee->getName().startswith(getOutlinedHelperName().str() + "_debug__")) {
+          Debug = Callee;
+          break;
+        }
+      }
+    }
+  }
+  if (Debug) {
+    Debug->setMetadata("omp_outlined_type", MD);
+    llvm::MDNode *MD2 = llvm::MDNode::get(C, llvm::MDString::get(C, "wrapper"));
+    F->setMetadata("omp_outlined_type", MD2);
+  } else {
+    F->setMetadata("omp_outlined_type", MD);
+  }
+  return F;
 }
 
 llvm::Function *CGOpenMPRuntime::emitTeamsOutlinedFunction(
     const OMPExecutableDirective &D, const VarDecl *ThreadIDVar,
     OpenMPDirectiveKind InnermostKind, const RegionCodeGenTy &CodeGen) {
   const CapturedStmt *CS = D.getCapturedStmt(OMPD_teams);
-  return emitParallelOrTeamsOutlinedFunction(
+  llvm::Function *F = emitParallelOrTeamsOutlinedFunction(
       CGM, D, CS, ThreadIDVar, InnermostKind, getOutlinedHelperName(), CodeGen);
+  llvm::LLVMContext &C = F->getContext();
+  llvm::MDNode *MD = llvm::MDNode::get(C, llvm::MDString::get(C, "teams"));
+  llvm::Function *Debug = nullptr;
+  for (auto &BB : *F) {
+    for (auto &I : BB) {
+      if (isa<llvm::CallInst>(&I)) {
+        llvm::CallInst *CI = cast<llvm::CallInst>(&I);
+        llvm::Function *Callee = CI->getCalledFunction();
+        if (Callee && Callee->getName().startswith(getOutlinedHelperName().str() + "_debug__")) {
+          Debug = Callee;
+          break;
+        }
+      }
+    }
+  }
+  if (Debug) {
+    Debug->setMetadata("omp_outlined_type", MD);
+    llvm::MDNode *MD2 = llvm::MDNode::get(C, llvm::MDString::get(C, "wrapper"));
+    F->setMetadata("omp_outlined_type", MD2);
+  } else {
+    F->setMetadata("omp_outlined_type", MD);
+  }
+  return F;
 }
 
 llvm::Function *CGOpenMPRuntime::emitTaskOutlinedFunction(

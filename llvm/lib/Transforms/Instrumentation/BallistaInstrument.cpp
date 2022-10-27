@@ -26,7 +26,7 @@ bool BallistaHostInstrumentPass::shouldInstrument(Module &M) {
 }
 
 GlobalVariable *BallistaHostInstrumentPass::addGlobPtr(
-    Module &M, OpenMPIRBuilder &OMPBuilder, StringRef &VarName, Type *VarType,
+    Module &M, OpenMPIRBuilder &OMPBuilder, Type *VarType, StringRef &VarName,
     uint64_t VarSize) {
   GlobalVariable *G = new GlobalVariable(
       M, VarType, false, GlobalVariable::ExternalLinkage, nullptr, VarName);
@@ -40,7 +40,17 @@ void BallistaHostInstrumentPass::insertBallistaRoutines(Module &M) {
   for (auto &F : M) {
     if (F.getName() == "main") {
       IRBuilder<> IRB(&F.getEntryBlock().front());
-      IRB.CreateCall(RegisterGlobPtrs, {AppMemStart, AppShdwStart});
+      Value *Argc, *Argv;
+      IntegerType *I32 = IRB.getInt32Ty();
+      PointerType *PtrTy = IRB.getPtrTy();
+      if (F.arg_size() == 2) {
+        Argc = F.getArg(0);
+        Argv = F.getArg(1);
+      } else {
+        Argc = ConstantInt::getSigned(I32, 0);
+        Argv = ConstantPointerNull::get(PtrTy);
+      }
+      IRB.CreateCall(RegisterGlobPtrs, {AppMemStart, AppShdwStart, Argc, Argv});
     }
   }
 }
@@ -57,16 +67,16 @@ PreservedAnalyses BallistaHostInstrumentPass::run(Module &M,
     return PreservedAnalyses::all();
   }
   verboseOuts() << "Instrument " << M.getModuleIdentifier() << " for target "
-                << M.getTargetTriple() << "(host device)"
+                << M.getTargetTriple() << " (host device)"
                 << "\n";
   StringRef Var1("app_mem_start_"), Var2("app_shdw_start_"),
       Var3("glob_mem_start_"), Var4("glob_mem_end_"), Var5("glob_shdw_start_");
-  Type *Int64Ty = Type::getInt64Ty(M.getContext());
+  IntegerType *I64 = Type::getInt64Ty(M.getContext());
 
   OpenMPIRBuilder OMPBuilder(M);
   OMPBuilder.initialize();
-  AppMemStart = addGlobPtr(M, OMPBuilder, Var1, Int64Ty, 8);
-  AppShdwStart = addGlobPtr(M, OMPBuilder, Var2, Int64Ty, 8);
+  AppMemStart = addGlobPtr(M, OMPBuilder, I64, Var1, I64->getBitWidth() / 8);
+  AppShdwStart = addGlobPtr(M, OMPBuilder, I64, Var2, I64->getBitWidth() / 8);
   // GlobMemStart = addGlobPtr(M, OMPBuilder, Var3, Int64Ty, 8);
   // GlobMemEnd = addGlobPtr(M, OMPBuilder, Var4, Int64Ty, 8);
   // GlobShdwStart = addGlobPtr(M, OMPBuilder, Var5, Int64Ty, 8);
@@ -77,7 +87,7 @@ PreservedAnalyses BallistaHostInstrumentPass::run(Module &M,
   AttributeList Attr;
   Attr = Attr.addFnAttribute(M.getContext(), Attribute::NoUnwind);
   SmallString<32> FuncName("ballista_register_glob_ptrs");
-  RegisterGlobPtrs = M.getOrInsertFunction(FuncName, Attr, IRB.getVoidTy(), IRB.getPtrTy(), IRB.getPtrTy());
+  RegisterGlobPtrs = M.getOrInsertFunction(FuncName, Attr, IRB.getVoidTy(), IRB.getPtrTy(), IRB.getPtrTy(), IRB.getInt32Ty(), IRB.getPtrTy());
 
   insertBallistaRoutines(M);
   // std::error_code err;
@@ -122,20 +132,24 @@ BallistaTargetInstrumentPass::getFunctionsToInstrument(Module &M) {
   return SelectedFunc;
 }
 
-GlobalVariable *
-BallistaTargetInstrumentPass::addGlobPtr(Module &M, StringRef &VarName,
-                                              Type *VarType) {
+GlobalVariable *BallistaTargetInstrumentPass::addGlobPtr(
+    Module &M, Type *VarType, Constant *Initializer, StringRef &VarName,
+    Optional<unsigned> AddressSpace) {
   GlobalVariable *G = new GlobalVariable(
-      M, VarType, false, GlobalVariable::ExternalLinkage, nullptr, VarName);
+      M, VarType, false, GlobalVariable::ExternalLinkage, Initializer, VarName,
+      nullptr, GlobalValue::NotThreadLocal, AddressSpace);
   G->setAlignment(Align(8));
   G->setVisibility(GlobalValue::ProtectedVisibility);
   return G;
 }
 
-bool BallistaTargetInstrumentPass::aliasWithMappedVariables(AAResults &AA, Function &F, Instruction &I) {
+bool BallistaTargetInstrumentPass::aliasWithMappedVariables(
+    AAResults &AA, Function &F, Instruction &I, unsigned ArgBeginIdx) {
   bool MayAlias = false;
-  for (auto &Arg : F.args()) {
-    AliasResult AR = AA.alias(MemoryLocation::get(&I), MemoryLocation::getBeforeOrAfter(&Arg));
+  for (auto Iter = F.arg_begin() + ArgBeginIdx, End = F.arg_end(); Iter != End; Iter++) {
+    Argument &Arg = *Iter;
+    AliasResult AR = AA.alias(MemoryLocation::get(&I),
+                              MemoryLocation::getBeforeOrAfter(&Arg));
     if (AR != AliasResult::NoAlias) {
       MayAlias = true;
       break;
@@ -161,7 +175,11 @@ void BallistaTargetInstrumentPass::instrumentLoadOrStore(Instruction &I, Ballist
   Value *Offset = IRB.CreateUDiv(Delta, ConstantInt::get(I64, kShadowCell));
   Value *ShdwStartPtr = IRB.CreateIntToPtr(ShdwStart, ShadowPtr);
   Value *CellPtr = IRB.CreateGEP(Shadow, ShdwStartPtr, Offset, "", true);
-  LoadInst *CellVal = IRB.CreateLoad(Shadow, CellPtr);
+  Value *Cond1 = IRB.CreateICmpUGE(AddrVal, MemStart);
+  Value *Cond2 = IRB.CreateICmpULT(AddrVal, ShdwStart);
+  Value *Cond = IRB.CreateAnd(Cond1, Cond2);
+  Value *ValidCellPtr = IRB.CreateSelect(Cond, CellPtr, DummyShadow);
+  LoadInst *CellVal = IRB.CreateLoad(Shadow, ValidCellPtr);
   Value *State = IRB.CreateAnd(CellVal, kStateMask);
   Value *NewState;
   if (IsWrite) {
@@ -180,7 +198,7 @@ void BallistaTargetInstrumentPass::instrumentLoadOrStore(Instruction &I, Ballist
   Value *Dbg = ConstantInt::get(Shadow, AccessId << kDbgShift);
   AccessId += 1;
   Value *NewCellVal = IRB.CreateOr(Dbg, NewState);
-  IRB.CreateStore(NewCellVal, CellPtr);
+  IRB.CreateStore(NewCellVal, ValidCellPtr);
 }
 
 PreservedAnalyses BallistaTargetInstrumentPass::run(Module &M,
@@ -191,7 +209,7 @@ PreservedAnalyses BallistaTargetInstrumentPass::run(Module &M,
   SmallVector<Function *> SelectedFunc = getFunctionsToInstrument(M);
   if (SelectedFunc.empty()) {
     verboseOuts() << "Not instrument " << M.getModuleIdentifier()
-                  << " for target " << M.getTargetTriple() << "(target device)"
+                  << " for target " << M.getTargetTriple() << " (target device)"
                   << "\n";
     return PreservedAnalyses::all();
   }
@@ -203,18 +221,21 @@ PreservedAnalyses BallistaTargetInstrumentPass::run(Module &M,
   // shadow memory
   StringRef Var1("app_mem_start_"), Var2("app_shdw_start_"),
       Var3("glob_mem_start_"), Var4("glob_mem_end_"), Var5("glob_shdw_start_");
-  Type *Int64Ty = Type::getInt64Ty(M.getContext());
+  StringRef VarDummy("dummy_shadow");
+  Type *I64 = Type::getInt64Ty(M.getContext());
+  Type *Shadow = Type::getIntNTy(M.getContext(), kShadowSize);
 
-  AppMemStart = addGlobPtr(M, Var1, Int64Ty);
-  AppShdwStart = addGlobPtr(M, Var2, Int64Ty);
-  // GlobMemStart = addGlobPtr(M, Var3, Int64Ty);
-  // GlobMemEnd = addGlobPtr(M, Var4, Int64Ty);
-  // GlobShdwStart = addGlobPtr(M, Var5, Int64Ty);
+  AppMemStart = addGlobPtr(M, I64, nullptr, Var1);
+  AppShdwStart = addGlobPtr(M, I64, nullptr, Var2);
+  DummyShadow = addGlobPtr(M, Shadow, ConstantInt::get(Shadow, 0), VarDummy);
+  // GlobMemStart = addGlobPtr(M, I64, nullptr, Var3);
+  // GlobMemEnd = addGlobPtr(M, I64, nullptr, Var4);
+  // GlobShdwStart = addGlobPtr(M, I64, nullptr, Var5);
 
   // Instrument load/store
   for (auto &F : SelectedFunc) {
     if (F->getName().startswith("__omp_offloading")) {
-      llvm::errs() << "Instrument " << F->getName() << "\n";
+      verboseOuts() << "Instrument " << F->getName() << "\n"; 
       AAResults &AA = FAM.getResult<AAManager>(*F);
       for (auto &BB : *F) {
         BallistaShadow AccessId = 1;
@@ -225,6 +246,35 @@ PreservedAnalyses BallistaTargetInstrumentPass::run(Module &M,
           }
         }
       }
+    } else if (F->getName().startswith("__omp_outlined__")) {
+      verboseOuts() << "Instrument " << F->getName() << "\n";
+      AAResults &AA = FAM.getResult<AAManager>(*F);
+      MDNode* MD = F->getMetadata("omp_outlined_type");
+      if (!MD) {
+        report_fatal_error(Twine("Unsupported outlined function:", F->getName()));
+      }
+      StringRef OutlinedType = dyn_cast<MDString>(MD->getOperand(0))->getString();
+      unsigned ArgBeginIdx = 0;
+      if (OutlinedType == "parallel") {
+        ArgBeginIdx = 4;
+      } else if (OutlinedType == "teams") {
+        ArgBeginIdx = 2;
+      } else if (OutlinedType == "wrapper") {
+        continue;
+      } else {
+        report_fatal_error(Twine("Unknown outlined type:", OutlinedType));
+      }
+      for (auto &BB : *F) {
+        BallistaShadow AccessId = 1;
+        for (auto &I : BB) {
+          if ((isa<LoadInst>(&I) || isa<StoreInst>(&I)) &&
+              aliasWithMappedVariables(AA, *F, I, ArgBeginIdx)) {
+            instrumentLoadOrStore(I, AccessId);
+          }
+        }
+      }
+    } else {
+      verboseOuts() << "Instrument User-defined function " << F->getName() << "\n";
     }
   }
 

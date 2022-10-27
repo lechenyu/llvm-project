@@ -44,7 +44,7 @@ private:
   raw_ostream &verboseOuts() { return Verbose ? llvm::errs() : llvm::nulls(); }
   bool shouldInstrument(Module &M);
   GlobalVariable *addGlobPtr(Module &M, OpenMPIRBuilder &OMPBuilder,
-                                  StringRef &VarName, Type *VarType,
+                                  Type *VarType, StringRef &VarName,
                                   uint64_t VarSize);
   void insertBallistaRoutines(Module &M);
 
@@ -62,6 +62,7 @@ private:
   std::string NameSpaceToSkip;
   GlobalVariable *AppMemStart;
   GlobalVariable *AppShdwStart;
+  GlobalVariable *DummyShadow; // dummy shadow for stack memory access
   // GlobalVariable *GlobMemStart;
   // GlobalVariable *GlobMemEnd;
   // GlobalVariable *GlobShdwStart;
@@ -70,14 +71,16 @@ private:
 private:
   raw_ostream &verboseOuts() { return Verbose ? llvm::errs() : llvm::nulls(); }
   SmallVector<Function *> getFunctionsToInstrument(Module &M);
-  GlobalVariable *addGlobPtr(Module &M, StringRef &VarName, Type *VarType);
-  bool aliasWithMappedVariables(AAResults &AA, Function &F, Instruction &I);
+  GlobalVariable *addGlobPtr(Module &M, Type *VarType, Constant *Initializer, StringRef &VarName, Optional<unsigned> AddressSpace = None);
+  bool aliasWithMappedVariables(AAResults &AA, Function &F, Instruction &I, unsigned ArgBeginIdx = 0);
   void instrumentLoadOrStore(Instruction &I, BallistaShadow &AccessId);
 
 public:
   BallistaTargetInstrumentPass(bool IsVerbose) : Verbose(IsVerbose) {
-    FuncPrefixToSkip = {"__assert_", "__llvm",  "llvm",   "__kmpc_",
-                        "omp_",      "vprintf", "malloc", "free"};
+    FuncPrefixToSkip = {
+        "__assert_", "__llvm", "llvm", "__kmpc_",         "omp_",
+        "vprintf",   "malloc", "free", "invokeMicrotask"
+    };
     NameSpaceToSkip = "_OMP";
   }
   PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
