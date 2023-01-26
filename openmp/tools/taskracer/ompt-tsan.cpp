@@ -4,6 +4,36 @@
 #include "omp-tools.h"
 #include "dlfcn.h"
 
+#include <boost/graph/graph_traits.hpp>
+#include <boost/graph/adjacency_list.hpp>
+#include <boost/graph/dijkstra_shortest_paths.hpp>
+#include <boost/graph/graphml.hpp>
+using namespace boost;
+
+struct Vertex {
+  unsigned int id;
+};
+
+enum EdgeType{
+  CONT,
+  FORK,
+  JOIN
+};
+
+struct Edge{
+  EdgeType type;
+  std::string info;
+};
+
+//Define the graph using those classes
+typedef adjacency_list<listS, vecS, directedS, Vertex, Edge > Graph;
+//Some typedefs for simplicity
+typedef graph_traits<Graph>::vertex_descriptor vertex_t;
+typedef graph_traits<Graph>::edge_descriptor edge_t;
+
+//Instanciate a graph
+Graph g;
+
 enum NodeType {
   ROOT,
   FINISH,
@@ -147,7 +177,7 @@ ompt_set_callback_t ompt_set_callback;
 ompt_get_thread_data_t ompt_get_thread_data;
 ompt_get_task_memory_t ompt_get_task_memory;
 
-
+void boost_test();
 static std::atomic<int> task_id_counter(1);
 static std::atomic<int> sync_id_counter(1);
 static std::atomic<int> thread_id_counter(0);
@@ -480,5 +510,80 @@ ompt_start_tool(unsigned int omp_version, const char *runtime_version) {
     return nullptr;
   }
   std::cout << "Taskracer detects TSAN runtime, carrying out race detection using DPST" << std::endl;
+
+  std::cout << "Computation Graph recording enabled" << std::endl;
+
+  // Create two vertices in that graph
+  vertex_t u = boost::add_vertex(g);
+  vertex_t v = boost::add_vertex(g);
+
+  // Create an edge conecting those two vertices
+  edge_t e; bool b;
+  boost::tie(e,b) = boost::add_edge(u,v,g);
+
+  // Set the properties of a vertex and the edge
+  g[u].id = 0;
+  g[v].id = 1;
+  g[e].info = "Hello world";
+  g[e].type = CONT;
+
+  dynamic_properties dp;
+  dp.property("vertex_id", boost::get(&Vertex::id, g));
+  // dp.property("edge_type",boost::get(&Edge::type,g));
+  dp.property("edge_info",boost::get(&Edge::info,g));
+
+  write_graphml(std::cout, g, dp, true);
+  // boost_test();
+
   return &ompt_start_tool_result;
+}
+
+void boost_test(){
+  // Initialize boost graph
+  // create a typedef for the Graph type
+  typedef adjacency_list<vecS, vecS, bidirectionalS> Graph;
+
+  // Make convenient labels for the vertices
+  enum { A, B, C, D, E, N };
+  const int num_vertices = N;
+  const char* name = "ABCDE";
+
+  // writing out the edges in the graph
+  typedef std::pair<int, int> Edge;
+  Edge edge_array[] = 
+  { Edge(A,B), Edge(A,D), Edge(C,A), Edge(D,C),
+    Edge(C,E), Edge(B,D), Edge(D,E) };
+  const int num_edges = sizeof(edge_array)/sizeof(edge_array[0]);
+
+  // declare a graph object
+  Graph g(num_vertices);
+
+  // add the edges to the graph object
+  for (int i = 0; i < num_edges; ++i){
+    add_edge(edge_array[i].first, edge_array[i].second, g);
+  }
+
+  // get the property map for vertex indices
+  typedef property_map<Graph, vertex_index_t>::type IndexMap;
+  IndexMap index = get(vertex_index, g);
+
+  printf("vertices(g) = ");
+
+  typedef graph_traits<Graph>::vertex_iterator vertex_iter;
+  std::pair<vertex_iter, vertex_iter> vp;
+  for (vp = vertices(g); vp.first != vp.second; ++vp.first){
+    std::cout << index[*vp.first] <<  " ";
+  }
+    
+  printf("\n");
+
+  // get the edge list
+  printf("edges(g) = ");
+
+  graph_traits<Graph>::edge_iterator ei, ei_end;
+  for (tie(ei, ei_end) = edges(g); ei != ei_end; ++ei)
+      std::cout << "(" << index[source(*ei, g)] 
+                << "," << index[target(*ei, g)] << ") ";
+
+  printf("\n");
 }
