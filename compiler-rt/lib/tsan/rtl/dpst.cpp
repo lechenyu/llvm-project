@@ -21,6 +21,12 @@ static const char* node_desc[] = {"Root", "TaskGroup", "Async_I", "Async_E", "Fu
 
 extern "C" {
 INTERFACE_ATTRIBUTE
+TreeNode* __tsan_get_step_in_tls(){
+  ThreadState* current_thread = cur_thread();
+  return &step_nodes[current_thread->step_id];
+}
+
+INTERFACE_ATTRIBUTE
 void __tsan_reset_step_in_tls(){
   ThreadState* current_thread = cur_thread();
   current_thread->step_id = kNullStepId;

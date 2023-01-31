@@ -38,3 +38,4 @@ __tsan_insert_internal_node
 __tsan_alloc_insert_internal_node
 __tsan_insert_leaf
 __tsan_print_DPST_info
+__tsan_get_step_in_tls
