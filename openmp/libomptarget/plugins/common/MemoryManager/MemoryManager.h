@@ -23,7 +23,7 @@
 
 #include "Debug.h"
 #include "omptargetplugin.h"
-#include "ballista_defs.h"
+#include "ballista.h"
 
 #define LIKELY(X) __builtin_expect(!!(X), 1)
 #define UNLIKELY(X) __builtin_expect(!!(X), 0)
@@ -340,6 +340,8 @@ public:
 
     return std::make_pair(Threshold, true);
   }
+
+  void *initializeShadowMemory(void *GlobalStart, void *GlobalEnd) { return nullptr; }
 };
 
 class ReservedMemoryManagerTy {
@@ -467,6 +469,10 @@ class ReservedMemoryManagerTy {
 
   void *ShdwStartAddr = nullptr;
 
+  void *ShdwEndAddr = nullptr;
+
+  void *AppStartAddr = nullptr;
+
   /// Request memory from target device
   void *allocateOnDevice(size_t Size, void *HstPtr) const {
     return DeviceAllocator.allocate(Size, HstPtr, TARGET_ALLOC_DEVICE);
@@ -475,6 +481,7 @@ class ReservedMemoryManagerTy {
   /// Deallocate data on device
   int deleteOnDevice(void *Ptr) const { return DeviceAllocator.free(Ptr); }
 
+  /// Reserve memory sections on the device. This function should always be protected by ReservedListLock
   void initialize() {
     void *Ptr = allocateOnDevice(InitialReservedSize, nullptr);
     DP("%s::constructor: request %zu memory in the beginning, start addr is " DPxMOD "\n", Name, InitialReservedSize, DPxPTR(Ptr));
@@ -585,38 +592,67 @@ public:
     }
   }
 
-  void *initializeShadowMemory(void *GlobalStart) {
+  BallistaMemData *initializeShadowMemory(void *GlobalStart, void *GlobalEnd) {
     std::lock_guard<std::mutex> LG(ReservedListLock);
     if (UNLIKELY(ShdwStartAddr)) {
-      return ShdwStartAddr;
+      return new BallistaMemData{AppStartAddr, ShdwStartAddr, ShdwEndAddr};
     }
-    if (UNLIKELY(!StartAddr)) {
-      initialize();
-    }
-    if (GlobalStart > StartAddr) {
-      DP("%s::initializeShadowMemory: global variables reside after the reserved memory section\n", Name);
-      DP("%s::initializeShadowMemory: global variables start at %p, reserved memory section starts at %p\n", Name, GlobalStart, StartAddr);
+    if (StartAddr) {
+      DP("%s::initializeShadowMemory: detect device memory allocation before shadow memory initialization\n", Name);
       return nullptr;
     }
+    initialize();
+    // if (GlobalStart > StartAddr) {
+    //   DP("%s::initializeShadowMemory: global variables reside after the reserved memory section\n", Name);
+    //   DP("%s::initializeShadowMemory: global variables start at %p, reserved memory section starts at %p\n", Name, GlobalStart, StartAddr);
+    //   return nullptr;
+    // }
     uintptr_t StartAddrVal = reinterpret_cast<uintptr_t>(StartAddr);
     uintptr_t GlobalStartVal = reinterpret_cast<uintptr_t>(GlobalStart);
-    size_t AppMemSize = (StartAddrVal - GlobalStartVal + InitialReservedSize);
-    size_t ShdwMemSize = (AppMemSize + AppToShadowRatio - 1) / AppToShadowRatio;
-    size_t GBMask = (1UL << 30) - 1;
-    size_t RoundShdwMemSize = (ShdwMemSize & GBMask ? (GBMask + 1) : 0) + (ShdwMemSize & ~GBMask);
-    ShdwStartAddr = allocateOnDevice(RoundShdwMemSize, nullptr);
-    if (!ShdwStartAddr) {
-      DP("%s::initializeShadowMemory: fail to allocate shadow memory\n", Name);
-    } else if (StartAddr > ShdwStartAddr) {
-      DP("%s::initializeShadowMemory: shadow memory overlaps with application memory\n", Name);
-      DP("%s::initializeShadowMemory: app mem [%p, %p], shadow mem [%p, %p]\n",
-         Name, reinterpret_cast<char *>(GlobalStartVal), reinterpret_cast<char *>(GlobalStartVal) + AppMemSize, 
-         ShdwStartAddr, reinterpret_cast<char *>(ShdwStartAddr) + RoundShdwMemSize);
-      deleteOnDevice(ShdwStartAddr);
-      ShdwStartAddr = nullptr;
+    uintptr_t GlobalEndVal = reinterpret_cast<uintptr_t>(GlobalEnd);
+    size_t AppMemSize, GapSize;
+    DP("%s::initializeShadowMemory: global variables at "
+       "[%p, %p], reserved memory section at [%p, %p]\n",
+       Name, GlobalStart, GlobalEnd, StartAddr,
+       reinterpret_cast<char *>(StartAddr) + InitialReservedSize);
+    if (GlobalStart < StartAddr) {
+      DP("%s::initializeShadowMemory: global variables reside before reserved memory section\n", Name);
+      AppMemSize = (StartAddrVal - GlobalStartVal) + InitialReservedSize;
+      AppStartAddr = GlobalStart;
+      GapSize = StartAddrVal - GlobalEndVal;
+    } else {
+      DP("%s::initializeShadowMemory: global variables reside after reserved memory section\n", Name);
+      AppMemSize = GlobalEndVal - StartAddrVal;
+      AppStartAddr = StartAddr;
+      GapSize = GlobalStartVal - StartAddrVal - InitialReservedSize;
     }
-    DP("%s::initializeShadowMemory: shadow memory = [%p, %p]\n", Name, ShdwStartAddr, (char *)ShdwStartAddr + RoundShdwMemSize);
-    return ShdwStartAddr;
+    size_t ShdwMemSize = ((AppMemSize + ShadowCell - 1) / ShadowCell) * ShadowSize;
+    // size_t GBMask = (1UL << 30) - 1;
+    // size_t RoundShdwMemSize = (ShdwMemSize & GBMask ? (GBMask + 1) : 0) + (ShdwMemSize & ~GBMask);
+    ShdwStartAddr = allocateOnDevice(ShdwMemSize, nullptr);
+    if (ShdwStartAddr) {
+      ShdwEndAddr = reinterpret_cast<char *>(ShdwStartAddr) + ShdwMemSize;
+      DP("%s::initializeShadowMemory: application memory = [%p, %p]\n", Name,
+         AppStartAddr, reinterpret_cast<char *>(AppStartAddr) + AppMemSize);
+      DP("%s::initializeShadowMemory: shadow memory = [%p, %p]\n", Name, ShdwStartAddr, ShdwEndAddr);
+      DP("%s::initializeShadowMemory: application memory size = %f GB, shadow "
+         "memory size = %f GB, gap size = %f GB\n",
+         Name, static_cast<double>(AppMemSize) / (1UL << 30),
+         static_cast<double>(ShdwMemSize) / (1UL << 30),
+         static_cast<double>(GapSize) / (1UL << 30));
+      return new BallistaMemData{AppStartAddr, ShdwStartAddr, ShdwEndAddr};
+    } else {
+      DP("%s::initializeShadowMemory: fail to allocate shadow memory\n", Name);
+      return nullptr;
+    }
+    // else if (StartAddr > ShdwStartAddr) {
+    //   DP("%s::initializeShadowMemory: shadow memory overlaps with application memory\n", Name);
+    //   DP("%s::initializeShadowMemory: app mem [%p, %p], shadow mem [%p, %p]\n",
+    //      Name, reinterpret_cast<char *>(GlobalStartVal), reinterpret_cast<char *>(GlobalStartVal) + AppMemSize, 
+    //      ShdwStartAddr, reinterpret_cast<char *>(ShdwStartAddr) + RoundShdwMemSize);
+    //   deleteOnDevice(ShdwStartAddr);
+    //   ShdwStartAddr = nullptr;
+    // }
   }
 
   /// Allocate memory of size \p Size from target device. \p HstPtr is used to

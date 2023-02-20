@@ -17,6 +17,8 @@ VERS1.0 {
     __tgt_rtl_data_retrieve_async;
     __tgt_rtl_data_exchange;
     __tgt_rtl_data_exchange_async;
+    __tgt_rtl_data_set;
+    __tgt_rtl_data_set_async;
     __tgt_rtl_data_delete;
     __tgt_rtl_run_target_team_region;
     __tgt_rtl_run_target_team_region_async;

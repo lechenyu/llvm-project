@@ -15,6 +15,7 @@
 #include "omptarget.h"
 #include "private.h"
 #include "rtl.h"
+#include "ballista.h"
 
 #include <cassert>
 #include <cstdio>
@@ -248,8 +249,14 @@ EXTERN int __tgt_target_kernel(ident_t *Loc, int64_t DeviceId, int32_t NumTeams,
                   Args->ArgPtrs, Args->ArgSizes, Args->ArgTypes, Args->ArgNames,
                   Args->ArgMappers, NumTeams, ThreadLimit, Args->Tripcount,
                   IsTeams, AsyncInfo);
-  if (Rc == OFFLOAD_SUCCESS)
-    Rc = AsyncInfo.synchronize();
+  
+  if (Rc == OFFLOAD_SUCCESS) {
+    if (BallistaEnabled) {
+      Rc = postTargetKernel(Device, AsyncInfo);
+    } else {
+      Rc = AsyncInfo.synchronize();
+    }
+  }
   handleTargetOutcome(Rc == OFFLOAD_SUCCESS, Loc);
   assert(Rc == OFFLOAD_SUCCESS && "__tgt_target_kernel unexpected failure!");
   return OMP_TGT_SUCCESS;

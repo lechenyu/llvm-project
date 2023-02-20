@@ -10,6 +10,9 @@ add_custom_command(OUTPUT ${BALLISTA_GLOBAL_OBJ}
   -Xopenmp-target -march=sm_70
   --libomptarget-nvptx-bc-path=${LIBOMPTARGET_LIBRARY_DIR}/libomptarget-nvptx-sm_70.bc
   ${BALLISTA_GLOBAL_SRC} -o ${BALLISTA_GLOBAL_OBJ}
+  COMMAND ${CMAKE_COMMAND} -E copy 
+  ${BALLISTA_GLOBAL_OBJ}
+  ${LLVM_BINARY_DIR}/lib/
   DEPENDS ${BALLISTA_GLOBAL_SRC}
   COMMENT "Building the object file needed by Ballista"
   VERBATIM

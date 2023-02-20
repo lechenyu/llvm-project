@@ -423,6 +423,8 @@ struct DeviceTy {
   // Copy data from current device to destination device directly
   int32_t dataExchange(void *SrcPtr, DeviceTy &DstDev, void *DstPtr,
                        int64_t Size, AsyncInfoTy &AsyncInfo);
+  // Set data on the device
+  int32_t setData(void *TgtPtrBegin, uint32_t Val, int64_t Size, AsyncInfoTy &AsyncInfo);
 
   int32_t runRegion(void *TgtEntryPtr, void **TgtVarsPtr, ptrdiff_t *TgtOffsets,
                     int32_t TgtVarsSize, AsyncInfoTy &AsyncInfo);

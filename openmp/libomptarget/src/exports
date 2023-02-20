@@ -55,7 +55,8 @@ VERS1.0 {
     __tgt_interop_init;
     __tgt_interop_use;
     __tgt_interop_destroy;
-    ballista_register_glob_ptrs;
+    __ballista_register_glob_ptrs;
+    __ballista_get_target_kernel_info;
   local:
     *;
 };

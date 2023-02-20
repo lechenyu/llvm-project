@@ -23,6 +23,7 @@
 // Forward declarations.
 struct DeviceTy;
 struct __tgt_bin_desc;
+struct BallistaMemData;
 
 struct RTLInfoTy {
   typedef int32_t(init_plugin_ty)();
@@ -70,7 +71,10 @@ struct RTLInfoTy {
   typedef int32_t(init_async_info_ty)(int32_t, __tgt_async_info **);
   typedef int64_t(init_device_into_ty)(int64_t, __tgt_device_info *,
                                        const char **);
-  typedef void *(init_shadow_memory_ty)(int32_t, void *);
+  typedef BallistaMemData *(init_shadow_memory_ty)(int32_t, void *, void *);
+  typedef int32_t(data_set_ty)(int32_t, void *, uint32_t, int64_t);
+  typedef int32_t(data_set_async_ty)(int32_t, void *, uint32_t, int64_t,
+                                     __tgt_async_info *);
 
   int32_t Idx = -1;             // RTL index, index is the number of devices
                                 // of other RTLs that were registered before,
@@ -122,6 +126,8 @@ struct RTLInfoTy {
   init_device_into_ty *init_device_info = nullptr;
   release_async_info_ty *release_async_info = nullptr;
   init_shadow_memory_ty *init_shadow_memory = nullptr;
+  data_set_ty *data_set = nullptr;
+  data_set_async_ty *data_set_async = nullptr;
 
   // Are there images associated with this RTL.
   bool IsUsed = false;

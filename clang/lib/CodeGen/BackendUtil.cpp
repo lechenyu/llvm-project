@@ -994,6 +994,7 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
     PrettyStackTraceString CrashInfo("Optimizer");
     llvm::TimeTraceScope TimeScope("Optimizer");
     MPM.run(*TheModule, MAM);
+    MPM.printPipeline(errs(), [](StringRef Name){return Name;});
   }
 }
 

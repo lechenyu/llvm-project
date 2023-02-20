@@ -576,6 +576,24 @@ int32_t DeviceTy::dataExchange(void *SrcPtr, DeviceTy &DstDev, void *DstPtr,
                                   DstPtr, Size, AsyncInfo);
 }
 
+// Set data on the device
+int32_t DeviceTy::setData(void *TgtPtrBegin, uint32_t Val, int64_t Size, AsyncInfoTy &AsyncInfo) {
+  if (getInfoLevel() & OMP_INFOTYPE_DATA_TRANSFER) {
+    INFO(OMP_INFOTYPE_DATA_TRANSFER, DeviceID,
+         "Set data on the device, TgtPtr=" DPxMOD ", Val=%" PRIu32 ", Size=%" PRId64 "\n", 
+         DPxPTR(TgtPtrBegin), Val, Size);
+  }
+  
+  if (!RTL->synchronize && RTL->data_set) {
+    return RTL->data_set(RTLDeviceID, TgtPtrBegin, Val, Size);
+  } else if (RTL->synchronize && RTL->data_set_async) {
+    return RTL->data_set_async(RTLDeviceID, TgtPtrBegin, Val, Size, AsyncInfo);
+  }
+
+  REPORT("DeviceTy.data_set && data_set_async is not registered\n");
+  return OFFLOAD_FAIL;
+}
+
 // Run region on device
 int32_t DeviceTy::runRegion(void *TgtEntryPtr, void **TgtVarsPtr,
                             ptrdiff_t *TgtOffsets, int32_t TgtVarsSize,

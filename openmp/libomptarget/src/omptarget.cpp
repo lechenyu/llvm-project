@@ -81,7 +81,8 @@ static int initLibrary(DeviceTy &Device) {
                              Device.RTL->supports_empty_images() > 0;
                              
   void *GlobalStart = reinterpret_cast<void *>((1UL << 48) - 1);
-  void *AppStartTgtPtr = nullptr, *ShdwStartTgtPtr = nullptr;
+  void *GlobalEnd = reinterpret_cast<void *>(0);
+  void *AppStartTgtPtr = nullptr, *ShdwStartTgtPtr = nullptr, *ShdwEndTgtPtr = nullptr;
   if (BallistaEnabled) {
     int32_t ExpectedBID = InvalidDeviceID;
     if (!BallistaEnabledDeviceID.compare_exchange_strong(
@@ -165,12 +166,17 @@ static int initLibrary(DeviceTy &Device) {
           if (BallistaEnabled) {
             void *HS = CurrHostEntry->addr;
             void *DS = CurrDeviceEntry->addr;
+            void *DE = reinterpret_cast<char *>(DS) + CurrDeviceEntry->size;
             if (HS == AppStartPtr) {
               AppStartTgtPtr = DS;
             } else if (HS == ShdwStartPtr) {
               ShdwStartTgtPtr = DS;
+            } else if (HS == ShdwEndPtr) {
+              ShdwEndTgtPtr = DS;
             }
             GlobalStart = DS < GlobalStart ? DS : GlobalStart;
+            GlobalEnd = DE > GlobalEnd ? DE : GlobalEnd;
+            GlobMap.emplace(HS, DS);
           }
           //printf("global var %s: %p, %p, %lu\n", CurrDeviceEntry->name, CurrHostEntry->addr, CurrDeviceEntry->addr, CurrDeviceEntry->size);
           
@@ -205,17 +211,28 @@ static int initLibrary(DeviceTy &Device) {
   }
 
   if (BallistaEnabled) {
-    assert(GlobalStart != ((1UL << 48) - 1) && "Invaild global start address");
+    assert(reinterpret_cast<uintptr_t>(GlobalStart) != ((1UL << 48) - 1) && "Invaild global start address");
+    assert(reinterpret_cast<uintptr_t>(GlobalEnd) != 0 && "Invalid global end address");
     assert(AppStartTgtPtr);
     assert(ShdwStartTgtPtr);
-    // make GlobalStart 8-byte aligned
-    void *RoundGlobalStart = reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(GlobalStart) & 0xFFFFFFFFFFFFFFF8UL);
-    void *ShdwStart = Device.RTL->init_shadow_memory(DeviceId, RoundGlobalStart);
-    if (ShdwStart) {
-      Rc = Device.RTL->data_submit(DeviceId, reinterpret_cast<uintptr_t *>(AppStartTgtPtr), &RoundGlobalStart, sizeof(uintptr_t));
+    assert(ShdwEndTgtPtr);
+    BallistaMemData *BM = Device.RTL->init_shadow_memory(DeviceId, GlobalStart, GlobalEnd);
+    if (BM) {
+      AppStartVal = reinterpret_cast<uintptr_t>(BM->AppStart);
+      ShdwStartVal = reinterpret_cast<uintptr_t>(BM->ShdwStart);
+      ShdwEndVal = reinterpret_cast<uintptr_t>(BM->ShdwEnd);
+      AsyncInfoTy AsyncInfo(Device);
+      Rc = Device.RTL->data_submit_async(DeviceId, reinterpret_cast<uintptr_t *>(AppStartTgtPtr), &BM->AppStart, sizeof(uintptr_t), AsyncInfo);
       if (Rc == OFFLOAD_SUCCESS) {
-        Rc = Device.RTL->data_submit(DeviceId, reinterpret_cast<uintptr_t *>(ShdwStartTgtPtr), &ShdwStart, sizeof(uintptr_t));
+        Rc = Device.RTL->data_submit_async(DeviceId, reinterpret_cast<uintptr_t *>(ShdwStartTgtPtr), &BM->ShdwStart, sizeof(uintptr_t), AsyncInfo);
       }
+      if (Rc == OFFLOAD_SUCCESS) {
+        Rc = Device.RTL->data_submit_async(DeviceId, reinterpret_cast<uintptr_t *>(ShdwEndTgtPtr), &BM->ShdwEnd, sizeof(uintptr_t), AsyncInfo);
+      }
+      if (Rc == OFFLOAD_SUCCESS) {
+        Rc = Device.RTL->synchronize(DeviceId, AsyncInfo);
+      }
+      delete BM;
     } else {
       Rc = OFFLOAD_FAIL;
     }
@@ -1493,6 +1510,10 @@ static int processDataBefore(ident_t *Loc, int64_t DeviceId, void *HostPtr,
   if (Ret != OFFLOAD_SUCCESS) {
     DP("Failed to pack and transfer first private arguments\n");
     return OFFLOAD_FAIL;
+  }
+  
+  if (BallistaEnabled) {
+    preTargetKernel(Args, ArgSizes, ArgTypes, TgtArgs, TgtArgsPositions, Device, AsyncInfo);
   }
 
   return OFFLOAD_SUCCESS;

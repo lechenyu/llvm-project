@@ -1515,11 +1515,36 @@ public:
     return OFFLOAD_SUCCESS;
   }
 
-  void *initShadowMemory(int32_t DeviceId, void *GlobalStart) {
+  void *initShadowMemory(int DeviceId, void *GlobalStart, void *GlobalEnd) const {
     if (UseMemoryManager) {
-      return MemoryManagers[DeviceId]->initializeShadowMemory(GlobalStart);
+      return MemoryManagers[DeviceId]->initializeShadowMemory(GlobalStart, GlobalEnd);
     }
     return nullptr;
+  }
+
+  int dataSet(const int DeviceId, const void *TgtPtr, const uint32_t Val, const int64_t Size, __tgt_async_info *AsyncInfo) const{
+    assert(AsyncInfo && "AsyncInfo is nullptr");
+    CUstream Stream = getStream(DeviceId, AsyncInfo);
+    CUresult Err;
+    uint32_t Val2 = Val & 0x000000ff;
+    if ((Size & 0x3) == 0 && (reinterpret_cast<uintptr_t>(TgtPtr) & 0x3) == 0) {
+      Val2 = (Val2 << 24) | (Val2 << 16) | (Val2 << 8) | Val2;
+      Err = cuMemsetD32Async((CUdeviceptr)TgtPtr, Val2, Size >> 2, Stream);
+    } else if ((Size & 0x1) == 0 && (reinterpret_cast<uintptr_t>(TgtPtr) & 0x1) == 0) {
+      Val2 = (Val2 << 8) | Val2;
+      Err = cuMemsetD16Async((CUdeviceptr)TgtPtr, (uint16_t)Val2, Size >> 1, Stream);
+    } else {
+      Err = cuMemsetD8Async((CUdeviceptr)TgtPtr, (uint8_t)Val2, Size, Stream);
+    }
+    if (Err != CUDA_SUCCESS) {
+      DP("Error when setting data on the device. Pointers: device "
+         "= " DPxMOD ",  size = %" PRId64  ", value = %" PRIu32 "\n",
+         DPxPTR(TgtPtr), Size, Val);
+      CUDA_ERR_STRING(Err);
+      return OFFLOAD_FAIL;
+    }
+
+    return OFFLOAD_SUCCESS;
   }
 };
 
@@ -1873,12 +1898,36 @@ int32_t __tgt_rtl_init_device_info(int32_t DeviceId,
   return DeviceRTL.initDeviceInfo(DeviceId, DeviceInfoPtr, ErrStr);
 }
 
-void *__tgt_rtl_init_shadow_memory(int32_t DeviceId, void *GlobalStart) {
+void *__tgt_rtl_init_shadow_memory(int32_t DeviceId, void *GlobalStart, void *GlobalEnd) {
   assert(DeviceRTL.isValidDeviceId(DeviceId) && "device_id is invalid");
 
   if (DeviceRTL.setContext(DeviceId) != OFFLOAD_SUCCESS)
     return nullptr;
-  return DeviceRTL.initShadowMemory(DeviceId, GlobalStart);
+  return DeviceRTL.initShadowMemory(DeviceId, GlobalStart, GlobalEnd);
+}
+
+int32_t __tgt_rtl_data_set(int32_t DeviceId, void *TgtPtr, uint32_t Val, int64_t Size) {
+  assert(DeviceRTL.isValidDeviceId(DeviceId) && "device_id is invalid");
+  // Context is set in __tgt_rtl_data_set_async.
+
+  __tgt_async_info AsyncInfo;
+  const int32_t Rc =
+      __tgt_rtl_data_set_async(DeviceId, TgtPtr, Val, Size, &AsyncInfo);
+  if (Rc != OFFLOAD_SUCCESS)
+    return OFFLOAD_FAIL;
+
+  return __tgt_rtl_synchronize(DeviceId, &AsyncInfo);
+}
+
+int32_t __tgt_rtl_data_set_async(int32_t DeviceId, void *TgtPtr, uint32_t Val,
+                                 int64_t Size, __tgt_async_info *AsyncInfo) {
+  assert(DeviceRTL.isValidDeviceId(DeviceId) && "device_id is invalid");
+  assert(AsyncInfo && "async_info is nullptr");
+
+  if (DeviceRTL.setContext(DeviceId) != OFFLOAD_SUCCESS)
+    return OFFLOAD_FAIL;
+  
+  return DeviceRTL.dataSet(DeviceId, TgtPtr, Val, Size, AsyncInfo);
 }
 
 #ifdef __cplusplus
