@@ -120,6 +120,7 @@ public:
   std::atomic<int> remaining_task;
   task_t *encounter_task;
   vertex_t start_cg_node;
+  task_t *current_join_master;
   std::vector<vertex_t> end_nodes_to_join;
 public:
   parallel_t(int parallelism, task_t *task)
@@ -129,7 +130,7 @@ public:
 
   parallel_t(int parallelism, task_t *task, vertex_t node)
     : parallelism(parallelism), remaining_task(parallelism),
-      encounter_task(task), start_cg_node(node) {
+      encounter_task(task), start_cg_node(node), current_join_master(nullptr) {
         this->end_nodes_to_join = std::vector<vertex_t>(parallelism, 0);
       }
 
@@ -245,7 +246,7 @@ static void ompt_ta_parallel_begin
   const void *codeptr_ra
 )
 {
-  printf("[PARALLEL_BEGIN] \n");
+  // printf("[PARALLEL_BEGIN] \n");
   // insert a FINISH node because of the implicit barrier
   assert(encountering_task_data->ptr != nullptr);
   task_t* current_task = (task_t*) encountering_task_data->ptr;
@@ -320,6 +321,8 @@ static void ompt_ta_parallel_end
 
   delete parallel;
   parallel_data->ptr = nullptr;
+
+  printf("[PARALLEL_END] \n");
 }
 
 
@@ -460,26 +463,36 @@ static void ompt_ta_sync_region(
       finish_t *enclosed_finish = current_task->enclosed_finish;
       TreeNode *finish_parent = find_parent(enclosed_finish);
 
-      TreeNode *new_parallel;
+      TreeNode *new_parallel_treeNode;
       parallel_t *parallel = (parallel_t *)parallel_data->ptr;
       int remaining_task = parallel->count_down_on_barrier();
       if (remaining_task == 1) {
-        new_parallel = __tsan_alloc_insert_internal_node(
+        new_parallel_treeNode = __tsan_alloc_insert_internal_node(
             sync_id_counter.fetch_add(1, std::memory_order_relaxed), PARALLEL,
             finish_parent, enclosed_finish->node_in_dpst.load(std::memory_order_acquire)->preceeding_taskwait);
-        enclosed_finish->node_in_dpst.store(new_parallel, std::memory_order_release);
+        enclosed_finish->node_in_dpst.store(new_parallel_treeNode, std::memory_order_release);
         parallel->reset_remaining_task();
       } else {
         do {
-          new_parallel = enclosed_finish->node_in_dpst.load(std::memory_order_acquire);
-        } while (new_parallel == current_task_node->parent);
+          new_parallel_treeNode = enclosed_finish->node_in_dpst.load(std::memory_order_acquire);
+        } while (new_parallel_treeNode == current_task_node->parent);
       }
 
       TreeNode *new_task_node = __tsan_alloc_insert_internal_node(
              task_id_counter.fetch_add(1, std::memory_order_relaxed), ASYNC_I,
-             new_parallel, current_task_node->preceeding_taskwait);
+             new_parallel_treeNode, current_task_node->preceeding_taskwait);
       task_t* ti = new task_t{new_task_node, enclosed_finish, true, current_task->index, current_task->parallel_region};
       task_data->ptr = ti;
+      
+      // printf("[SYNC] kind is %d \n", kind);
+
+      // if (parallel->current_join_master == nullptr){
+      //   printf("[SYNC] implicit barrier for parallel construct \n");
+      // }
+      // else{
+      //   printf("[SYNC] implicit barrier for workshare construct \n");
+      // }
+
       // DONE: save the new step node in parallel_t so the parallel_t knows who to join
       int step_id = insert_leaf(new_task_node, ti);
       unsigned int team_index = ti->index;
@@ -494,9 +507,17 @@ static void ompt_ta_sync_region(
       g[current_task->current_step_id].end_event = event_sync_region;
 
       // printf("[SYNC:scope_begin] new step id is %d, current step id is %d \n", step_id, current_task->current_step_id);
-      printf("[SYNC] task current step id is %d \n", current_task->current_step_id);
+      printf("[SYNC scope_begin] task current step id is %d \n", current_task->current_step_id);
 
       delete current_task;
+    }
+    else if(endpoint == ompt_scope_end){
+      printf("[SYNC scope_end] \n");
+      // parallel_t* parallel = (parallel_t*) parallel_data->ptr;
+      // task_t* current_task = (task_t*) task_data->ptr;
+      // if(parallel != nullptr && parallel->current_join_master != nullptr && parallel->current_join_master->index == current_task->index){
+      //   parallel->current_join_master = nullptr;
+      // }
     }
   }
   
@@ -618,21 +639,24 @@ static void ompt_ta_work(
   uint64_t count, 
   const void *codeptr_ra)
 {
-  // task_t *current_task = (task_t*) task_data->ptr;
+  task_t *current_task = (task_t*) task_data->ptr;
+  parallel_t *parallel = (parallel_t*) parallel_data->ptr;
+
   if(endpoint == ompt_scope_begin){
-    // if(wstype == ompt_work_single_executor){
-    //   printf("[WORK] single begin worker, task current step is %d \n", current_task->current_step_id);
-    // }
-    // else if(wstype == ompt_work_single_other){
-    //   printf("[WORK] single begin others, task current_step is %d \n", current_task->current_step_id);
-    // }
+    if(wstype == ompt_work_single_executor){
+      parallel->current_join_master = current_task;
+      printf("[WORK] single begin worker, task index is %d \n", current_task->index);
+    }
+    else if(wstype == ompt_work_single_other){
+      printf("[WORK] single begin others, task index is %d \n", current_task->index);
+    }
   }
   else if(endpoint == ompt_scope_end){
     if(wstype == ompt_work_single_executor){
-      // printf("[WORK] single end worker, task current step is %d \n", current_task->current_step_id);
+      printf("[WORK] single end worker, task index is %d \n", current_task->index);
     }
     else if(wstype == ompt_work_single_other){
-      // printf("[WORK] single end others, task current_step is %d \n", current_task->current_step_id);
+      printf("[WORK] single end others, task index is %d \n", current_task->index);
     }
   }
 }
