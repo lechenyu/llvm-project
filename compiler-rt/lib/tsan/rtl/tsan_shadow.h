@@ -178,7 +178,7 @@ class Shadow {
   struct Parts {
     u8 access_;
     Sid sid_;
-    u16 epoch_ : kEpochBits;
+    u16 epoch_ : kEpochBits; // KEpochBits was 14 bits in original Tsan; we take 1 bit for state_info
     u16 state_info : 1;
     u16 is_read_ : 1;
     u16 is_atomic_ : 1;

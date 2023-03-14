@@ -261,6 +261,7 @@ bool ContainsSameAccess(RawShadow* unused0, Shadow unused1, m128 shadow,
   // if it's worth it. But this would conserve trace space, so it's useful
   // besides potential speed up.
   if (!(typ & kAccessRead)) {
+    // if type is not kAccessRead, compare shadow and access bit by bit
     const m128 same = _mm_cmpeq_epi32(shadow, access);
     return _mm_movemask_epi8(same);
   }
@@ -502,7 +503,7 @@ void CheckMapping(ThreadState* thr, uptr addr, uptr size, RawShadow* shadow_mem,
       bool isOV, isCV, isOVinit, isCVinit;
       getAllStateBits(shadow_mem, isOV, isCV, isOVinit, isCVinit);
 
-      // Printf("  isOV %d, isCV %d, isOVinit %d, isCVinit %d, addr is %p, shadow is %lu \n", isOV, isCV, isOVinit, isCVinit, addr, shadow_mem);
+      // Printf("[TSAN]  isOV %d, isCV %d, isOVinit %d, isCVinit %d, addr is %p, shadow is %lu \n", isOV, isCV, isOVinit, isCVinit, addr, shadow_mem);
 
       if (  !isOVinit ) {
       // if (!s.isHostInitialized()) {
@@ -612,12 +613,18 @@ void getAllStateBits(RawShadow* shadow_mem, bool &isOV, bool &isCV, bool &isOVin
 ALWAYS_INLINE USED void MemoryAccess_onlyMapping(ThreadState* thr, uptr pc, uptr addr,
                                      uptr size, AccessType typ) {
   RawShadow* shadow_mem = MemToShadow(addr);
-  UNUSED char memBuf[4][64];
+  // UNUSED char memBuf[4][64];
 
   FastState fast_state = thr->fast_state;
   Shadow cur(fast_state, addr, size, typ);
 
+  // TODO: update ContainSameAccess
   LOAD_CURRENT_SHADOW(cur, shadow_mem);
+
+  // shadow_mem: shadow_mem[0], shadow_mem[1], shadow_mem[2], shadow_mem[4] are the recent 4 access
+  // cur: current access, a Shadow
+  // shadow: a 128-bit vector, first 32 bit is shadow_mem[0], second 32 bit is shadow_mem[1] ...
+  // access: a 128-bit vector, each 32 bit part is cur
   if (LIKELY(ContainsSameAccess(shadow_mem, cur, shadow, access, typ)))
     return;
   if (UNLIKELY(fast_state.GetIgnoreBit()))
@@ -656,8 +663,8 @@ ALWAYS_INLINE USED void UnalignedMemoryAccess_onlyMapping(ThreadState* thr, uptr
   {
     Shadow cur(fast_state, addr, size1, typ);
     LOAD_CURRENT_SHADOW(cur, shadow_mem);
-    if (LIKELY(ContainsSameAccess(shadow_mem, cur, shadow, access, typ)))
-      goto SECOND;
+    // if (LIKELY(ContainsSameAccess(shadow_mem, cur, shadow, access, typ)))
+    //   goto SECOND;
     if (!TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
       return RestartUnalignedMemoryAccess_onlyMapping(thr, pc, addr, size, typ);
     traced = true;
@@ -671,15 +678,15 @@ ALWAYS_INLINE USED void UnalignedMemoryAccess_onlyMapping(ThreadState* thr, uptr
       UpdateMapping(thr,addr,size1,shadow_mem);
     }
   }
-SECOND:
+// SECOND:
   uptr size2 = size - size1;
   if (LIKELY(size2 == 0))
     return;
   shadow_mem += kShadowCnt;
   Shadow cur(fast_state, 0, size2, typ);
   LOAD_CURRENT_SHADOW(cur, shadow_mem);
-  if (LIKELY(ContainsSameAccess(shadow_mem, cur, shadow, access, typ)))
-    return;
+  // if (LIKELY(ContainsSameAccess(shadow_mem, cur, shadow, access, typ)))
+  //   return;
   if (!traced && !TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
     return RestartUnalignedMemoryAccess_onlyMapping(thr, pc, addr, size, typ);
   // CheckRaces(thr, shadow_mem, cur, shadow, access, typ);
