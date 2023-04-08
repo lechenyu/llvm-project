@@ -456,8 +456,8 @@ void ForkParentAfter(ThreadState *thr, uptr pc);
 void ForkChildAfter(ThreadState *thr, uptr pc, bool start_thread);
 
 void ReportRace(ThreadState *thr, RawShadow *shadow_mem, Shadow cur, Shadow old,
-                AccessType typ);
-bool OutputReport(ThreadState *thr, const ScopedReport &srep);
+                AccessType typ, u32 current_step=0, u32 prev_step = 0);
+bool OutputReport(ThreadState *thr, const ScopedReport &srep, u32 current_step=0, u32 prev_step=0);
 bool IsFiredSuppression(Context *ctx, ReportType type, StackTrace trace);
 bool IsExpectedReport(uptr addr, uptr size);
 

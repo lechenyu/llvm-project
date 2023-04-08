@@ -119,7 +119,7 @@ class ReportDesc {
 };
 
 // Format and output the report to the console/log. No additional logic.
-void PrintReport(const ReportDesc *rep);
+void PrintReport(const ReportDesc *rep, u32 current_step=0, u32 prev_step=0);
 void PrintStack(const ReportStack *stack);
 
 }  // namespace __tsan

@@ -15,6 +15,8 @@ void print_graph();
 struct Vertex {
   unsigned int id;
   std::string end_event;
+  unsigned int has_race;
+  std::string race_stack;
 };
 
 struct Edge{
@@ -42,7 +44,7 @@ typedef graph_traits<Graph>::vertex_descriptor vertex_t; // vertex_descriptor, i
 typedef graph_traits<Graph>::edge_descriptor edge_t;
 
 //Instanciate a graph
-unsigned int vertex_size = 60;
+unsigned int vertex_size = 35;
 Graph g(vertex_size);
 dynamic_properties dp;
 
@@ -172,6 +174,12 @@ void __attribute__((weak)) __tsan_set_step_in_tls(int step_id);
 void __attribute__((weak)) AnnotateNewMemory(const char *f, int l, const volatile void *mem, size_t size);
 
 TreeNode *__attribute__((weak)) __tsan_get_step_in_tls();
+
+void __attribute__((weak)) __tsan_set_ompt_print_function(void (*f)());
+
+void __attribute__((weak)) __tsan_set_report_race_steps_function(void (*f)(int,int));
+
+void __attribute__((weak)) __tsan_set_report_race_stack_function(void (*f)(char*, bool, unsigned int, unsigned int));
 } // extern "C"
 
 
@@ -215,6 +223,27 @@ void boost_test();
 static std::atomic<int> task_id_counter(1);
 static std::atomic<int> sync_id_counter(1);
 static std::atomic<int> thread_id_counter(0);
+
+void ompt_print_func(){
+  printf("print in ompt \n");
+}
+
+void ompt_report_race_steps_func(int cur, int prev){
+  // printf("race between current step %d and previous step %d \n", cur, prev);
+  g[cur].has_race = 1;
+  g[prev].has_race = 1;
+}
+
+void ompt_report_race_stack_func(char* s, bool first, unsigned int current_step, unsigned int prev_step){
+  printf("race stack: %s \n", s);
+  printf("first? %d, current_step %d, previous_step %d \n", first, current_step, prev_step);
+  if(first){
+    g[current_step].race_stack = s;
+  }
+  else{
+    g[prev_step].race_stack = s;
+  }
+}
 
 static inline int insert_leaf(TreeNode *internal_node, task_t *task) {
   TreeNode *new_step = __tsan_insert_leaf(internal_node, task->current_taskwait->corresponding_id);
@@ -342,6 +371,10 @@ static void ompt_ta_implicit_task(
   if (flags & ompt_task_initial) {
     if (endpoint == ompt_scope_begin) {
       printf("OMPT! initial task begins, should only appear once !! \n");
+      __tsan_set_ompt_print_function(&ompt_print_func);
+      __tsan_set_report_race_steps_function(&ompt_report_race_steps_func);
+      __tsan_set_report_race_stack_function(&ompt_report_race_stack_func);
+
       if (!root) {
         root = __tsan_init_DPST();
       }
@@ -491,10 +524,10 @@ static void ompt_ta_sync_region(
       
 
       // if (parallel->current_join_master == nullptr){
-      //   printf("[SYNC] implicit barrier for parallel construct \n");
+      //   printf("[SYNC scope_begin] implicit barrier for parallel construct \n");
       // }
       // else{
-      //   printf("[SYNC] implicit barrier for workshare construct \n");
+      //   printf("[SYNC scope_begin] implicit barrier for workshare construct \n");
       // }
 
       // TODO:
@@ -604,6 +637,20 @@ static void ompt_ta_task_create(ompt_data_t *encountering_task_data,
 }
 
 
+static void ompt_ta_dependences(ompt_data_t *task_data,
+                                const ompt_dependence_t *deps,
+                                int ndeps)
+{
+  task_t* ct = (task_t*) task_data->ptr;
+  int step_id = ct->current_step_id;
+  printf("[DEPENDENCES] ndeps = %d, current step id %d \n", ndeps, step_id);
+
+  for(int i=0; i < ndeps; i++){
+    ompt_dependence_t d = deps[i];
+    printf("  dependence variable address %p, type %d \n", d.variable.ptr, d.dependence_type);
+  }
+}
+
 
 static void ompt_ta_task_schedule(
   ompt_data_t *prior_task_data,
@@ -687,10 +734,13 @@ static void ompt_ta_work(
 {
   task_t *current_task = (task_t*) task_data->ptr;
   parallel_t *parallel = (parallel_t*) parallel_data->ptr;
-
-  if(endpoint == ompt_scope_begin){
-    if(wstype == ompt_work_single_executor){
+  if(wstype == ompt_work_single_executor){
+    if(endpoint == ompt_scope_begin){
+      // printf("[WORK SHARE] single begin \n");
       parallel->current_join_master = current_task;
+    }
+    else if(endpoint == ompt_scope_end){
+      // printf("[WORK SHARE] single end \n");
     }
   }
 }
@@ -726,6 +776,7 @@ static int ompt_tsan_initialize(ompt_function_lookup_t lookup, int device_num,
   SET_CALLBACK(task_schedule);
   SET_CALLBACK(thread_begin);
   SET_CALLBACK(work);
+  SET_CALLBACK(dependences);
 
   return 1; // success
 }
@@ -826,11 +877,15 @@ void print_graph(){
     auto vertex_id_map = boost::get(&Vertex::id, g);
     auto edge_type_map = boost::get(&Edge::type, g);
     auto vertex_event_map = boost::get(&Vertex::end_event, g);
-    
+    auto vertex_has_race_map = boost::get(&Vertex::has_race, g);
+    auto vertex_race_stack_map = boost::get(&Vertex::race_stack,g);
+
     dynamic_properties dp;
     dp.property("vertex_id", vertex_id_map);
     dp.property("edge_type", edge_type_map);
     dp.property("end_event", vertex_event_map);
+    dp.property("has_race", vertex_has_race_map);
+    dp.property("race_stack", vertex_race_stack_map);
 
     std::ofstream output("output.txt");
     write_graphml(output, g, dp, true);

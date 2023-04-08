@@ -19,6 +19,15 @@
 
 namespace __tsan {
 
+extern "C" {
+  void (*ompt_report_race_stack)(char*, bool, unsigned int, unsigned int);
+
+  INTERFACE_ATTRIBUTE
+  void __tsan_set_report_race_stack_function(void (*f)(char*, bool, unsigned int, unsigned int)){
+    ompt_report_race_stack = f;
+  }
+}
+
 class Decorator: public __sanitizer::SanitizerCommonDecorator {
  public:
   Decorator() : SanitizerCommonDecorator() { }
@@ -116,7 +125,27 @@ void PrintStack(const ReportStack *ent) {
                 frame->info.address, &frame->info,
                 common_flags()->symbolize_vs_style,
                 common_flags()->strip_path_prefix, kInterposedFunctionPrefix);
-    Printf("%s\n", res.data());
+      Printf("%s\n", res.data());
+  }
+  Printf("\n");
+}
+
+void PrintStack(const ReportStack *ent, bool first, u32 current_step=0, u32 prev_step=0) {
+  if (ent == 0 || ent->frames == 0) {
+    Printf("    [failed to restore the stack]\n\n");
+    return;
+  }
+  SymbolizedStack *frame = ent->frames;
+  for (int i = 0; frame && frame->info.address; frame = frame->next, i++) {
+    InternalScopedString res;
+    RenderFrame(&res, common_flags()->stack_trace_format, i,
+                frame->info.address, &frame->info,
+                common_flags()->symbolize_vs_style,
+                common_flags()->strip_path_prefix, kInterposedFunctionPrefix);
+    if(i == 0){
+      ompt_report_race_stack(res.data(), first, current_step, prev_step);
+      Printf("%s\n", res.data());
+    } 
   }
   Printf("\n");
 }
@@ -143,7 +172,7 @@ static const char *ExternalMopDesc(bool first, bool write) {
                : (write ? "Previous modifying" : "Previous read-only");
 }
 
-static void PrintMop(const ReportMop *mop, bool first) {
+static void PrintMop(const ReportMop *mop, bool first, u32 current_step=0, u32 prev_step=0) {
   Decorator d;
   char thrbuf[kThreadBufSize];
   Printf("%s", d.Access());
@@ -162,7 +191,7 @@ static void PrintMop(const ReportMop *mop, bool first) {
   PrintMutexSet(mop->mset);
   Printf(":\n");
   Printf("%s", d.Default());
-  PrintStack(mop->stack);
+  PrintStack(mop->stack, first, current_step, prev_step);
 }
 
 static void PrintLocation(const ReportLocation *loc) {
@@ -297,7 +326,7 @@ static SymbolizedStack *SkipTsanInternalFrames(SymbolizedStack *frames) {
   return frames;
 }
 
-void PrintReport(const ReportDesc *rep) {
+void PrintReport(const ReportDesc *rep, u32 current_step, u32 prev_step) {
   Decorator d;
   Printf("==================\n");
   const char *rep_typ_str = ReportTypeString(rep->typ, rep->tag);
@@ -348,7 +377,7 @@ void PrintReport(const ReportDesc *rep) {
   }
 
   for (uptr i = 0; i < rep->mops.Size(); i++)
-    PrintMop(rep->mops[i], i == 0);
+    PrintMop(rep->mops[i], i == 0, current_step, prev_step);
 
   if (rep->sleep)
     PrintSleep(rep->sleep);

@@ -17,6 +17,21 @@ namespace __tsan {
 constexpr u32 vector_fix_size = 200000000;
 ConcurrencyVector step_nodes(vector_fix_size);
 
+extern "C" {
+  void (*ompt_print)();
+  void (*ompt_report_race_steps)(int,int);
+
+  INTERFACE_ATTRIBUTE
+  void __tsan_set_ompt_print_function(void (*f)()){
+    ompt_print = f;
+  }
+
+  INTERFACE_ATTRIBUTE
+  void __tsan_set_report_race_steps_function(void (*f)(int,int)){
+    ompt_report_race_steps = f;
+  }
+}
+
 // For DPST purpose, we assume shadow_mem[0] stores the last writer
 // shadow_mem[1] stores the leftmost reader, shadow_mem[2] stores the rightmost reader
 // constexpr u8 shadow_write_index = 0;
@@ -555,10 +570,13 @@ enum RaceType {
 //                                       "read-write-race", "", "use-after-free"};
 
 NOINLINE void DoReportRaceDPST(ThreadState *thr, RawShadow* shadow_mem, Shadow cur, Shadow prev, RaceType race_type, AccessType typ, uptr addr, uptr pc) {
-  if (!flags()->report_bugs || thr->suppress_reports) {
+  if ((prev.is_atomic() && cur.is_atomic()) || !(prev.access_mask() & cur.access_mask())) {
     return;
   }
-  if ((prev.is_atomic() && cur.is_atomic()) || !(prev.access_mask() & cur.access_mask())) {
+  
+  ompt_report_race_steps(cur.step_id(), prev.step_id());
+
+  if (!flags()->report_bugs || thr->suppress_reports) {
     return;
   }
 
@@ -572,7 +590,7 @@ NOINLINE void DoReportRaceDPST(ThreadState *thr, RawShadow* shadow_mem, Shadow c
   Shadow prev_tsan(prev.ConvertMaskToAccess(), prev_step.sid, prev_step.ev, rt_val & 0x2, prev.is_atomic());
   Shadow cur_tsan(cur.ConvertMaskToAccess(), curr_step.sid, curr_step.ev, typ & kAccessRead, typ & kAccessAtomic);
   //Printf("Error type: %s at %016lx, Prev step: %u, Curr step: %u\n", kRaceTypeName[race_type], addr, prev_step_id, curr_step_id);
-  ReportRace(thr, shadow_mem, cur_tsan, prev_tsan, typ);
+  ReportRace(thr, shadow_mem, cur_tsan, prev_tsan, typ, curr_step_id, prev_step_id);
   // PrintPC(pc);
 }
 
