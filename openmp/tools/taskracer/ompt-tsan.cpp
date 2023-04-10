@@ -300,8 +300,7 @@ static void ompt_ta_parallel_begin
   parallel_data->ptr = new parallel_t(requested_parallelism, current_task, cg_parent);
   int step_id = insert_leaf(new_finish_node, current_task);
 
-  // DONE: 
-  // insert a node in G as continuation node, and a continuation edge
+  // FJ: insert a node in G as continuation node, and a continuation edge
   g[step_id].id = step_id;
 
   edge_t e; bool b;
@@ -331,14 +330,12 @@ static void ompt_ta_parallel_end
 
   int step_id = insert_leaf(parent, current_task);
   
-  // DONE: 
   // 1. insert a node in G as continuation node, and a continuation edge
   g[step_id].id = step_id;
 
   edge_t e; bool b;
   boost::tie(e,b) = boost::add_edge(cg_parent,step_id,g);
   g[e].type = contedge;
-  // printf("[PARALLEL_END] new step id is %d, current step id %d \n", step_id, cg_parent);
 
   // 2. insert join edges from last step nodes in implicit tasks to the continuation node
   for(int joining_node : parallel->end_nodes_to_join){
@@ -388,7 +385,7 @@ static void ompt_ta_implicit_task(
       task_data->ptr = main_ti;
       int step_id = insert_leaf(initial, main_ti);
 
-      // DONE: this should be the first node in G, with step_id = 1
+      // FJ: this should be the first node in G, with step_id = 1
       g[step_id].id = step_id;
     } else if (endpoint == ompt_scope_end) {
       task_t *ti = (task_t *)task_data->ptr;
@@ -408,19 +405,9 @@ static void ompt_ta_implicit_task(
       task_t *ti = new task_t{new_task_node, enclosed_finish, true, index, (void*) parallel};
       task_data->ptr = ti;
       int step_id = insert_leaf(new_task_node, ti);
-      // printf("implicit task first node step_id is %d \n", step_id);
 
-      // DONE: insert first step node for the implicit task
-      // Question: how to get parent node? We have parent task, but the current step node
-      // for parent task is already the continuation node.
-      //                 A
-      //               / |
-      //              /  |
-      //             /   |
-      //            /    |
-      //           B     C <- (current step node for parent task)
+      // FJ: insert first step node for the implicit task
       vertex_t cg_parent = parallel->start_cg_node;
-      // vertex_t node = boost::add_vertex(g);
 
       g[step_id].id = step_id;
 
@@ -522,74 +509,68 @@ static void ompt_ta_sync_region(
       task_t* ti = new task_t{new_task_node, enclosed_finish, true, current_task->index, current_task->parallel_region};
       task_data->ptr = ti;
       
+      /*
+        Computation Graph related code below
+      */
 
-      // if (parallel->current_join_master == nullptr){
-      //   printf("[SYNC scope_begin] implicit barrier for parallel construct \n");
-      // }
-      // else{
-      //   printf("[SYNC scope_begin] implicit barrier for workshare construct \n");
-      // }
-
-      // TODO:
-      // 1. Decide which sync region we are in (parallel or work-share)
+      g[current_task->current_step_id].end_event = event_sync_region_begin;
       int step_id = insert_leaf(new_task_node, ti);
       if(current_task->added_to_others_join == false){
-          if(parallel->current_join_master != nullptr && parallel->current_join_master->node_in_dpst->corresponding_id == current_task->node_in_dpst->corresponding_id){
-            parallel->current_join_master = ti;
-          }
-          else{
-            unsigned int team_index = ti->index;
-            if(team_index > parallel->parallelism){
-              parallel->end_nodes_to_join.push_back(step_id);
-            }
-            else{
-              parallel->end_nodes_to_join[team_index] = step_id;
-            }
-          }
+        unsigned int team_index = ti->index;
+        if(team_index > parallel->parallelism){
+          parallel->end_nodes_to_join.push_back(step_id);
+        }
+        else{
+          parallel->end_nodes_to_join[team_index] = step_id;
+        }
         current_task->added_to_others_join = true;
       }
 
-      // DONE: continuation edge and continuation node
+      // FJ: continuation edge and continuation node
       g[step_id].id = step_id;
       g[step_id].end_event = event_sync_region_end;
       edge_t e;
       bool b;
       boost::tie(e,b) = boost::add_edge(current_task->current_step_id, step_id, g);
       g[e].type = contedge;
-      g[current_task->current_step_id].end_event = event_sync_region_begin;
-
-      // printf("[SYNC:scope_begin] new step id is %d, current step id is %d \n", step_id, current_task->current_step_id);
-      // printf("[SYNC scope_begin] task current step id is %d \n", current_task->current_step_id);
 
       delete current_task;
     }
     else if(endpoint == ompt_scope_end){
       printf("[SYNC scope_end] \n");
-      if(parallel_data){
-        parallel_t* parallel = (parallel_t*) parallel_data->ptr;
-        if(parallel != nullptr && parallel->current_join_master != nullptr){
-          task_t *current_task = (task_t *)task_data->ptr;
-          if(current_task->node_in_dpst->corresponding_id == parallel->current_join_master->node_in_dpst->corresponding_id){
-            for(vertex_t node : parallel->end_nodes_to_join){
-                if(node == 0){
-                  continue;
-                }
-                edge_t e;
-                bool b;
-                boost::tie(e,b) = boost::add_edge(node, current_task->current_step_id, g);
-                g[e].type = joinedge;
 
-                boost::tie(e,b) = boost::add_edge(current_task->current_step_id, node, g);
-                g[e].type = barrieredge;
+      if(parallel_data != nullptr){
+        parallel_t* parallel = (parallel_t*) parallel_data->ptr;
+
+        if(parallel != nullptr){
+          task_t *current_task = (task_t *)task_data->ptr;
+          unsigned int team_index = current_task->index;
+          int current_step = current_task->current_step_id;
+
+          if(team_index == 0){
+            for(vertex_t node : parallel->end_nodes_to_join){
+              // if node == 0, we can directly break, because
+              // we assume all threads hit the barrier or not
+              if(node == 0){
+                break;
+              }
+
+              if(node == current_step){
+                continue;
+              }
+              edge_t e;
+              bool b;
+              boost::tie(e,b) = boost::add_edge(node, current_task->current_step_id, g);
+              g[e].type = joinedge;
+
+              // boost::tie(e,b) = boost::add_edge(current_task->current_step_id, node, g);
+              // g[e].type = barrieredge;
             }
-            parallel->end_nodes_to_join.clear();
+
             parallel->end_nodes_to_join.resize(parallel->parallelism);
-            parallel->current_join_master = nullptr;
           }
         }
       }
-      // task_t *ct = (task_t *)task_data->ptr;
-      // g[ct->current_step_id].end_event = event_sync_region_end;
     }
   }
   
@@ -732,15 +713,12 @@ static void ompt_ta_work(
   uint64_t count, 
   const void *codeptr_ra)
 {
-  task_t *current_task = (task_t*) task_data->ptr;
   parallel_t *parallel = (parallel_t*) parallel_data->ptr;
   if(wstype == ompt_work_single_executor){
     if(endpoint == ompt_scope_begin){
-      // printf("[WORK SHARE] single begin \n");
-      parallel->current_join_master = current_task;
-    }
-    else if(endpoint == ompt_scope_end){
-      // printf("[WORK SHARE] single end \n");
+      // if(parallel->end_nodes_to_join.size() > parallel->parallelism){
+      //   parallel->end_nodes_to_join.resize(parallel->parallelism);
+      // }
     }
   }
 }
