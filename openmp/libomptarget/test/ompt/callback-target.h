@@ -213,67 +213,6 @@ static void on_ompt_callback_target_emi(ompt_target_t kind,
   }
 }
 
-
-static void format_device_mem_flag(int flag, char *buffer) {
-  char *progress = buffer;
-
-#define ADD_FS                                                                 \
-  do {                                                                         \
-    if (progress != buffer) {                                                  \
-      progress += sprintf(progress, "|");                                      \
-    }                                                                          \
-  } while (0)
-
-  if (flag & ompt_device_mem_flag_to) {
-    progress += sprintf(progress, "ompt_device_mem_flag_to");
-  }
-  if (flag & ompt_device_mem_flag_from) {
-    ADD_FS;
-    progress += sprintf(progress, "ompt_device_mem_flag_from");
-  }
-  if (flag & ompt_device_mem_flag_alloc) {
-    ADD_FS;
-    progress += sprintf(progress, "ompt_device_mem_flag_alloc");
-  }
-  if (flag & ompt_device_mem_flag_release) {
-    ADD_FS;
-    progress += sprintf(progress, "ompt_device_mem_flag_release");
-  }
-  if (flag & ompt_device_mem_flag_associate) {
-    ADD_FS;
-    progress += sprintf(progress, "ompt_device_mem_flag_associate");
-  }
-  if (flag & ompt_device_mem_flag_disassociate) {
-    ADD_FS;
-    progress += sprintf(progress, "ompt_device_mem_flag_disassociate");
-  }
-
-#undef ADD_FS
-}
-
-
-static void on_ompt_callback_device_mem(ompt_data_t *target_task_data,
-                                        ompt_data_t *target_data,
-                                        unsigned int device_mem_flag,
-                                        void *orig_base_addr, void *orig_addr,
-                                        int orig_device_num, void *dest_addr,
-                                        int dest_device_num, size_t bytes,
-                                        const void *codeptr_ra) {
-  char buffer[2048];
-  format_device_mem_flag(device_mem_flag, buffer);
-  printf("%" PRIu64 ":" _TOOL_PREFIX
-         " ompt_event_device_mem: target_task_id=%" PRIu64
-         ", target_id=%" PRIu64 ", device_mem_flag=%s, orig_base_addr=%p, "
-         "orig_addr=%p, orig_device_num=%" PRIu32
-         ", dest_addr=%p, dest_device_num=%" PRIu32 ", bytes=%" PRIu64
-         ", codeptr_ra=%p"
-         "\n",
-         ompt_get_thread_data()->value,
-         target_task_data ? target_task_data->value : 0, target_data->value,
-         buffer, orig_base_addr, orig_addr, orig_device_num, dest_addr,
-         dest_device_num, bytes, codeptr_ra);
-}
-
 static void on_ompt_callback_target_data_op_emi(
     ompt_scope_endpoint_t endpoint, ompt_data_t *target_task_data,
     ompt_data_t *target_data, ompt_id_t *host_op_id,

@@ -154,8 +154,11 @@ NOINLINE void DoReportRace(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
   if (old.sid() == kFreeSid)
     old = Shadow(LoadShadow(&shadow_mem[1]));
   // This prevents trapping on this address in future.
-  for (uptr i = 0; i < kShadowCnt; i++)
-    StoreShadow(&shadow_mem[i], i == 0 ? Shadow::kRodata : Shadow::kEmpty);
+  for (uptr i = 0; i < kShadowCnt; i++) {
+    RawShadow s = (i == 0 ? Shadow::kRodata : Shadow::kEmpty);
+    s = static_cast<RawShadow>((static_cast<u32>(s) | (static_cast<u32>(shadow_mem[i]) & kGetStateBitMask)));
+    StoreShadow(&shadow_mem[i], s);
+  }
   // See the comment in MemoryRangeFreed as to why the slot is locked
   // for free memory accesses. ReportRace must not be called with
   // the slot locked because of the fork. But MemoryRangeFreed is not
@@ -171,14 +174,11 @@ NOINLINE void DoReportRace(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
 
 NOINLINE void DoReportDMI(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
                            AccessType typ, DMIType dmi_typ) SANITIZER_NO_THREAD_SAFETY_ANALYSIS {
-  
-  thr->dmi_type = dmi_typ;
-
-  for (uptr i = 0; i < kShadowCnt; i++)
-    StoreShadow(&shadow_mem[i], i == 0 ? Shadow::kRodata : Shadow::kEmpty);
+  // for (uptr i = 0; i < kShadowCnt; i++)
+  //   StoreShadow(&shadow_mem[i], i == 0 ? Shadow::kRodata : Shadow::kEmpty);
   if (typ & kAccessSlotLocked)
     SlotUnlock(thr);
-  ReportDMI(thr, shadow_mem, cur, typ);
+  ReportDMI(thr, shadow_mem, cur, typ, dmi_typ);
   if (typ & kAccessSlotLocked)
     SlotLock(thr);
 }
@@ -319,7 +319,7 @@ NOINLINE void DoReportRaceV(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
 
 ALWAYS_INLINE
 bool CheckRaces(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
-                m128 shadow, m128 access, AccessType typ) {
+                m128 shadow, m128 state, m128 access, AccessType typ) {
   // Note: empty/zero slots don't intersect with any access.
   const m128 zero = _mm_setzero_si128();
   const m128 mask_access = _mm_set1_epi32(0x000000ff);
@@ -364,7 +364,12 @@ STORE : {
     if (UNLIKELY(index == 0))
       index = (atomic_load_relaxed(&thr->trace_pos) / 2) % 16;
   }
-  StoreShadow(&shadow_mem[index / 4], cur.raw());
+  int final_idx = index / 4;
+  const m128 mask_state = _mm_set1_epi32(kGetStateBitMask);
+  const m128 same_state = _mm_cmpeq_epi32(state, mask_state);
+  int same_state2 = _mm_movemask_ps(same_state);
+  cur.setStateBit((1 << final_idx) & same_state2);
+  StoreShadow(&shadow_mem[final_idx], cur.raw());
   // We could zero other slots determined by rewrite_mask.
   // That would help other threads to evict better slots,
   // but it's unclear if it's worth it.
@@ -397,10 +402,20 @@ SHARED:
   return true;
 }
 
-#  define LOAD_CURRENT_SHADOW(cur, shadow_mem)                         \
-    const m128 access = _mm_set1_epi32(static_cast<u32>((cur).raw())); \
-    const m128 shadow = _mm_load_si128(reinterpret_cast<m128*>(shadow_mem))
+#  define LOAD_CURRENT_SHADOW(cur, shadow_mem)                                \
+    const m128 access = _mm_set1_epi32(static_cast<u32>((cur).raw()));        \
+    const m128 shadow = _mm_load_si128(reinterpret_cast<m128*>(shadow_mem));  \
+    const m128 mask_clear = _mm_set1_epi32(kClearStateBitMask);               \
+    const m128 rd_shadow = _mm_and_si128(shadow, mask_clear);                 \
+    const m128 mask_state = _mm_set1_epi32(kGetStateBitMask);                 \
+    m128 state = _mm_and_si128(shadow, mask_state)
+
+#  define LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem)                           \
+    const m128 shadow = _mm_load_si128(reinterpret_cast<m128*>(shadow_mem));  \
+    const m128 mask_state = _mm_set1_epi32(kGetStateBitMask);                 \
+    m128 state = _mm_and_si128(shadow, mask_state)
 #endif
+
 
 char* DumpShadow(char* buf, RawShadow raw) {
   if (raw == Shadow::kEmpty) {
@@ -433,8 +448,15 @@ NOINLINE void TraceRestartMemoryAccess(ThreadState* thr, uptr pc, uptr addr,
   MemoryAccess(thr, pc, addr, size, typ);
 }
 
+NOINLINE void TraceRestartMemoryAccessMapping(ThreadState* thr, uptr pc, uptr addr,
+                                       uptr size, AccessType typ) {
+  TraceSwitchPart(thr);
+  MemoryAccessMapping(thr, pc, addr, size, typ);
+}
+
 ALWAYS_INLINE USED
 void CheckBound(uptr base, uptr addr, uptr size) {
+  // Printf("Checkbound %p %p\n", (char *)base, (char *)addr);
   if (UNLIKELY(ctx->t2h.isOverflow(base, addr))) {
     ThreadState *thr = cur_thread();
     RawShadow* shadow_mem = MemToShadow(addr);
@@ -452,85 +474,70 @@ void CheckBound(uptr base, uptr addr, uptr size) {
 
 
 ALWAYS_INLINE USED
-void CheckMapping(ThreadState* thr, uptr addr, uptr size, RawShadow* shadow_mem, Shadow& cur, AccessType typ) {
+bool CheckMapping(ThreadState* thr, uptr addr, uptr size, m128 state, Shadow& cur, AccessType typ) {
 
   //memory access checking, check weather the read see the latest value
   if (thr->is_on_target) {
     Node* mapping = ctx->t2h.find(addr, size);
     if (mapping) {
-      // Printf("read on target, address is %p, size is %d \n",addr,size);
       uptr host_addr = mapping->info.start + (addr - mapping->interval.left_end);
 
       if (UNLIKELY(!IsAppMem(host_addr))) {
         Printf("[access on target (check mapping only)] target addr %012zx has a corresponding host addr %012zx, but the host addr is not in application memory\n",
             addr, host_addr); 
-        return;
+        return false;
       }
       
       RawShadow *host_shadow_mem = MemToShadow(host_addr);
-      if (UNLIKELY(!IsShadowMem(host_shadow_mem))) {
-        Printf("[access on target (check mapping only)] target addr %012zx has a corresponding host addr %012zx, but the shadow memory addr %p is invalid\n", 
-            addr, host_addr, (void*) host_shadow_mem);
-        return;
-      }
+      // if (UNLIKELY(!IsShadowMem(host_shadow_mem))) {
+      //   Printf("[access on target (check mapping only)] target addr %012zx has a corresponding host addr %012zx, but the shadow memory addr %p is invalid\n", 
+      //       addr, host_addr, (void*) host_shadow_mem);
+      //   return;
+      // }
+      const m128 host_shadow = _mm_load_si128(reinterpret_cast<m128*>(host_shadow_mem));
+      const m128 mask_state = _mm_set1_epi32(kGetStateBitMask);
+      const m128 state = _mm_and_si128(host_shadow, mask_state);
+      bool is_cv = _mm_extract_epi32(state, 1);
+      bool is_cv_init = _mm_extract_epi32(state, 3);
 
-      bool isOV, isCV, isOVinit, isCVinit;
-      getAllStateBits(host_shadow_mem, isOV, isCV, isOVinit, isCVinit);
-
-      if (  !isCVinit ) {
-      // if (!s.isTargetInitialized()) {
-
-        cur.SetWrite(false);
-        cur.SetAtomic(true);
+      // Printf("Read on target, is_cv %d, is_cv_init %d, addr is %p, size is %lu\n", is_cv, is_cv_init, addr, size);
+      if (!is_cv_init) {
         DoReportDMI(thr, host_shadow_mem, cur, typ, USE_OF_UNITITIALIZED_MEMORY);
-        return;
+        // //##debug
+        // Printf("%p, %d, %d, %d, %d\n", addr, _mm_extract_epi32(state, 0), _mm_extract_epi32(state, 1), _mm_extract_epi32(state, 2), _mm_extract_epi32(state, 3));
+        // Die();
+        return true;
       }
 
-      if (  !isCV ) {
-      // if (!s.isTargetLatest()) {
-
-        cur.SetWrite(false);
-        cur.SetAtomic(true);
+      if (!is_cv) {
         DoReportDMI(thr, host_shadow_mem, cur, typ, USE_OF_STALE_DATA);
-        return;
+        return true;
       }
     }
   } else {
     Node* mapping = ctx->h2t.find(addr, size);
-    // Printf(" Read on host \n");
     if (mapping) {
-      bool isOV, isCV, isOVinit, isCVinit;
-      getAllStateBits(shadow_mem, isOV, isCV, isOVinit, isCVinit);
+      bool is_ov = _mm_extract_epi32(state, 0);
+      bool is_ov_init = _mm_extract_epi32(state, 2);
 
-      // Printf("  isOV %d, isCV %d, isOVinit %d, isCVinit %d, addr is %p, shadow is %lu \n", isOV, isCV, isOVinit, isCVinit, addr, shadow_mem);
-
-      if (  !isOVinit ) {
-      // if (!s.isHostInitialized()) {
-        if (!IsLoAppMem(addr) && !thr->suppress_reports) {
-          cur.SetWrite(false);
-          cur.SetAtomic(true);
-          DoReportDMI(thr, shadow_mem, cur, typ, USE_OF_UNITITIALIZED_MEMORY);
-          return;
-        }
+      // Printf("Read on host, is_ov %d, is_ov_init %d, addr is %p, size is %lu\n", is_ov, is_ov_init, addr, size);
+      if (!is_ov && !IsLoAppMem(addr)) {
+        DoReportDMI(thr, MemToShadow(addr), cur, typ, USE_OF_STALE_DATA);
+        return true;
       }
     
-      // if (!s.isHostLatest() && !thr->suppress_reports) {
-        // if (!IsLoAppMem(addr) || s.isHostInitialized()) {
-      if (  !isOV && !thr->suppress_reports ) {
-        if (  !IsLoAppMem(addr) || !isOVinit  ) {
-          cur.SetWrite(false);
-          cur.SetAtomic(true);
-          DoReportDMI(thr, shadow_mem, cur, typ, USE_OF_STALE_DATA);
-          return;
-        }
+      if (!is_ov_init && !IsLoAppMem(addr)) {
+        DoReportDMI(thr, MemToShadow(addr), cur, typ, USE_OF_UNITITIALIZED_MEMORY);
+        return true;
       }
     }
   }
+  return false;
 }
 
 
 ALWAYS_INLINE USED
-void UpdateMapping(ThreadState *thr, uptr addr, uptr size, RawShadow* shadow_mem) {
+void UpdateMapping(ThreadState *thr, uptr addr, uptr size, m128 shadow, m128 &state, RawShadow* shadow_mem) {
   if (thr->is_on_target) {
     // Printf(" Write on Target \n");
     Node* mapping = ctx->t2h.find(addr, size);
@@ -544,53 +551,26 @@ void UpdateMapping(ThreadState *thr, uptr addr, uptr size, RawShadow* shadow_mem
       }
 
       RawShadow *host_shadow_mem = MemToShadow(host_addr);
-      if (UNLIKELY(!IsShadowMem(host_shadow_mem))) {
-        Printf("[access on target (check mapping only)] target addr %012zx has a corresponding host addr %012zx, but the shadow memory addr %p is invalid\n", 
-            addr, host_addr, (void*) host_shadow_mem);
-        return;
-      }
+      // if (UNLIKELY(!IsShadowMem(host_shadow_mem))) {
+      //   Printf("[access on target (check mapping only)] target addr %012zx has a corresponding host addr %012zx, but the shadow memory addr %p is invalid\n", 
+      //       addr, host_addr, (void*) host_shadow_mem);
+      //   return;
+      // }
 
-      // Shadow s = LoadShadow(host_shadow_mem);
-      // s.setTargetLatest();
-      // StoreShadow(host_shadow_mem, s.raw());
 
       // 01x1
-      const m128 shadow = _mm_load_si128(reinterpret_cast<m128*>(host_shadow_mem));
-      u32 shadow_0 = _mm_extract_epi32(shadow, 0);
-      u32 shadow_1 = _mm_extract_epi32(shadow, 1);
-      u32 shadow_2 = _mm_extract_epi32(shadow, 2);
-      u32 shadow_3 = _mm_extract_epi32(shadow, 3);
-
-      // Printf("  isOV %d, isCV %d, isOVinit %d, isCVinit %d, host_addr is %p, shadow_mem is %lu \n", (bool)(shadow_0 & GetStateBitMask), (bool)(shadow_1 & GetStateBitMask), 
-      // (bool)(shadow_2 & GetStateBitMask), (bool)(shadow_3 & GetStateBitMask), host_addr, host_shadow_mem);
-
-      shadow_0 = shadow_0 & ClearStateBitMasK;
-      shadow_1 = shadow_1 | GetStateBitMask;
-      shadow_3 = shadow_3 | GetStateBitMask;
-
-      const m128 new_shadow = _mm_setr_epi32(shadow_0,shadow_1,shadow_2,shadow_3);
-
-      _mm_store_si128(reinterpret_cast<m128*>(host_shadow_mem), new_shadow);
+      const m128 host_shadow = _mm_load_si128(reinterpret_cast<m128*>(host_shadow_mem));
+      const m128 mask1 = _mm_setr_epi32(kClearStateBitMask, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF);
+      const m128 mask2 = _mm_setr_epi32(0, kGetStateBitMask, 0, kGetStateBitMask);
+      const m128 new_host_shadow = _mm_or_si128(_mm_and_si128(mask1, host_shadow), mask2);
+      _mm_store_si128(reinterpret_cast<m128*>(host_shadow_mem), new_host_shadow);
     }
   } else {
-    // Printf(" Write on Host, addr is %p, thread tid is %lu \n",addr, thr->tid);
-    // u64 *shadow_mem = (u64*)MemToShadow(addr);
-    // Shadow s = LoadShadow(shadow_mem);
-    // s.setHostLatest(); 
-    // StoreShadow(shadow_mem, s.raw());
-
     // 101x
-    const m128 shadow = _mm_load_si128(reinterpret_cast<m128*>(shadow_mem));
-    u32 shadow_0 = _mm_extract_epi32(shadow, 0);
-    u32 shadow_1 = _mm_extract_epi32(shadow, 1);
-    u32 shadow_2 = _mm_extract_epi32(shadow, 2);
-    u32 shadow_3 = _mm_extract_epi32(shadow, 3);
-
-    shadow_0 = shadow_0 | GetStateBitMask;
-    shadow_1 = shadow_1 & ClearStateBitMasK;
-    shadow_2 = shadow_2 | GetStateBitMask;
-    const m128 new_shadow = _mm_setr_epi32(shadow_0,shadow_1,shadow_2,shadow_3);
-
+    const m128 mask1 = _mm_setr_epi32(0xFFFFFFFF, kClearStateBitMask, 0xFFFFFFFF, 0xFFFFFFFF);
+    const m128 mask2 = _mm_setr_epi32(kGetStateBitMask, 0, kGetStateBitMask, 0);
+    const m128 new_shadow = _mm_or_si128(_mm_and_si128(mask1, shadow), mask2);
+    state = mask2;
     _mm_store_si128(reinterpret_cast<m128*>(shadow_mem), new_shadow);
   }
 }
@@ -602,97 +582,30 @@ void getAllStateBits(RawShadow* shadow_mem, bool &isOV, bool &isCV, bool &isOVin
   u32 shadow_1 = _mm_extract_epi32(shadow, 1);
   u32 shadow_2 = _mm_extract_epi32(shadow, 2);
   u32 shadow_3 = _mm_extract_epi32(shadow, 3);
-  isOV = shadow_0 & GetStateBitMask;
-  isCV = shadow_1 & GetStateBitMask;
-  isOVinit = shadow_2 & GetStateBitMask;
-  isCVinit = shadow_3 & GetStateBitMask;
+  isOV = shadow_0 & kGetStateBitMask;
+  isCV = shadow_1 & kGetStateBitMask;
+  isOVinit = shadow_2 & kGetStateBitMask;
+  isCVinit = shadow_3 & kGetStateBitMask;
 }
 
 
-ALWAYS_INLINE USED void MemoryAccess_onlyMapping(ThreadState* thr, uptr pc, uptr addr,
-                                     uptr size, AccessType typ) {
-  RawShadow* shadow_mem = MemToShadow(addr);
-  UNUSED char memBuf[4][64];
+ALWAYS_INLINE USED void MemoryAccessMapping(ThreadState* thr, uptr pc, uptr addr,
+                                            uptr size, AccessType typ) {
 
+  RawShadow* shadow_mem = MemToShadow(addr);
   FastState fast_state = thr->fast_state;
+  if (UNLIKELY(fast_state.GetIgnoreBit()))
+    return;
   Shadow cur(fast_state, addr, size, typ);
-
-  LOAD_CURRENT_SHADOW(cur, shadow_mem);
-  if (LIKELY(ContainsSameAccess(shadow_mem, cur, shadow, access, typ)))
-    return;
-  if (UNLIKELY(fast_state.GetIgnoreBit()))
-    return;
-  if (!TryTraceMemoryAccess(thr, pc, addr, size, typ))
-    return TraceRestartMemoryAccess(thr, pc, addr, size, typ);
-
-  if (typ & kAccessRead)
-  {
-    CheckMapping(thr, addr, size, shadow_mem, cur, typ);
+  LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem);
+  if (typ & kAccessRead) {
+    // if (!TryTraceMemoryAccess(thr, pc, addr, size, typ))
+    //   return TraceRestartMemoryAccessMapping(thr, pc, addr, size, typ);
+    CheckMapping(thr, addr, size, state, cur, typ);
+  } else {
+    UpdateMapping(thr, addr, size, shadow, state, shadow_mem);
   }
-  else if(typ == kAccessWrite){
-    UpdateMapping(thr, addr, size, shadow_mem);
-  }
-  
 }
-
-
-NOINLINE
-void RestartUnalignedMemoryAccess_onlyMapping(ThreadState* thr, uptr pc, uptr addr,
-                                  uptr size, AccessType typ) {
-  TraceSwitchPart(thr);
-  UnalignedMemoryAccess_onlyMapping(thr, pc, addr, size, typ);
-}
-
-ALWAYS_INLINE USED void UnalignedMemoryAccess_onlyMapping(ThreadState* thr, uptr pc,
-                                              uptr addr, uptr size,
-                                              AccessType typ) {
-  DCHECK_LE(size, 8);
-  FastState fast_state = thr->fast_state;
-  if (UNLIKELY(fast_state.GetIgnoreBit()))
-    return;
-  RawShadow* shadow_mem = MemToShadow(addr);
-  bool traced = false;
-  uptr size1 = Min<uptr>(size, RoundUp(addr + 1, kShadowCell) - addr);
-  {
-    Shadow cur(fast_state, addr, size1, typ);
-    LOAD_CURRENT_SHADOW(cur, shadow_mem);
-    if (LIKELY(ContainsSameAccess(shadow_mem, cur, shadow, access, typ)))
-      goto SECOND;
-    if (!TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
-      return RestartUnalignedMemoryAccess_onlyMapping(thr, pc, addr, size, typ);
-    traced = true;
-    // if (UNLIKELY(CheckRaces(thr, shadow_mem, cur, shadow, access, typ)))
-    //   return;
-    if (typ & kAccessRead )
-    {
-      CheckMapping(thr,addr,size1,shadow_mem,cur,typ);
-    }
-    else if(typ == kAccessWrite){
-      UpdateMapping(thr,addr,size1,shadow_mem);
-    }
-  }
-SECOND:
-  uptr size2 = size - size1;
-  if (LIKELY(size2 == 0))
-    return;
-  shadow_mem += kShadowCnt;
-  Shadow cur(fast_state, 0, size2, typ);
-  LOAD_CURRENT_SHADOW(cur, shadow_mem);
-  if (LIKELY(ContainsSameAccess(shadow_mem, cur, shadow, access, typ)))
-    return;
-  if (!traced && !TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
-    return RestartUnalignedMemoryAccess_onlyMapping(thr, pc, addr, size, typ);
-  // CheckRaces(thr, shadow_mem, cur, shadow, access, typ);
-  if (typ & kAccessRead )
-  {
-    CheckMapping(thr,addr+size1,size2,shadow_mem,cur,typ);
-  }
-  else if(typ == kAccessWrite){
-    UpdateMapping(thr,addr+size1,size2,shadow_mem);
-  }
-  
-}
-
 
 ALWAYS_INLINE USED void MemoryAccess(ThreadState* thr, uptr pc, uptr addr,
                                      uptr size, AccessType typ) {
@@ -707,27 +620,23 @@ ALWAYS_INLINE USED void MemoryAccess(ThreadState* thr, uptr pc, uptr addr,
            DumpShadow(memBuf[3], shadow_mem[3]));
 
   FastState fast_state = thr->fast_state;
+  
   Shadow cur(fast_state, addr, size, typ);
-
   LOAD_CURRENT_SHADOW(cur, shadow_mem);
-  if (LIKELY(ContainsSameAccess(shadow_mem, cur, shadow, access, typ)))
-    return;
+  
+  if (typ & kAccessRead) {
+    CheckMapping(thr, addr, size, state, cur, typ);
+  } else {
+    UpdateMapping(thr, addr, size, shadow, state, shadow_mem);
+  }
+
   if (UNLIKELY(fast_state.GetIgnoreBit()))
+    return;
+  if (LIKELY(ContainsSameAccess(shadow_mem, cur, rd_shadow, access, typ)))
     return;
   if (!TryTraceMemoryAccess(thr, pc, addr, size, typ))
     return TraceRestartMemoryAccess(thr, pc, addr, size, typ);
-
-  if (typ & kAccessRead)
-  {
-    CheckMapping(thr, addr, size, shadow_mem, cur, typ);
-  }
-
-  CheckRaces(thr, shadow_mem, cur, shadow, access, typ);
-
-  if (typ == kAccessWrite){
-    UpdateMapping(thr, addr, size, shadow_mem);
-  }
-  
+  CheckRaces(thr, shadow_mem, cur, rd_shadow, state, access, typ);
 }
 
 void MemoryAccess16(ThreadState* thr, uptr pc, uptr addr, AccessType typ);
@@ -743,29 +652,45 @@ ALWAYS_INLINE USED void MemoryAccess16(ThreadState* thr, uptr pc, uptr addr,
                                        AccessType typ) {
   const uptr size = 16;
   FastState fast_state = thr->fast_state;
-  if (UNLIKELY(fast_state.GetIgnoreBit()))
-    return;
   Shadow cur(fast_state, 0, 8, typ);
   RawShadow* shadow_mem = MemToShadow(addr);
   bool traced = false;
+  bool ignored = fast_state.GetIgnoreBit();
   {
     LOAD_CURRENT_SHADOW(cur, shadow_mem);
-    if (LIKELY(ContainsSameAccess(shadow_mem, cur, shadow, access, typ)))
-      goto SECOND;
+    if (typ & kAccessRead) {
+      CheckMapping(thr, addr, 8, state, cur, typ);
+    } else {
+      UpdateMapping(thr, addr, 8, shadow, state, shadow_mem);
+    }
+    if (UNLIKELY(ignored))
+      return;
+      //goto SECOND;
+    if (LIKELY(ContainsSameAccess(shadow_mem, cur, rd_shadow, access, typ)))
+      return;
+      //goto SECOND;
     if (!TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
       return RestartMemoryAccess16(thr, pc, addr, typ);
     traced = true;
-    if (UNLIKELY(CheckRaces(thr, shadow_mem, cur, shadow, access, typ)))
-      return;
+    // if (UNLIKELY(CheckRaces(thr, shadow_mem, cur, rd_shadow, state, access, typ)))
+    //   return;
+    CheckRaces(thr, shadow_mem, cur, rd_shadow, state, access, typ);
   }
-SECOND:
+// SECOND:
   shadow_mem += kShadowCnt;
   LOAD_CURRENT_SHADOW(cur, shadow_mem);
-  if (LIKELY(ContainsSameAccess(shadow_mem, cur, shadow, access, typ)))
+  if (typ & kAccessRead) {
+    CheckMapping(thr, addr + 8, 8, state, cur, typ);
+  } else {
+    UpdateMapping(thr, addr + 8, 8, shadow, state, shadow_mem);
+  }
+  if (UNLIKELY(ignored))
+    return;
+  if (LIKELY(ContainsSameAccess(shadow_mem, cur, rd_shadow, access, typ)))
     return;
   if (!traced && !TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
     return RestartMemoryAccess16(thr, pc, addr, typ);
-  CheckRaces(thr, shadow_mem, cur, shadow, access, typ);
+  CheckRaces(thr, shadow_mem, cur, rd_shadow, state, access, typ);
 }
 
 NOINLINE
@@ -775,39 +700,112 @@ void RestartUnalignedMemoryAccess(ThreadState* thr, uptr pc, uptr addr,
   UnalignedMemoryAccess(thr, pc, addr, size, typ);
 }
 
-ALWAYS_INLINE USED void UnalignedMemoryAccess(ThreadState* thr, uptr pc,
+NOINLINE
+void RestartUnalignedMemoryAccessMapping(ThreadState* thr, uptr pc, uptr addr,
+                                  uptr size, AccessType typ) {
+  TraceSwitchPart(thr);
+  UnalignedMemoryAccessMapping(thr, pc, addr, size, typ);
+}
+
+// Only __tsan_filtered_unaligned_read* will invoke this function
+ALWAYS_INLINE USED void UnalignedMemoryAccessMapping(ThreadState* thr, uptr pc,
                                               uptr addr, uptr size,
                                               AccessType typ) {
   DCHECK_LE(size, 8);
   FastState fast_state = thr->fast_state;
   if (UNLIKELY(fast_state.GetIgnoreBit()))
     return;
+  // if ((typ & kAccessRead) && !TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
+  //   return RestartUnalignedMemoryAccessMapping(thr, pc, addr, size, typ);
+
+  RawShadow* shadow_mem = MemToShadow(addr);
+  uptr size1 = Min<uptr>(size, RoundUp(addr + 1, kShadowCell) - addr);
+  {
+    Shadow cur(fast_state, addr, size1, typ);
+    LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem);
+    if (typ & kAccessRead) {
+      CheckMapping(thr, addr, size1, state, cur, typ);
+    } else {
+      UpdateMapping(thr, addr, size1, shadow, state, shadow_mem);
+    }
+  }
+//SECOND:
+  uptr size2 = Min<uptr>(size - size1, 8);
+  if (LIKELY(size2 == 0))
+    return;
+  shadow_mem += kShadowCnt;
+  {
+    Shadow cur(fast_state, 0, size2, typ);
+    LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem);
+    if (typ & kAccessRead) {
+      CheckMapping(thr, addr + size1, size2, state, cur, typ);
+    } else {
+      UpdateMapping(thr, addr + size1, size2, shadow, state, shadow_mem);
+    }
+  }
+//THIRD:
+  // uptr size3 = size - size1 - size2;
+  // if (LIKELY(size3 == 0))
+  //   return;
+  // shadow_mem += kShadowCnt;
+  // {
+  //   Shadow cur(fast_state, 0, size3, typ);
+  //   LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem);
+  //   CheckMapping(thr, addr + size1 + size2, size3, shadow, cur, typ);
+  // }
+}
+
+ALWAYS_INLINE USED void UnalignedMemoryAccess(ThreadState* thr, uptr pc,
+                                              uptr addr, uptr size,
+                                              AccessType typ) {
+  DCHECK_LE(size, 8);
+  FastState fast_state = thr->fast_state;
+
   RawShadow* shadow_mem = MemToShadow(addr);
   bool traced = false;
+  bool ignored = fast_state.GetIgnoreBit();
   uptr size1 = Min<uptr>(size, RoundUp(addr + 1, kShadowCell) - addr);
   {
     Shadow cur(fast_state, addr, size1, typ);
     LOAD_CURRENT_SHADOW(cur, shadow_mem);
-    if (LIKELY(ContainsSameAccess(shadow_mem, cur, shadow, access, typ)))
-      goto SECOND;
+    if (typ & kAccessRead) {
+      CheckMapping(thr, addr, size1, state, cur, typ);
+    } else {
+      UpdateMapping(thr, addr, size1, shadow, state, shadow_mem);
+    }
+    if (UNLIKELY(ignored))
+      return;
+      // goto SECOND;
+    if (LIKELY(ContainsSameAccess(shadow_mem, cur, rd_shadow, access, typ)))
+      return;
     if (!TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
       return RestartUnalignedMemoryAccess(thr, pc, addr, size, typ);
     traced = true;
-    if (UNLIKELY(CheckRaces(thr, shadow_mem, cur, shadow, access, typ)))
-      return;
+      // goto SECOND;
+    // if (UNLIKELY(CheckRaces(thr, shadow_mem, cur, rd_shadow, state, access, typ)))
+    //   return;
+    CheckRaces(thr, shadow_mem, cur, rd_shadow, state, access, typ);
   }
-SECOND:
+// SECOND:
   uptr size2 = size - size1;
   if (LIKELY(size2 == 0))
     return;
   shadow_mem += kShadowCnt;
   Shadow cur(fast_state, 0, size2, typ);
   LOAD_CURRENT_SHADOW(cur, shadow_mem);
-  if (LIKELY(ContainsSameAccess(shadow_mem, cur, shadow, access, typ)))
+  if (typ & kAccessRead) {
+    CheckMapping(thr, addr + size1, size2, state, cur, typ);
+  } else {
+    UpdateMapping(thr, addr + size1, size2, shadow, state, shadow_mem);
+  }
+  if (UNLIKELY(ignored))
+    return;
+  if (LIKELY(ContainsSameAccess(shadow_mem, cur, rd_shadow, access, typ)))
     return;
   if (!traced && !TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
     return RestartUnalignedMemoryAccess(thr, pc, addr, size, typ);
-  CheckRaces(thr, shadow_mem, cur, shadow, access, typ);
+  CheckRaces(thr, shadow_mem, cur, rd_shadow, state, access, typ);
+
 }
 
 void ShadowSet(RawShadow* p, RawShadow* end, RawShadow v) {
@@ -826,6 +824,10 @@ void ShadowSet(RawShadow* p, RawShadow* end, RawShadow v) {
   m128 vv = _mm_setr_epi32(
       static_cast<u32>(v), static_cast<u32>(Shadow::kEmpty),
       static_cast<u32>(Shadow::kEmpty), static_cast<u32>(Shadow::kEmpty));
+  if (v != Shadow::kEmpty) {
+    const m128 mask_state = _mm_setr_epi32(kGetStateBitMask, 0, kGetStateBitMask, 0);
+    vv = _mm_or_si128(vv, mask_state);
+  }
   m128* vp = reinterpret_cast<m128*>(p);
   m128* vend = reinterpret_cast<m128*>(end);
   for (; vp < vend; vp++) _mm_store_si128(vp, vv);
@@ -902,7 +904,10 @@ void MemoryRangeFreed(ThreadState* thr, uptr pc, uptr addr, uptr size) {
       static_cast<u32>(Shadow::FreedInfo(cur.sid(), cur.epoch())), 0, 0);
   for (; size; size -= kShadowCell, shadow_mem += kShadowCnt) {
     const m128 shadow = _mm_load_si128((m128*)shadow_mem);
-    if (UNLIKELY(CheckRaces(thr, shadow_mem, cur, shadow, access, typ)))
+    const m128 mask_clear = _mm_set1_epi32(kClearStateBitMask);
+    const m128 rd_shadow = _mm_and_si128(shadow, mask_clear);
+    const m128 zero = _mm_setzero_si128 ();
+    if (UNLIKELY(CheckRaces(thr, shadow_mem, cur, rd_shadow, zero, access, typ)))
       return;
     _mm_store_si128((m128*)shadow_mem, freed);
   }
@@ -936,12 +941,30 @@ void MemoryRangeImitateWriteOrResetRange(ThreadState* thr, uptr pc, uptr addr,
 
 ALWAYS_INLINE
 bool MemoryAccessRangeOne(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
-                          AccessType typ) {
+                          AccessType typ, uptr addr, uptr size) {
   LOAD_CURRENT_SHADOW(cur, shadow_mem);
-  if (LIKELY(ContainsSameAccess(shadow_mem, cur, shadow, access, typ)))
+  if (typ & kAccessRead) {
+    CheckMapping(thr, addr, size, state, cur, typ);
+  } else {
+    UpdateMapping(thr, addr, size, shadow, state, shadow_mem);
+  }
+
+  if (LIKELY(ContainsSameAccess(shadow_mem, cur, rd_shadow, access, typ)))
     return false;
-  return CheckRaces(thr, shadow_mem, cur, shadow, access, typ);
+  return CheckRaces(thr, shadow_mem, cur, rd_shadow, state, access, typ);
 }
+
+// ALWAYS_INLINE
+// bool MemoryAccessRangeOneMapping(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
+//                                  AccessType typ, uptr addr, uptr size) {
+//   LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem);
+//   if (typ & kAccessRead) {
+//     return CheckMapping(thr, addr, size, state, cur, typ);
+//   } else {
+//     UpdateMapping(thr, addr, size, shadow, state, shadow_mem);
+//     return false;
+//   }
+// }
 
 template <bool is_read>
 NOINLINE void RestartMemoryAccessRange(ThreadState* thr, uptr pc, uptr addr,
@@ -986,35 +1009,40 @@ void MemoryAccessRangeT(ThreadState* thr, uptr pc, uptr addr, uptr size) {
   // (writes shouldn't go to .rodata). But it happens in Chromium tests:
   // https://bugs.chromium.org/p/chromium/issues/detail?id=1275581#c19
   // Details are unknown since it happens only on CI machines.
-  if (*shadow_mem == Shadow::kRodata)
+  //Printf("%p %p\n", addr, shadow_mem);
+  Shadow first(LoadShadow(shadow_mem));
+  first.clearStateBit();
+  if (first.raw() == Shadow::kRodata)
     return;
-
+  
   FastState fast_state = thr->fast_state;
   if (UNLIKELY(fast_state.GetIgnoreBit()))
     return;
 
   if (!TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
     return RestartMemoryAccessRange<is_read>(thr, pc, addr, size);
-
+  
+  uptr curr_addr = addr;
   if (UNLIKELY(addr % kShadowCell)) {
     // Handle unaligned beginning, if any.
     uptr size1 = Min(size, RoundUp(addr, kShadowCell) - addr);
     size -= size1;
     Shadow cur(fast_state, addr, size1, typ);
-    if (UNLIKELY(MemoryAccessRangeOne(thr, shadow_mem, cur, typ)))
+    if (UNLIKELY(MemoryAccessRangeOne(thr, shadow_mem, cur, typ, curr_addr, size1)))
       return;
     shadow_mem += kShadowCnt;
+    curr_addr += size1;
   }
   // Handle middle part, if any.
   Shadow cur(fast_state, 0, kShadowCell, typ);
-  for (; size >= kShadowCell; size -= kShadowCell, shadow_mem += kShadowCnt) {
-    if (UNLIKELY(MemoryAccessRangeOne(thr, shadow_mem, cur, typ)))
+  for (; size >= kShadowCell; size -= kShadowCell, shadow_mem += kShadowCnt, curr_addr += kShadowCell) {
+    if (UNLIKELY(MemoryAccessRangeOne(thr, shadow_mem, cur, typ, curr_addr, kShadowCell)))
       return;
   }
   // Handle ending, if any.
   if (UNLIKELY(size)) {
     Shadow cur(fast_state, 0, size, typ);
-    if (UNLIKELY(MemoryAccessRangeOne(thr, shadow_mem, cur, typ)))
+    if (UNLIKELY(MemoryAccessRangeOne(thr, shadow_mem, cur, typ, curr_addr, size)))
       return;
   }
 }

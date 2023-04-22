@@ -28,10 +28,10 @@ void IntervalTree::print_by_height(Node* head, bool print_dpst){
             }
             if (print_dpst) {
                 if(t->parent == nullptr){
-                    Printf("%p $$ %p (i: %d, p: %d)      ", t->interval.left_end, t->interval.right_end, t->index, -1);
+                    Printf("%p $$ %p (i: %d, p: %d)      ", (char *)(t->interval.left_end), (char *)(t->interval.right_end), t->index, -1);
                 }
                 else{
-                    Printf("%p $$ %p (i: %d, p: %d)      ", t->interval.left_end, t->interval.right_end, t->index, t->parent->index);
+                    Printf("%p $$ %p (i: %d, p: %d)      ", (char *)(t->interval.left_end), (char *)(t->interval.right_end), t->index, t->parent->index);
                 }
                 
             }

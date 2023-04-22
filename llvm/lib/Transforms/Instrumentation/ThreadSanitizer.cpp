@@ -671,6 +671,7 @@ bool ThreadSanitizer::instrumentCheckBound(Instruction* Inst,
 
 bool ThreadSanitizer::instrumentFiltered(InstructionInfo II, 
                                             const DataLayout &DL) {
+  assert(isa<LoadInst>(*II.Inst));
   InstrumentationIRBuilder IRB(II.Inst);
   const bool IsWrite = isa<StoreInst>(*II.Inst);
   Value *Addr = IsWrite ? cast<StoreInst>(II.Inst)->getPointerOperand()
@@ -714,14 +715,7 @@ bool ThreadSanitizer::instrumentFiltered(InstructionInfo II,
   }
   */
 
-  const Align Alignment = IsWrite ? cast<StoreInst>(II.Inst)->getAlign()
-                                  : cast<LoadInst>(II.Inst)->getAlign();
-  const bool IsCompoundRW =
-      ClCompoundReadBeforeWrite && (II.Flags & InstructionInfo::kCompoundRW);
-  const bool IsVolatile = ClDistinguishVolatile &&
-                          (IsWrite ? cast<StoreInst>(II.Inst)->isVolatile()
-                                   : cast<LoadInst>(II.Inst)->isVolatile());
-  assert((!IsVolatile || !IsCompoundRW) && "Compound volatile invalid!");
+  const Align Alignment = cast<LoadInst>(II.Inst)->getAlign();
 
   const uint32_t TypeSize = DL.getTypeStoreSizeInBits(OrigTy);
   FunctionCallee OnAccessFunc = nullptr;
@@ -731,10 +725,6 @@ bool ThreadSanitizer::instrumentFiltered(InstructionInfo II,
     OnAccessFunc = IsWrite ? TsanFilteredUnalignedWrite[Idx] : TsanFilteredUnalignedRead[Idx];
   }
   IRB.CreateCall(OnAccessFunc, IRB.CreatePointerCast(Addr, IRB.getInt8PtrTy()));
-  if (IsCompoundRW || IsWrite)
-    NumInstrumentedWrites++;
-  if (IsCompoundRW || !IsWrite)
-    NumInstrumentedReads++;
   return true;
 }
 

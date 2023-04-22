@@ -43,7 +43,7 @@ class FastState {
     u32 unused0_ : 8;
     u32 sid_ : 8;
     u32 epoch_ : kEpochBits;
-    u32 unused1_ : 1;
+    u32 unused1_ : 2;
     u32 ignore_accesses_ : 1;
   };
   union {
@@ -87,8 +87,8 @@ class Shadow {
   u8 access() const { return part_.access_; }
   u8 stateBit() const {return part_.state_info; }
 
-  void setStateBit(){
-    part_.state_info = 1;
+  void setStateBit(bool isSet){
+    part_.state_info = isSet;
   }
 
   void clearStateBit(){

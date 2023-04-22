@@ -66,8 +66,8 @@ constexpr Epoch kEpochOver = static_cast<Epoch>(1 << kEpochBits);
 constexpr Epoch kEpochLast = static_cast<Epoch>((1 << kEpochBits) - 1);
 
 // def for extracting or setting statebit
-const u32 GetStateBitMask = 0x20000000;
-const u32 ClearStateBitMasK = 0xdfffffff;
+const u32 kGetStateBitMask = 0x20000000;
+const u32 kClearStateBitMask = 0xdfffffff;
 
 inline Epoch EpochInc(Epoch epoch) {
   return static_cast<Epoch>(static_cast<u16>(epoch) + 1);

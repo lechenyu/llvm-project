@@ -370,6 +370,16 @@ AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 opty
       ctx->t2h.remove({(uptr)dest_addr, (uptr)dest_addr + bytes});
       ctx->t2h.insert({(uptr)dest_addr, (uptr)dest_addr + bytes}, {(uptr)src_addr, bytes});
     }
+
+    // { //##debug
+    //   RawShadow *shadow_mem = MemToShadow((uptr)src_addr);
+    //   const m128 shadow = _mm_load_si128(reinterpret_cast<m128*>(shadow_mem));
+    //   const m128 mask_state = _mm_set1_epi32(kGetStateBitMask);
+    //   m128 state = _mm_and_si128(shadow, mask_state);
+    //   Printf("%d, %d, %d, %d\n", _mm_extract_epi32(state, 0), _mm_extract_epi32(state, 1), _mm_extract_epi32(state, 2), _mm_extract_epi32(state, 3));
+    // }
+
+    Printf("insert map alloc %p, %p, %lu\n", src_addr, dest_addr, bytes);
   }
   
   if (optype & ompt_device_mem_flag_to) {
@@ -391,22 +401,27 @@ AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 opty
       u32 shadow_1 = _mm_extract_epi32(shadow, 1);
       u32 shadow_2 = _mm_extract_epi32(shadow, 2);
       u32 shadow_3 = _mm_extract_epi32(shadow, 3);
-      u32 isOVinit = (bool)(shadow_2 & GetStateBitMask);
+      u32 isOVinit = (bool)(shadow_2 & kGetStateBitMask);
 
       // X0Y0 to XXYY
       // source is a global variable, it is always initialized
-      if (  !isOVinit && IsLoAppMem(host_addr)  ) {
-        shadow_0 = shadow_0 | GetStateBitMask;
-      }
+      // if (  !isOVinit && IsLoAppMem(host_addr)  ) {
+      //   shadow_0 = shadow_0 | kGetStateBitMask;
+      // }
       
-      u32 t = (shadow_0 ^ shadow_1) & GetStateBitMask;
-      shadow_1 = shadow_1 ^ t;
+      u32 t = shadow_0 & kGetStateBitMask;
+      shadow_1 = (shadow_1 & kClearStateBitMask) | t;
 
-      t = (shadow_2 ^ shadow_3) & GetStateBitMask;
-      shadow_3 = shadow_3 ^ t;
+      t = shadow_2 & kGetStateBitMask;
+      shadow_3 = (shadow_3 & kClearStateBitMask) | t;
 
       const m128 new_shadow = _mm_setr_epi32(shadow_0,shadow_1,shadow_2,shadow_3);
       _mm_store_si128(reinterpret_cast<m128*>(shadow_mem), new_shadow);
+      // if (offset == 0) { //##debug
+      //   const m128 mask_state = _mm_set1_epi32(kGetStateBitMask);
+      //   m128 state = _mm_and_si128(new_shadow, mask_state);
+      //   Printf("%d, %d, %d, %d\n", _mm_extract_epi32(state, 0), _mm_extract_epi32(state, 1), _mm_extract_epi32(state, 2), _mm_extract_epi32(state, 3));
+      // }
 
       // // source is a global variable, it is always initialized
       // if (!s.isHostInitialized() && IsLoAppMem(host_addr)) {
@@ -416,6 +431,7 @@ AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 opty
       // StoreShadow(shadow_mem, s.raw());
       // //Printf("[transfer to device] src_addr = %016zx, dest_addr = %016zx, shadow_aadr = %016zx, shadow = %016zx\n", host_addr, (uptr)dest_addr + offset, shadow_mem, s.raw());
     }
+    Printf("insert map to %p, %p, %lu\n", src_addr, dest_addr, bytes);
   }
 
   if(optype & ompt_device_mem_flag_from) {
@@ -445,11 +461,11 @@ AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 opty
       // Printf("  isOV %d, isCV %d, isOVinit %d, isCVinit %d, host_addr is %p, shadow is %lu \n", (bool)(shadow_0 & GetStateBitMask), (bool)(shadow_1 & GetStateBitMask), 
       //   (bool)(shadow_2 & GetStateBitMask), (bool)(shadow_3 & GetStateBitMask), host_addr, shadow_mem);
 
-      u32 t = (shadow_0 ^ shadow_1) & GetStateBitMask;
-      shadow_0 = shadow_0 ^ t;
+      u32 t = shadow_1 & kGetStateBitMask;
+      shadow_0 = (shadow_0 & kClearStateBitMask) | t;
 
-      t = (shadow_2 ^ shadow_3) & GetStateBitMask;
-      shadow_2 = shadow_2 ^ t;
+      t = shadow_3 & kGetStateBitMask;
+      shadow_2 = (shadow_2 & kClearStateBitMask) | t;
 
       const m128 new_shadow = _mm_setr_epi32(shadow_0,shadow_1,shadow_2,shadow_3);
       _mm_store_si128(reinterpret_cast<m128*>(shadow_mem), new_shadow);
@@ -491,8 +507,8 @@ AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 opty
 
       // Printf("  isOV %d, isCV %d, isOVinit %d, isCVinit %d, host_addr is %p, shadow_mem is %lu \n", (bool)(shadow_0 & GetStateBitMask), (bool)(shadow_1 & GetStateBitMask), 
       //       (bool)(shadow_2 & GetStateBitMask), (bool)(shadow_3 & GetStateBitMask), host_addr, shadow_mem);
-      shadow_1 = shadow_1 & ClearStateBitMasK;
-      shadow_3 = shadow_3 & ClearStateBitMasK;
+      shadow_1 = shadow_1 & kClearStateBitMask;
+      shadow_3 = shadow_3 & kClearStateBitMask;
 
       const m128 new_shadow = _mm_setr_epi32(shadow_0,shadow_1,shadow_2,shadow_3);
 

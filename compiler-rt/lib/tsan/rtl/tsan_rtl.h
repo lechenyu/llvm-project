@@ -241,7 +241,6 @@ struct ThreadState {
   explicit ThreadState(Tid tid);
 
   bool is_on_target;
-  DMIType dmi_type;
 
 } ALIGNED(SANITIZER_CACHE_LINE_SIZE);
 
@@ -509,7 +508,7 @@ bool OutputReport(ThreadState *thr, const ScopedReport &srep);
 bool IsFiredSuppression(Context *ctx, ReportType type, StackTrace trace);
 bool IsExpectedReport(uptr addr, uptr size);
 
-void ReportDMI(ThreadState *thr, RawShadow *shadow_mem, Shadow cur, AccessType typ);
+void ReportDMI(ThreadState *thr, RawShadow *shadow_mem, Shadow cur, AccessType typ, DMIType dmi_typ);
 
 #if defined(TSAN_DEBUG_OUTPUT) && TSAN_DEBUG_OUTPUT >= 1
 # define DPrintf Printf
@@ -541,11 +540,11 @@ void MemoryAccess(ThreadState *thr, uptr pc, uptr addr, uptr size,
 void UnalignedMemoryAccess(ThreadState *thr, uptr pc, uptr addr, uptr size,
                            AccessType typ);
 
-void MemoryAccess_onlyMapping(ThreadState *thr, uptr pc, uptr addr, uptr size,
-                  AccessType typ);
+void MemoryAccessMapping(ThreadState *thr, uptr pc, uptr addr, uptr size,
+                         AccessType typ);
 
-void UnalignedMemoryAccess_onlyMapping(ThreadState *thr, uptr pc, uptr addr, uptr size,
-                           AccessType typ);
+void UnalignedMemoryAccessMapping(ThreadState *thr, uptr pc, uptr addr, uptr size,
+                                  AccessType typ);
 // This creates 2 non-inlined specialized versions of MemoryAccessRange.
 template <bool is_read>
 void MemoryAccessRangeT(ThreadState *thr, uptr pc, uptr addr, uptr size);
@@ -563,9 +562,9 @@ void MemoryAccessRange(ThreadState *thr, uptr pc, uptr addr, uptr size,
 
 void getAllStateBits(RawShadow* shadow_mem, bool &isOV, bool &isCV, bool &isOVinit, bool &isCVinit);
 
-void CheckMapping(ThreadState* thr, uptr addr, uptr size, RawShadow* shadow_mem, Shadow& cur, AccessType typ);
+bool CheckMapping(ThreadState* thr, uptr addr, uptr size, m128 state, Shadow& cur, AccessType typ);
 
-void UpdateMapping(ThreadState *thr, uptr addr, uptr size, RawShadow* shadow_mem);
+void UpdateMapping(ThreadState *thr, uptr addr, uptr size, m128 shadow, m128 &state, RawShadow* shadow_mem);
 
 void CheckBound(uptr base, uptr addr, uptr size);
 

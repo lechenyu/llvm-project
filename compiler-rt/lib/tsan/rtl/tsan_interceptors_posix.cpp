@@ -2813,7 +2813,6 @@ void InitializeInterceptors() {
 #if SANITIZER_NETBSD
   TSAN_INTERCEPT(_longjmp);
 #endif
-
   TSAN_INTERCEPT(malloc);
   TSAN_INTERCEPT(__libc_memalign);
   TSAN_INTERCEPT(calloc);

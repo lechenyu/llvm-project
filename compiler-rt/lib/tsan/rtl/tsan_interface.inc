@@ -20,39 +20,105 @@ using namespace __tsan;
 
 // TODO: write a new function instead of using MemoryAccess
 void __tsan_filtered_read1(void *addr) {
-  MemoryAccess_onlyMapping(cur_thread(), CALLERPC, (uptr)addr, 1, kAccessRead);
+  MemoryAccessMapping(cur_thread(), CALLERPC, (uptr)addr, 1, kAccessRead);
 }
 
 void __tsan_filtered_read2(void *addr) {
-  MemoryAccess_onlyMapping(cur_thread(), CALLERPC, (uptr)addr, 2, kAccessRead);
+  MemoryAccessMapping(cur_thread(), CALLERPC, (uptr)addr, 2, kAccessRead);
 }
 
 void __tsan_filtered_read4(void *addr) {
-  MemoryAccess_onlyMapping(cur_thread(), CALLERPC, (uptr)addr, 4, kAccessRead);
+  MemoryAccessMapping(cur_thread(), CALLERPC, (uptr)addr, 4, kAccessRead);
 }
 
 void __tsan_filtered_read8(void *addr) {
-  MemoryAccess_onlyMapping(cur_thread(), CALLERPC, (uptr)addr, 8, kAccessRead);
+  MemoryAccessMapping(cur_thread(), CALLERPC, (uptr)addr, 8, kAccessRead);
 }
 
 void __tsan_filtered_write1(void *addr) {
-  MemoryAccess_onlyMapping(cur_thread(), CALLERPC, (uptr)addr, 1, kAccessWrite);
+  MemoryAccessMapping(cur_thread(), CALLERPC, (uptr)addr, 1, kAccessWrite);
 }
 
 void __tsan_filtered_write2(void *addr) {
-  MemoryAccess_onlyMapping(cur_thread(), CALLERPC, (uptr)addr, 2, kAccessWrite);
+  MemoryAccessMapping(cur_thread(), CALLERPC, (uptr)addr, 2, kAccessWrite);
 }
 
 void __tsan_filtered_write4(void *addr) {
-  MemoryAccess_onlyMapping(cur_thread(), CALLERPC, (uptr)addr, 4, kAccessWrite);
+  MemoryAccessMapping(cur_thread(), CALLERPC, (uptr)addr, 4, kAccessWrite);
 }
 
 void __tsan_filtered_write8(void *addr) {
-  MemoryAccess_onlyMapping(cur_thread(), CALLERPC, (uptr)addr, 8, kAccessWrite);
+  MemoryAccessMapping(cur_thread(), CALLERPC, (uptr)addr, 8, kAccessWrite);
+}  
+
+void __tsan_filtered_read16(void *addr) {
+  uptr pc = CALLERPC;
+  ThreadState *thr = cur_thread();
+  MemoryAccessMapping(thr, pc, (uptr)addr, 8, kAccessRead);
+  MemoryAccessMapping(thr, pc, (uptr)addr + 8, 8, kAccessRead);
+}
+
+void __tsan_filtered_write16(void *addr) {
+  uptr pc = CALLERPC;
+  ThreadState *thr = cur_thread();
+  MemoryAccessMapping(thr, pc, (uptr)addr, 8, kAccessWrite);
+  MemoryAccessMapping(thr, pc, (uptr)addr + 8, 8, kAccessWrite);
+}
+
+void __tsan_filtered_unaligned_read1(const void *addr){
+  UnalignedMemoryAccessMapping(cur_thread(), CALLERPC, (uptr)addr, 1, kAccessRead);
+}
+
+void __tsan_filtered_unaligned_read2(const void *addr) {
+  UnalignedMemoryAccessMapping(cur_thread(), CALLERPC, (uptr)addr, 2, kAccessRead);
+}
+
+void __tsan_filtered_unaligned_read4(const void *addr) {
+  UnalignedMemoryAccessMapping(cur_thread(), CALLERPC, (uptr)addr, 4, kAccessRead);
+}
+
+void __tsan_filtered_unaligned_read8(const void *addr) {
+  UnalignedMemoryAccessMapping(cur_thread(), CALLERPC, (uptr)addr, 8, kAccessRead);
+}
+
+void __tsan_filtered_unaligned_read16(const void *addr) {
+  UnalignedMemoryAccessMapping(cur_thread(), CALLERPC, (uptr)addr, 8, kAccessRead);
+  UnalignedMemoryAccessMapping(cur_thread(), CALLERPC, (uptr)addr + 8, 8, kAccessRead);
+}
+
+void __tsan_filtered_unaligned_write1(const void *addr){
+  uptr pc = CALLERPC;
+  ThreadState *thr = cur_thread();
+  UnalignedMemoryAccessMapping(thr, pc, (uptr)addr, 1, kAccessWrite);
+}
+
+void __tsan_filtered_unaligned_write2(const void *addr) {
+  uptr pc = CALLERPC;
+  ThreadState *thr = cur_thread();
+  UnalignedMemoryAccessMapping(thr, pc, (uptr)addr, 2, kAccessWrite);
+}
+
+void __tsan_filtered_unaligned_write4(const void *addr) {
+  uptr pc = CALLERPC;
+  ThreadState *thr = cur_thread();
+  UnalignedMemoryAccessMapping(thr, pc, (uptr)addr, 4, kAccessWrite);
+}
+
+void __tsan_filtered_unaligned_write8(const void *addr) {
+  uptr pc = CALLERPC;
+  ThreadState *thr = cur_thread();
+  UnalignedMemoryAccessMapping(thr, pc, (uptr)addr, 8, kAccessWrite);
+}
+
+void __tsan_filtered_unaligned_write16(const void *addr) {
+  uptr pc = CALLERPC;
+  ThreadState *thr = cur_thread();
+  UnalignedMemoryAccessMapping(thr, pc, (uptr)addr, 8, kAccessWrite);
+  UnalignedMemoryAccessMapping(thr, pc, (uptr)addr + 8, 8, kAccessWrite);
 }
 
 void __tsan_check_bound(void *base, void *addr, uptr size){
-  CheckBound((uptr)base,(uptr)addr,size);
+  CheckBound((uptr)base, (uptr)addr, size);
 }
 
 void __tsan_read1(void *addr) {
@@ -149,6 +215,22 @@ ALWAYS_INLINE USED void __tsan_unaligned_write4(void *addr) {
 
 ALWAYS_INLINE USED void __tsan_unaligned_write8(void *addr) {
   UnalignedMemoryAccess(cur_thread(), CALLERPC, (uptr)addr, 8, kAccessWrite);
+}
+
+// __tsan_unaligned_read/write calls are emitted by compiler.
+
+ALWAYS_INLINE USED void __tsan_unaligned_read16(const void *addr) {
+  uptr pc = CALLERPC;
+  ThreadState *thr = cur_thread();
+  UnalignedMemoryAccess(thr, pc, (uptr)addr, 8, kAccessRead);
+  UnalignedMemoryAccess(thr, pc, (uptr)addr + 8, 8, kAccessRead);
+}
+
+ALWAYS_INLINE USED void __tsan_unaligned_write16(void *addr) {
+  uptr pc = CALLERPC;
+  ThreadState *thr = cur_thread();
+  UnalignedMemoryAccess(thr, pc, (uptr)addr, 8, kAccessWrite);
+  UnalignedMemoryAccess(thr, pc, (uptr)addr + 8, 8, kAccessWrite);
 }
 
 extern "C" {

@@ -303,13 +303,13 @@ static SymbolizedStack *SkipTsanInternalFrames(SymbolizedStack *frames) {
   return frames;
 }
 
-void PrintReport(const ReportDesc *rep) {
+void PrintReport(ThreadState *thr, const ReportDesc *rep) {
   Decorator d;
   Printf("==================\n");
   const char *rep_typ_str = ReportTypeString(rep->typ, rep->tag);
   Printf("%s", d.Warning());
-  Printf("WARNING: ThreadSanitizer: %s (pid=%d)\n", rep_typ_str,
-         (int)internal_getpid());
+  Printf("WARNING: ThreadSanitizer: %s (pid=%d) %s \n", rep_typ_str,
+         (int)internal_getpid(), thr->is_on_target ? "on the target" : "on the host");
   Printf("%s", d.Default());
 
   if (rep->typ == ReportTypeErrnoInSignal)

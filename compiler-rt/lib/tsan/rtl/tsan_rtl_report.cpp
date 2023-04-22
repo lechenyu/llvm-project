@@ -678,7 +678,7 @@ bool OutputReport(ThreadState *thr, const ScopedReport &srep) {
       return false;
     }
   }
-  PrintReport(rep);
+  PrintReport(thr, rep);
   __tsan_on_report(rep);
   ctx->nreported++;
   if (flags()->halt_on_error)
@@ -842,7 +842,7 @@ void ReportRace(ThreadState *thr, RawShadow *shadow_mem, Shadow cur, Shadow old,
 }
 
 
-void ReportDMI(ThreadState *thr, RawShadow *shadow_mem, Shadow cur, AccessType typ0) {
+void ReportDMI(ThreadState *thr, RawShadow *shadow_mem, Shadow cur, AccessType typ0, DMIType dmi_typ) {
   CheckedMutex::CheckNoLocks();
 
   // Symbolizer makes lots of intercepted calls. If we try to process them,
@@ -850,8 +850,29 @@ void ReportDMI(ThreadState *thr, RawShadow *shadow_mem, Shadow cur, AccessType t
   ScopedIgnoreInterceptors ignore;
 
   uptr addr = ShadowToMem(shadow_mem);
-  DPrintf("#%d: ReportRace %p\n", thr->tid, (void *)addr);
-  if (!ShouldReport(thr, ReportTypeRace))
+  DPrintf("#%d: ReportDMI %p\n", thr->tid, (void *)addr);
+
+  ReportType rep_typ;
+
+  switch (dmi_typ)
+  {
+  case USE_OF_UNITITIALIZED_MEMORY:
+    rep_typ = ReportTypeUninitializedAccess;
+    break;
+  
+  case USE_OF_STALE_DATA:
+    rep_typ = ReportTypeStaleAccess;
+    break;
+
+  case BUFFER_OVERFLOW:
+    rep_typ = ReportTypeBufferOverflow;
+    break;
+
+  // default:
+  //   return;
+  }
+
+  if (!ShouldReport(thr, rep_typ))
     return;
   
 
@@ -883,30 +904,6 @@ void ReportDMI(ThreadState *thr, RawShadow *shadow_mem, Shadow cur, AccessType t
   // if (IsExpectedReport(addr_min, addr_max - addr_min))
   //   return;
 
-
-  ReportType rep_typ;
-
-  switch (thr->dmi_type)
-  {
-  case USE_OF_UNITITIALIZED_MEMORY:
-    // Printf("USE_OF_UNITITIALIZED_MEMORY");
-    rep_typ = ReportTypeUninitializedAccess;
-    break;
-  
-  case USE_OF_STALE_DATA:
-    // Printf("USE_OF_STALE_DATA");
-    rep_typ = ReportTypeStaleAccess;
-    break;
-
-  case BUFFER_OVERFLOW:
-    // Printf("BUFFER_OVERFLOW");
-    rep_typ = ReportTypeBufferOverflow;
-    break;
-
-  default:
-    // Printf("unsupported dmi_type \n");
-    return;
-  }
 
   // if(rep_typ != 16){
   //   Printf("find DMI other than uninitialized \n");
@@ -966,7 +963,6 @@ void ReportDMI(ThreadState *thr, RawShadow *shadow_mem, Shadow cur, AccessType t
   uptr tag = kExternalTagNone;
   for (uptr i = 0; i < kMop; i++) {
     if (tags[i] != kExternalTagNone) {
-      rep_typ = ReportTypeExternalRace;
       tag = tags[i];
       break;
     }
