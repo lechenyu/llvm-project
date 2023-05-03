@@ -1033,6 +1033,14 @@ static int targetDataContiguous(ident_t *Loc, DeviceTy &Device, void *ArgsBase,
       return OFFLOAD_FAIL;
     }
 
+#if OMPTARGET_OMPT_SUPPORT
+    OmptDeviceMem Mem{ArgsBase, HstPtrBegin,
+                      HostDeviceNum,   TgtPtrBegin,
+                      Device.DeviceID, (size_t)ArgSize,
+                      CodePtr};
+    Mem.addTargetDataOp(ompt_device_mem_flag_from);
+#endif
+
     auto CB = [&](ShadowPtrListTy::iterator &Itr) {
       void **ShadowHstPtrAddr = (void **)Itr->first;
       // Wait for device-to-host memcopies for whole struct to complete,
@@ -1058,6 +1066,14 @@ static int targetDataContiguous(ident_t *Loc, DeviceTy &Device, void *ArgsBase,
       REPORT("Copying data to device failed.\n");
       return OFFLOAD_FAIL;
     }
+
+#if OMPTARGET_OMPT_SUPPORT
+    OmptDeviceMem Mem{ArgsBase, HstPtrBegin,
+                      HostDeviceNum,   TgtPtrBegin,
+                      Device.DeviceID, (size_t)ArgSize,
+                      CodePtr};
+    Mem.addTargetDataOp(ompt_device_mem_flag_to);
+#endif
 
     auto CB = [&](ShadowPtrListTy::iterator &Itr) {
       DP("Restoring original target pointer value " DPxMOD " for target "
