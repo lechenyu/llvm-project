@@ -69,6 +69,18 @@ bool OnFinalize(bool failed) {
 
 SANITIZER_WEAK_CXX_DEFAULT_IMPL
 void OnInitialize() {
+  Printf("TSAN initialization \n");
+  uptr begins[] = {Mapping48AddressSpace::kLoAppMemBeg, Mapping48AddressSpace::kMidAppMemBeg, Mapping48AddressSpace::kHeapMemBeg, Mapping48AddressSpace::kHiAppMemBeg};  
+  uptr ends[] =   {Mapping48AddressSpace::kLoAppMemEnd - 1, Mapping48AddressSpace::kMidAppMemEnd - 1, Mapping48AddressSpace::kHeapMemEnd - 1, Mapping48AddressSpace::kHiAppMemEnd - 1};
+  const char *desc[] = {"LoApp", "MidApp", "Heap", "HiApp"};
+  for (int i = 0; i < (sizeof(desc) / sizeof(char *)); i++) {
+    Printf("%s:\n", desc[i]);
+    Printf("range: [%014lx, %014lx] \n", begins[i], ends[i]);
+    Printf("shadow range: [%014lx, %014lx]\n", MemToShadow(begins[i]), MemToShadow(ends[i]));
+    Printf("shadow2 (mapping) range: [%014lx, %014lx]\n", MemToShadow2(begins[i]), MemToShadow2(ends[i]));
+    Printf("\n");
+  }
+
 #  if !SANITIZER_GO
   if (on_initialize)
     on_initialize();

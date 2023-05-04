@@ -86,6 +86,11 @@ const uptr kShadowSize = sizeof(RawShadow);
 // Shadow memory is kShadowMultiplier times larger than user memory.
 const uptr kShadowMultiplier = kShadowSize * kShadowCnt / kShadowCell;
 
+// Shadow memory for OpenMP mapping, used by arbalest
+const uptr kShadowMappingCell = 8;
+
+const uptr kShadowMappingAdd = 0x1E0000000000ull;
+
 // That many user bytes are mapped onto a single meta shadow cell.
 // Must be less or equal to minimal memory allocator alignment.
 const uptr kMetaShadowCell = 8;

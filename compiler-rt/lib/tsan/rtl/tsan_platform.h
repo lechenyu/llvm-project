@@ -40,8 +40,10 @@ enum {
 C/C++ on linux/x86_64 and freebsd/x86_64
 0000 0000 1000 - 0080 0000 0000: main binary and/or MAP_32BIT mappings (512GB)
 0040 0000 0000 - 0100 0000 0000: -
-0100 0000 0000 - 1000 0000 0000: shadow
-1000 0000 0000 - 3000 0000 0000: -
+0100 0000 0000 - 1000 0000 0000: shadow, size: 0F00 0000 0000
+1000 0000 0000 - 1F00 0000 0000: -
+1F00 0000 0000 - 2E00 0000 0000: shadow2, size: 0F00 0000 0000
+2E00 0000 0000 - 3000 0000 0000: -
 3000 0000 0000 - 4000 0000 0000: metainfo (memory blocks and sync objects)
 4000 0000 0000 - 5500 0000 0000: -
 5500 0000 0000 - 5680 0000 0000: pie binaries without ASLR or on 4.1+ kernels
@@ -775,6 +777,12 @@ struct MemToShadowImpl {
 ALWAYS_INLINE
 RawShadow *MemToShadow(uptr x) {
   return reinterpret_cast<RawShadow *>(SelectMapping<MemToShadowImpl>(x));
+}
+
+ALWAYS_INLINE
+RawShadow *MemToShadow2(uptr x) {
+  RawShadow *result = MemToShadow(x) + kShadowMappingAdd;
+  return result; 
 }
 
 struct MemToMetaImpl {
