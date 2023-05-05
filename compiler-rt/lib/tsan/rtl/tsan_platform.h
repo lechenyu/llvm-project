@@ -81,6 +81,9 @@ struct Mapping48AddressSpace {
   static const uptr kShadowXor = 0x040000000000ull;
   static const uptr kShadowAdd = 0x000000000000ull;
   static const uptr kVdsoBeg       = 0xf000000000000000ull;
+  // mapping
+  static const uptr kShadowMappingBeg = 0x1F0000000000ull;
+  static const uptr kShadowMappingEnd = 0x2E0000000000ull;
 };
 
 /*
@@ -749,6 +752,12 @@ struct IsShadowMemImpl {
 ALWAYS_INLINE
 bool IsShadowMem(RawShadow *p) {
   return SelectMapping<IsShadowMemImpl>(reinterpret_cast<uptr>(p));
+}
+
+ALWAYS_INLINE
+bool IsShadowMappingMem(RawShadow *p) {
+  uptr mem = reinterpret_cast<uptr>(p);
+  return (mem >= Mapping48AddressSpace::kShadowMappingBeg && mem <= Mapping48AddressSpace::kShadowMappingEnd);
 }
 
 struct IsMetaMemImpl {
