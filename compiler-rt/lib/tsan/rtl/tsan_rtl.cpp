@@ -75,9 +75,9 @@ void OnInitialize() {
   const char *desc[] = {"LoApp", "MidApp", "Heap", "HiApp"};
   for (int i = 0; i < (sizeof(desc) / sizeof(char *)); i++) {
     Printf("%s:\n", desc[i]);
-    Printf("range: [%014lx, %014lx] \n", begins[i], ends[i]);
-    Printf("shadow range: [%014lx, %014lx]\n", MemToShadow(begins[i]), MemToShadow(ends[i]));
-    Printf("shadow2 (mapping) range: [%014lx, %014lx]\n", MemToShadow2(begins[i]), MemToShadow2(ends[i]));
+    Printf("range: [%p, %p] \n", begins[i], ends[i]);
+    Printf("shadow range: [%p, %p]\n", MemToShadow(begins[i]), MemToShadow(ends[i]));
+    Printf("shadow2 (mapping) range: [%p, %p]\n", MemToShadow2(begins[i]), MemToShadow2(ends[i]));
     Printf("\n");
   }
 
