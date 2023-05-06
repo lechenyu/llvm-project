@@ -42,8 +42,8 @@ C/C++ on linux/x86_64 and freebsd/x86_64
 0040 0000 0000 - 0100 0000 0000: -
 0100 0000 0000 - 1000 0000 0000: shadow, size: 0F00 0000 0000
 1000 0000 0000 - 1F00 0000 0000: -
-1F00 0000 0000 - 2E00 0000 0000: shadow2, size: 0F00 0000 0000
-2E00 0000 0000 - 3000 0000 0000: -
+1F00 0000 0000 - 22C0 0000 0000: shadow2, size: 03C0 0000 0000
+22C0 0000 0000 - 3000 0000 0000: -
 3000 0000 0000 - 4000 0000 0000: metainfo (memory blocks and sync objects)
 4000 0000 0000 - 5500 0000 0000: -
 5500 0000 0000 - 5680 0000 0000: pie binaries without ASLR or on 4.1+ kernels
@@ -83,7 +83,7 @@ struct Mapping48AddressSpace {
   static const uptr kVdsoBeg       = 0xf000000000000000ull;
   // mapping
   static const uptr kShadowMappingBeg = 0x1F0000000000ull;
-  static const uptr kShadowMappingEnd = 0x2E0000000000ull;
+  static const uptr kShadowMappingEnd = 0x22C000000000ull;
 };
 
 /*
@@ -790,8 +790,11 @@ RawShadow *MemToShadow(uptr x) {
 
 ALWAYS_INLINE
 RawShadow *MemToShadow2(uptr x) {
-  RawShadow *result = MemToShadow(x) + kShadowMappingAdd;
-  return result; 
+  RawShadow* shadow1 = MemToShadow(x);
+  u64 offset = (u64) (shadow1 - Mapping48AddressSpace::kShadowBeg);
+  offset = offset / ((u64)kShadowMultiplier / kShadowMappingMultiplier);
+  RawShadow* shadow2 = (RawShadow*)(Mapping48AddressSpace::kShadowMappingBeg + offset);
+  return shadow2; 
 }
 
 struct MemToMetaImpl {
