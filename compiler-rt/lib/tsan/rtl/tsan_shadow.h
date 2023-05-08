@@ -176,6 +176,45 @@ class Shadow {
       static_cast<RawShadow>(1 << kIsReadShift);
 };
 
+
+class Shadow2{
+  static constexpr RawShadow2 kEmpty = static_cast<RawShadow2>(0);
+
+  public:
+    explicit Shadow2(RawShadow2 x = Shadow2::kEmpty) { 
+      raw_ = static_cast<u8>(x);
+    }
+
+    bool isHost_init(){
+      return part_.isHost_init;
+    }
+
+    bool isDev_init(){
+      return part_.isDev_init;
+    }
+
+    bool isHost_updated(){
+      return part_.isHost_updated;
+    }
+
+    bool isDev_updated(){
+      return part_.isDev_updated;
+    }
+
+  private:
+    struct Parts {
+      u8 isHost_init : 1;
+      u8 isDev_init : 1;
+      u8 isHost_updated : 1;
+      u8 isDev_updated : 1;
+      u8 padding : 4;
+    };
+    union {
+      Parts part_;
+      u8 raw_;
+    };
+};
+
 static_assert(sizeof(Shadow) == kShadowSize, "bad Shadow size");
 
 ALWAYS_INLINE RawShadow LoadShadow(RawShadow *p) {
@@ -185,6 +224,16 @@ ALWAYS_INLINE RawShadow LoadShadow(RawShadow *p) {
 
 ALWAYS_INLINE void StoreShadow(RawShadow *sp, RawShadow s) {
   atomic_store((atomic_uint32_t *)sp, static_cast<u32>(s),
+               memory_order_relaxed);
+}
+
+ALWAYS_INLINE RawShadow2 LoadShadow2(RawShadow2 *p) {
+  return static_cast<RawShadow2>(
+      atomic_load((atomic_uint8_t *)p, memory_order_relaxed));
+}
+
+ALWAYS_INLINE void StoreShadow2(RawShadow2 *sp, RawShadow2 s) {
+  atomic_store((atomic_uint8_t *)sp, static_cast<u8>(s),
                memory_order_relaxed);
 }
 

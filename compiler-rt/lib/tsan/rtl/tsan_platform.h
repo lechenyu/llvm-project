@@ -728,6 +728,11 @@ ALWAYS_INLINE
 uptr ShadowEnd(void) { return SelectMapping<MappingField>(kShadowEnd); }
 
 ALWAYS_INLINE
+uptr Shadow2Beg(void) { return Mapping48AddressSpace::kShadowMappingBeg; }
+ALWAYS_INLINE
+uptr Shadow2End(void) { return Mapping48AddressSpace::kShadowMappingEnd; }
+
+ALWAYS_INLINE
 uptr MetaShadowBeg(void) { return SelectMapping<MappingField>(kMetaShadowBeg); }
 ALWAYS_INLINE
 uptr MetaShadowEnd(void) { return SelectMapping<MappingField>(kMetaShadowEnd); }

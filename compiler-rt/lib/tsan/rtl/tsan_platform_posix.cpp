@@ -72,13 +72,12 @@ void InitializeShadowMemory() {
       meta, meta + meta_size, meta_size >> 30);
 
   // TODO: shadow mapping memory
-  if (!MmapFixedSuperNoReserve(Mapping48AddressSpace::kShadowMappingBeg, Mapping48AddressSpace::kShadowMappingEnd - Mapping48AddressSpace::kShadowMappingBeg,
-                               "shadow mapping")) {
-    Printf("FATAL: ThreadSanitizer can not mmap the shadow mapping \n");
+  if (!MmapFixedSuperNoReserve(Shadow2Beg(), Shadow2End() - Shadow2Beg(), "shadow2")) {
+    Printf("FATAL: ThreadSanitizer can not mmap the shadow2 \n");
     Printf("FATAL: Make sure to compile with -fPIE and to link with -pie.\n");
     Die();
   }
-  DontDumpShadow(Mapping48AddressSpace::kShadowMappingBeg, Mapping48AddressSpace::kShadowMappingEnd - Mapping48AddressSpace::kShadowMappingBeg);
+  DontDumpShadow(Shadow2Beg(), Shadow2End() - Shadow2Beg());
 
   InitializeShadowMemoryPlatform();
 

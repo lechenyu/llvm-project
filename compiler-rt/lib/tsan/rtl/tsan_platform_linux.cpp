@@ -148,6 +148,10 @@ void WriteMemoryProfile(char *buf, uptr buf_size, u64 uptime_ns) {
       stacks.allocated >> 20, nlive, nthread);
 }
 
+
+// TODO: arbalest 
+// create a similar MapRodata function
+
 #if !SANITIZER_GO
 // Mark shadow for .rodata sections with the special Shadow::kRodata marker.
 // Accesses to .rodata can't race, so this saves time, memory and trace space.

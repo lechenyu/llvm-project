@@ -87,6 +87,8 @@ const uptr kShadowSize = sizeof(RawShadow);
 const uptr kShadowMultiplier = kShadowSize * kShadowCnt / kShadowCell;
 
 // Shadow2 for OpenMP mapping, used by arbalest
+enum class RawShadow2 : u8 {};
+
 const uptr kShadowMappingCnt = 8; // Count of shadow values in a shadow cell.
 
 const uptr kShadowMappingCell = 8; // That many user bytes are mapped onto a single shadow cell.
@@ -95,8 +97,6 @@ const uptr kShadowMappingSize = sizeof(u8); // Single shadow value size.
 
 const uptr kShadowMappingMultiplier = kShadowMappingSize * kShadowMappingCnt / kShadowMappingCell;
 
-
-const uptr kShadowMappingAdd = 0x1E0000000000ull;
 
 // That many user bytes are mapped onto a single meta shadow cell.
 // Must be less or equal to minimal memory allocator alignment.
