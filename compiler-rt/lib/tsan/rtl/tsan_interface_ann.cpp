@@ -474,7 +474,15 @@ AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 opty
       // s.setHostStateByTargetState();
       // StoreShadow(shadow_mem, s.raw());
       // //Printf("[transfer from device] src_addr = %016zx, dest_addr = %016zx, shadow_aadr = %016zx, shadow = %016zx\n", (uptr)src_addr + offset, host_addr, shadow_mem, s.raw());
+      // if (offset == 0) { //##debug
+      //   const m128 mask_state = _mm_set1_epi32(kGetStateBitMask);
+      //   m128 old_state = _mm_and_si128(shadow, mask_state);
+      //   Printf("From old %d, %d, %d, %d\n", _mm_extract_epi32(old_state, 0), _mm_extract_epi32(old_state, 1), _mm_extract_epi32(old_state, 2), _mm_extract_epi32(old_state, 3));
+      //   m128 state = _mm_and_si128(new_shadow, mask_state);
+      //   Printf("From new %d, %d, %d, %d\n", _mm_extract_epi32(state, 0), _mm_extract_epi32(state, 1), _mm_extract_epi32(state, 2), _mm_extract_epi32(state, 3));
+      // }
     }
+    // Printf("insert map from %p, %p, %lu\n", src_addr, dest_addr, bytes);
   }
   
   if(optype & ompt_device_mem_flag_release) {
@@ -513,7 +521,14 @@ AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 opty
       const m128 new_shadow = _mm_setr_epi32(shadow_0,shadow_1,shadow_2,shadow_3);
 
       _mm_store_si128(reinterpret_cast<m128*>(shadow_mem), new_shadow);
+
+      // if (offset == 0) { //##debug
+      //   const m128 mask_state = _mm_set1_epi32(kGetStateBitMask);
+      //   m128 state = _mm_and_si128(new_shadow, mask_state);
+      //   Printf("Release %d, %d, %d, %d\n", _mm_extract_epi32(state, 0), _mm_extract_epi32(state, 1), _mm_extract_epi32(state, 2), _mm_extract_epi32(state, 3));
+      // }
     }
+    // Printf("insert map release %p, %p, %lu\n", src_addr, dest_addr, bytes);
   }
 
   if(optype & ompt_device_mem_flag_associate) {
@@ -583,6 +598,18 @@ AnnotateExitTargetRegion() {
   SCOPED_ANNOTATION(AnnotateExitTargetRegion)
   //Printf("exit target region, tid %d \n", thr->tid);
   thr->is_on_target = false;
+}
+
+void INTERFACE_ATTRIBUTE AnnotateEnterRuntime() {
+  SCOPED_ANNOTATION(AnnotateEnterRuntime);
+  //Printf("%p Enter runtime\n", thr);
+  thr->is_in_runtime = true;
+}
+
+void INTERFACE_ATTRIBUTE AnnotateExitRuntime() {
+  SCOPED_ANNOTATION(AnnotateExitRuntime);
+  //Printf("%p Exit runtime\n", thr);
+  thr->is_in_runtime = false;
 }
 
 // Note: the parameter is called flagz, because flags is already taken

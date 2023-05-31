@@ -176,11 +176,19 @@ NOINLINE void DoReportDMI(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
                            AccessType typ, DMIType dmi_typ) SANITIZER_NO_THREAD_SAFETY_ANALYSIS {
   // for (uptr i = 0; i < kShadowCnt; i++)
   //   StoreShadow(&shadow_mem[i], i == 0 ? Shadow::kRodata : Shadow::kEmpty);
+
+  //##debug
+  // const m128 shadow = _mm_load_si128(reinterpret_cast<m128*>(shadow_mem));
+  // const m128 mask_state = _mm_set1_epi32(kGetStateBitMask);
+  // m128 state = _mm_and_si128(shadow, mask_state);
+  // Printf("%d, %d, %d, %d\n", _mm_extract_epi32(state, 0), _mm_extract_epi32(state, 1), _mm_extract_epi32(state, 2), _mm_extract_epi32(state, 3));
+  
   if (typ & kAccessSlotLocked)
     SlotUnlock(thr);
   ReportDMI(thr, shadow_mem, cur, typ, dmi_typ);
   if (typ & kAccessSlotLocked)
     SlotLock(thr);
+  // Die();
 }
 
 
@@ -594,16 +602,21 @@ ALWAYS_INLINE USED void MemoryAccessMapping(ThreadState* thr, uptr pc, uptr addr
 
   RawShadow* shadow_mem = MemToShadow(addr);
   FastState fast_state = thr->fast_state;
-  if (UNLIKELY(fast_state.GetIgnoreBit()))
-    return;
-  Shadow cur(fast_state, addr, size, typ);
-  LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem);
-  if (typ & kAccessRead) {
-    // if (!TryTraceMemoryAccess(thr, pc, addr, size, typ))
-    //   return TraceRestartMemoryAccessMapping(thr, pc, addr, size, typ);
-    CheckMapping(thr, addr, size, state, cur, typ);
+  if (UNLIKELY(fast_state.GetIgnoreBit())) {
+    if (!(typ & kAccessRead)) {
+      LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem);
+      UpdateMapping(thr, addr, size, shadow, state, shadow_mem);
+    }
   } else {
-    UpdateMapping(thr, addr, size, shadow, state, shadow_mem);
+    Shadow cur(fast_state, addr, size, typ);
+    LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem);
+    if (typ & kAccessRead) {
+      // if (!TryTraceMemoryAccess(thr, pc, addr, size, typ))
+      //   return TraceRestartMemoryAccessMapping(thr, pc, addr, size, typ);
+      CheckMapping(thr, addr, size, state, cur, typ);
+    } else {
+      UpdateMapping(thr, addr, size, shadow, state, shadow_mem);
+    }
   }
 }
 
@@ -620,23 +633,27 @@ ALWAYS_INLINE USED void MemoryAccess(ThreadState* thr, uptr pc, uptr addr,
            DumpShadow(memBuf[3], shadow_mem[3]));
 
   FastState fast_state = thr->fast_state;
-  
-  Shadow cur(fast_state, addr, size, typ);
-  LOAD_CURRENT_SHADOW(cur, shadow_mem);
-  
-  if (typ & kAccessRead) {
-    CheckMapping(thr, addr, size, state, cur, typ);
+  if (UNLIKELY(fast_state.GetIgnoreBit())) {
+    if (!(typ & kAccessRead)) {
+      LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem);
+      UpdateMapping(thr, addr, size, shadow, state, shadow_mem);
+    }
   } else {
-    UpdateMapping(thr, addr, size, shadow, state, shadow_mem);
-  }
+    Shadow cur(fast_state, addr, size, typ);
+    LOAD_CURRENT_SHADOW(cur, shadow_mem);
+  
+    if (typ & kAccessRead) {
+      CheckMapping(thr, addr, size, state, cur, typ);
+    } else {
+      UpdateMapping(thr, addr, size, shadow, state, shadow_mem);
+    }
 
-  if (UNLIKELY(fast_state.GetIgnoreBit()))
-    return;
-  if (LIKELY(ContainsSameAccess(shadow_mem, cur, rd_shadow, access, typ)))
-    return;
-  if (!TryTraceMemoryAccess(thr, pc, addr, size, typ))
-    return TraceRestartMemoryAccess(thr, pc, addr, size, typ);
-  CheckRaces(thr, shadow_mem, cur, rd_shadow, state, access, typ);
+    if (LIKELY(ContainsSameAccess(shadow_mem, cur, rd_shadow, access, typ)))
+      return;
+    if (!TryTraceMemoryAccess(thr, pc, addr, size, typ))
+      return TraceRestartMemoryAccess(thr, pc, addr, size, typ);
+    CheckRaces(thr, shadow_mem, cur, rd_shadow, state, access, typ);
+  }
 }
 
 void MemoryAccess16(ThreadState* thr, uptr pc, uptr addr, AccessType typ);
@@ -655,42 +672,47 @@ ALWAYS_INLINE USED void MemoryAccess16(ThreadState* thr, uptr pc, uptr addr,
   Shadow cur(fast_state, 0, 8, typ);
   RawShadow* shadow_mem = MemToShadow(addr);
   bool traced = false;
-  bool ignored = fast_state.GetIgnoreBit();
-  {
+  if (UNLIKELY(fast_state.GetIgnoreBit())) {
+    if (!(typ & kAccessRead)) {
+      {
+        LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem);
+        UpdateMapping(thr, addr, 8, shadow, state, shadow_mem);
+      }
+      shadow_mem += kShadowCnt;
+      LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem);
+      UpdateMapping(thr, addr + 8, 8, shadow, state, shadow_mem);
+    }
+  } else {
+    {
+      LOAD_CURRENT_SHADOW(cur, shadow_mem);
+      if (typ & kAccessRead) {
+        CheckMapping(thr, addr, 8, state, cur, typ);
+      } else {
+        UpdateMapping(thr, addr, 8, shadow, state, shadow_mem);
+      }
+      if (LIKELY(ContainsSameAccess(shadow_mem, cur, rd_shadow, access, typ)))
+        goto SECOND;
+      if (!TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
+        return RestartMemoryAccess16(thr, pc, addr, typ);
+      traced = true;
+      // if (UNLIKELY(CheckRaces(thr, shadow_mem, cur, rd_shadow, state, access, typ)))
+      //   return;
+      CheckRaces(thr, shadow_mem, cur, rd_shadow, state, access, typ);
+    }
+SECOND:
+    shadow_mem += kShadowCnt;
     LOAD_CURRENT_SHADOW(cur, shadow_mem);
     if (typ & kAccessRead) {
-      CheckMapping(thr, addr, 8, state, cur, typ);
+      CheckMapping(thr, addr + 8, 8, state, cur, typ);
     } else {
-      UpdateMapping(thr, addr, 8, shadow, state, shadow_mem);
+      UpdateMapping(thr, addr + 8, 8, shadow, state, shadow_mem);
     }
-    if (UNLIKELY(ignored))
-      return;
-      //goto SECOND;
     if (LIKELY(ContainsSameAccess(shadow_mem, cur, rd_shadow, access, typ)))
       return;
-      //goto SECOND;
-    if (!TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
+    if (!traced && !TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
       return RestartMemoryAccess16(thr, pc, addr, typ);
-    traced = true;
-    // if (UNLIKELY(CheckRaces(thr, shadow_mem, cur, rd_shadow, state, access, typ)))
-    //   return;
     CheckRaces(thr, shadow_mem, cur, rd_shadow, state, access, typ);
   }
-// SECOND:
-  shadow_mem += kShadowCnt;
-  LOAD_CURRENT_SHADOW(cur, shadow_mem);
-  if (typ & kAccessRead) {
-    CheckMapping(thr, addr + 8, 8, state, cur, typ);
-  } else {
-    UpdateMapping(thr, addr + 8, 8, shadow, state, shadow_mem);
-  }
-  if (UNLIKELY(ignored))
-    return;
-  if (LIKELY(ContainsSameAccess(shadow_mem, cur, rd_shadow, access, typ)))
-    return;
-  if (!traced && !TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
-    return RestartMemoryAccess16(thr, pc, addr, typ);
-  CheckRaces(thr, shadow_mem, cur, rd_shadow, state, access, typ);
 }
 
 NOINLINE
@@ -713,46 +735,47 @@ ALWAYS_INLINE USED void UnalignedMemoryAccessMapping(ThreadState* thr, uptr pc,
                                               AccessType typ) {
   DCHECK_LE(size, 8);
   FastState fast_state = thr->fast_state;
-  if (UNLIKELY(fast_state.GetIgnoreBit()))
-    return;
-  // if ((typ & kAccessRead) && !TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
-  //   return RestartUnalignedMemoryAccessMapping(thr, pc, addr, size, typ);
-
   RawShadow* shadow_mem = MemToShadow(addr);
-  uptr size1 = Min<uptr>(size, RoundUp(addr + 1, kShadowCell) - addr);
-  {
-    Shadow cur(fast_state, addr, size1, typ);
-    LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem);
-    if (typ & kAccessRead) {
-      CheckMapping(thr, addr, size1, state, cur, typ);
-    } else {
-      UpdateMapping(thr, addr, size1, shadow, state, shadow_mem);
-    }
-  }
-//SECOND:
-  uptr size2 = Min<uptr>(size - size1, 8);
-  if (LIKELY(size2 == 0))
-    return;
-  shadow_mem += kShadowCnt;
-  {
-    Shadow cur(fast_state, 0, size2, typ);
-    LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem);
-    if (typ & kAccessRead) {
-      CheckMapping(thr, addr + size1, size2, state, cur, typ);
-    } else {
+  
+  if (UNLIKELY(fast_state.GetIgnoreBit())) {
+    if (!(typ & kAccessRead)) {
+      uptr size1 = Min<uptr>(size, RoundUp(addr + 1, kShadowCell) - addr);
+      {
+        LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem);
+        UpdateMapping(thr, addr, size1, shadow, state, shadow_mem);
+      }
+      uptr size2 = Min<uptr>(size - size1, 8);
+      if (LIKELY(size2 == 0))
+        return;
+      shadow_mem += kShadowCnt;
+      LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem);
       UpdateMapping(thr, addr + size1, size2, shadow, state, shadow_mem);
     }
+  } else {
+    uptr size1 = Min<uptr>(size, RoundUp(addr + 1, kShadowCell) - addr);
+    {
+      Shadow cur(fast_state, addr, size1, typ);
+      LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem);
+      if (typ & kAccessRead) {
+        CheckMapping(thr, addr, size1, state, cur, typ);
+      } else {
+        UpdateMapping(thr, addr, size1, shadow, state, shadow_mem);
+      }
+    }
+    uptr size2 = Min<uptr>(size - size1, 8);
+    if (LIKELY(size2 == 0))
+      return;
+    shadow_mem += kShadowCnt;
+    {
+      Shadow cur(fast_state, 0, size2, typ);
+      LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem);
+      if (typ & kAccessRead) {
+        CheckMapping(thr, addr + size1, size2, state, cur, typ);
+      } else {
+        UpdateMapping(thr, addr + size1, size2, shadow, state, shadow_mem);
+      }
+    }
   }
-//THIRD:
-  // uptr size3 = size - size1 - size2;
-  // if (LIKELY(size3 == 0))
-  //   return;
-  // shadow_mem += kShadowCnt;
-  // {
-  //   Shadow cur(fast_state, 0, size3, typ);
-  //   LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem);
-  //   CheckMapping(thr, addr + size1 + size2, size3, shadow, cur, typ);
-  // }
 }
 
 ALWAYS_INLINE USED void UnalignedMemoryAccess(ThreadState* thr, uptr pc,
@@ -763,49 +786,55 @@ ALWAYS_INLINE USED void UnalignedMemoryAccess(ThreadState* thr, uptr pc,
 
   RawShadow* shadow_mem = MemToShadow(addr);
   bool traced = false;
-  bool ignored = fast_state.GetIgnoreBit();
-  uptr size1 = Min<uptr>(size, RoundUp(addr + 1, kShadowCell) - addr);
-  {
-    Shadow cur(fast_state, addr, size1, typ);
+  if (UNLIKELY(fast_state.GetIgnoreBit())) {
+    if (!(typ & kAccessRead)) {
+      uptr size1 = Min<uptr>(size, RoundUp(addr + 1, kShadowCell) - addr);
+      {
+        LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem);
+        UpdateMapping(thr, addr, size1, shadow, state, shadow_mem);
+      }
+      uptr size2 = size - size1;
+      if (LIKELY(size2 == 0))
+        return;
+      shadow_mem += kShadowCnt;
+      LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem);
+      UpdateMapping(thr, addr + size1, size2, shadow, state, shadow_mem);
+    }
+  } else {
+    uptr size1 = Min<uptr>(size, RoundUp(addr + 1, kShadowCell) - addr);
+    {
+      Shadow cur(fast_state, addr, size1, typ);
+      LOAD_CURRENT_SHADOW(cur, shadow_mem);
+      if (typ & kAccessRead) {
+        CheckMapping(thr, addr, size1, state, cur, typ);
+      } else {
+        UpdateMapping(thr, addr, size1, shadow, state, shadow_mem);
+      }
+      if (LIKELY(ContainsSameAccess(shadow_mem, cur, rd_shadow, access, typ)))
+        goto SECOND;
+      if (!TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
+        return RestartUnalignedMemoryAccess(thr, pc, addr, size, typ);
+      traced = true;
+      CheckRaces(thr, shadow_mem, cur, rd_shadow, state, access, typ);
+    }
+SECOND:
+    uptr size2 = size - size1;
+    if (LIKELY(size2 == 0))
+      return;
+    shadow_mem += kShadowCnt;
+    Shadow cur(fast_state, 0, size2, typ);
     LOAD_CURRENT_SHADOW(cur, shadow_mem);
     if (typ & kAccessRead) {
-      CheckMapping(thr, addr, size1, state, cur, typ);
+      CheckMapping(thr, addr + size1, size2, state, cur, typ);
     } else {
-      UpdateMapping(thr, addr, size1, shadow, state, shadow_mem);
+      UpdateMapping(thr, addr + size1, size2, shadow, state, shadow_mem);
     }
-    if (UNLIKELY(ignored))
-      return;
-      // goto SECOND;
     if (LIKELY(ContainsSameAccess(shadow_mem, cur, rd_shadow, access, typ)))
       return;
-    if (!TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
+    if (!traced && !TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
       return RestartUnalignedMemoryAccess(thr, pc, addr, size, typ);
-    traced = true;
-      // goto SECOND;
-    // if (UNLIKELY(CheckRaces(thr, shadow_mem, cur, rd_shadow, state, access, typ)))
-    //   return;
     CheckRaces(thr, shadow_mem, cur, rd_shadow, state, access, typ);
   }
-// SECOND:
-  uptr size2 = size - size1;
-  if (LIKELY(size2 == 0))
-    return;
-  shadow_mem += kShadowCnt;
-  Shadow cur(fast_state, 0, size2, typ);
-  LOAD_CURRENT_SHADOW(cur, shadow_mem);
-  if (typ & kAccessRead) {
-    CheckMapping(thr, addr + size1, size2, state, cur, typ);
-  } else {
-    UpdateMapping(thr, addr + size1, size2, shadow, state, shadow_mem);
-  }
-  if (UNLIKELY(ignored))
-    return;
-  if (LIKELY(ContainsSameAccess(shadow_mem, cur, rd_shadow, access, typ)))
-    return;
-  if (!traced && !TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
-    return RestartUnalignedMemoryAccess(thr, pc, addr, size, typ);
-  CheckRaces(thr, shadow_mem, cur, rd_shadow, state, access, typ);
-
 }
 
 void ShadowSet(RawShadow* p, RawShadow* end, RawShadow v) {
@@ -954,18 +983,6 @@ bool MemoryAccessRangeOne(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
   return CheckRaces(thr, shadow_mem, cur, rd_shadow, state, access, typ);
 }
 
-// ALWAYS_INLINE
-// bool MemoryAccessRangeOneMapping(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
-//                                  AccessType typ, uptr addr, uptr size) {
-//   LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem);
-//   if (typ & kAccessRead) {
-//     return CheckMapping(thr, addr, size, state, cur, typ);
-//   } else {
-//     UpdateMapping(thr, addr, size, shadow, state, shadow_mem);
-//     return false;
-//   }
-// }
-
 template <bool is_read>
 NOINLINE void RestartMemoryAccessRange(ThreadState* thr, uptr pc, uptr addr,
                                        uptr size) {
@@ -1016,34 +1033,56 @@ void MemoryAccessRangeT(ThreadState* thr, uptr pc, uptr addr, uptr size) {
     return;
   
   FastState fast_state = thr->fast_state;
-  if (UNLIKELY(fast_state.GetIgnoreBit()))
-    return;
-
-  if (!TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
-    return RestartMemoryAccessRange<is_read>(thr, pc, addr, size);
-  
-  uptr curr_addr = addr;
-  if (UNLIKELY(addr % kShadowCell)) {
-    // Handle unaligned beginning, if any.
-    uptr size1 = Min(size, RoundUp(addr, kShadowCell) - addr);
-    size -= size1;
-    Shadow cur(fast_state, addr, size1, typ);
-    if (UNLIKELY(MemoryAccessRangeOne(thr, shadow_mem, cur, typ, curr_addr, size1)))
-      return;
-    shadow_mem += kShadowCnt;
-    curr_addr += size1;
-  }
-  // Handle middle part, if any.
-  Shadow cur(fast_state, 0, kShadowCell, typ);
-  for (; size >= kShadowCell; size -= kShadowCell, shadow_mem += kShadowCnt, curr_addr += kShadowCell) {
-    if (UNLIKELY(MemoryAccessRangeOne(thr, shadow_mem, cur, typ, curr_addr, kShadowCell)))
-      return;
-  }
-  // Handle ending, if any.
-  if (UNLIKELY(size)) {
-    Shadow cur(fast_state, 0, size, typ);
-    if (UNLIKELY(MemoryAccessRangeOne(thr, shadow_mem, cur, typ, curr_addr, size)))
-      return;
+  if (UNLIKELY(fast_state.GetIgnoreBit())) {
+    if (!(typ & kAccessRead)) {
+      uptr curr_addr = addr;
+      if (UNLIKELY(addr % kShadowCell)) {
+      // Handle unaligned beginning, if any.
+        uptr size1 = Min(size, RoundUp(addr, kShadowCell) - addr);
+        size -= size1;
+        LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem);
+        UpdateMapping(thr, curr_addr, size1, shadow, state, shadow_mem);
+        shadow_mem += kShadowCnt;
+        curr_addr += size1;
+      }
+      // Handle middle part, if any.
+      for (; size >= kShadowCell; size -= kShadowCell, shadow_mem += kShadowCnt, curr_addr += kShadowCell) {
+        LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem);
+        UpdateMapping(thr, curr_addr, kShadowCell, shadow, state, shadow_mem);
+      }
+      // Handle ending, if any.
+      if (UNLIKELY(size)) {
+        LOAD_CURRENT_SHADOW_NO_ACCESS(shadow_mem);
+        UpdateMapping(thr, curr_addr, size, shadow, state, shadow_mem);
+      }
+    }
+  } else {
+    if (!TryTraceMemoryAccessRange(thr, pc, addr, size, typ))
+      return RestartMemoryAccessRange<is_read>(thr, pc, addr, size);
+    
+    uptr curr_addr = addr;
+    if (UNLIKELY(addr % kShadowCell)) {
+      // Handle unaligned beginning, if any.
+      uptr size1 = Min(size, RoundUp(addr, kShadowCell) - addr);
+      size -= size1;
+      Shadow cur(fast_state, addr, size1, typ);
+      if (UNLIKELY(MemoryAccessRangeOne(thr, shadow_mem, cur, typ, curr_addr, size1)))
+        return;
+      shadow_mem += kShadowCnt;
+      curr_addr += size1;
+    }
+    // Handle middle part, if any.
+    Shadow cur(fast_state, 0, kShadowCell, typ);
+    for (; size >= kShadowCell; size -= kShadowCell, shadow_mem += kShadowCnt, curr_addr += kShadowCell) {
+      if (UNLIKELY(MemoryAccessRangeOne(thr, shadow_mem, cur, typ, curr_addr, kShadowCell)))
+        return;
+    }
+    // Handle ending, if any.
+    if (UNLIKELY(size)) {
+      Shadow cur(fast_state, 0, size, typ);
+      if (UNLIKELY(MemoryAccessRangeOne(thr, shadow_mem, cur, typ, curr_addr, size)))
+        return;
+    }
   }
 }
 

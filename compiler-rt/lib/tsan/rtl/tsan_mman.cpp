@@ -231,15 +231,15 @@ void *user_calloc(ThreadState *thr, uptr pc, uptr size, uptr n) {
   if (p) {
     internal_memset(p, 0, n * size);
     if (ctx->initialized) {
-      bool clear_state = false;
-      if (thr->fast_state.GetIgnoreBit()) {
-        clear_state = true;
-        thr->fast_state.ClearIgnoreBit();
-      }
+      // bool clear_state = false;
+      // if (thr->fast_state.GetIgnoreBit()) {
+      //   clear_state = true;
+      //   thr->fast_state.ClearIgnoreBit();
+      // }
       MemoryAccessRange(thr, pc, (uptr)p, n * size, true);
-      if (clear_state) {
-        thr->fast_state.SetIgnoreBit();
-      }
+      // if (clear_state) {
+      //   thr->fast_state.SetIgnoreBit();
+      // }
     }
   }
   return SetErrnoOnNull(p);

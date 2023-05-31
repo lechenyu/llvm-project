@@ -242,6 +242,8 @@ struct ThreadState {
 
   bool is_on_target;
 
+  bool is_in_runtime;
+
 } ALIGNED(SANITIZER_CACHE_LINE_SIZE);
 
 #if !SANITIZER_GO
@@ -552,6 +554,9 @@ void MemoryAccessRangeT(ThreadState *thr, uptr pc, uptr addr, uptr size);
 ALWAYS_INLINE
 void MemoryAccessRange(ThreadState *thr, uptr pc, uptr addr, uptr size,
                        bool is_write) {
+  // Printf("%p is in runtime? %s\n", thr, thr->is_in_runtime ? "yes" : "no");
+  if (thr->is_in_runtime)
+    return;
   if (size == 0)
     return;
   if (is_write)

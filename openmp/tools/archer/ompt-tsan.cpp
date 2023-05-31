@@ -174,8 +174,8 @@ void __attribute__((weak))
 AnnotateHappensBefore(const char *file, int line, const volatile void *cv) {}
 void __attribute__((weak))
 AnnotateIgnoreWritesBegin(const char *file, int line) {}
-void __attribute__((weak)) AnnotateIgnoreWritesEnd(const char *file, int line) {
-}
+void __attribute__((weak)) 
+AnnotateIgnoreWritesEnd(const char *file, int line) {}
 void __attribute__((weak))
 AnnotateNewMemory(const char *file, int line, const volatile void *cv,
                   size_t size) {}
