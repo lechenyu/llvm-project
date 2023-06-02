@@ -52,6 +52,21 @@ extern void handleTargetOutcome(bool Success, ident_t *Loc);
 extern bool checkDeviceAndCtors(int64_t &DeviceID, ident_t *Loc);
 extern void *targetAllocExplicit(size_t Size, int DeviceNum, int Kind,
                                  const char *Name);
+// Annotate function defined in ThreadSanitizer
+extern "C" __attribute__((weak)) void AnnotateEnterRuntime();
+//{ FATAL_MESSAGE0(1, "Fail to invoke AnnotateEnterRuntime in tsan"); }
+extern "C" __attribute__((weak)) void AnnotateExitRuntime(); 
+//{ FATAL_MESSAGE0(1, "Fail to invoke AnnotateExitRuntime in tsan"); }
+
+class TsanAnnotate {
+public:
+  TsanAnnotate() {
+    AnnotateEnterRuntime();
+  }
+  ~TsanAnnotate() {
+    AnnotateExitRuntime();
+  }
+};
 
 // This structure stores information of a mapped memory region.
 struct MapComponentInfoTy {

@@ -482,7 +482,7 @@ AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 opty
       //   Printf("From new %d, %d, %d, %d\n", _mm_extract_epi32(state, 0), _mm_extract_epi32(state, 1), _mm_extract_epi32(state, 2), _mm_extract_epi32(state, 3));
       // }
     }
-    // Printf("insert map from %p, %p, %lu\n", src_addr, dest_addr, bytes);
+    Printf("insert map from %p, %p, %lu\n", src_addr, dest_addr, bytes);
   }
   
   if(optype & ompt_device_mem_flag_release) {
@@ -584,11 +584,14 @@ AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 opty
     // ASSERT(false, "Disassociate is Unsupported: %d\n", optype);
   }
 }
+void INTERFACE_ATTRIBUTE
+AnnotatePrintf(const char *str) {
+  Printf("%s\n", str);
+}
 
 void INTERFACE_ATTRIBUTE
 AnnotateEnterTargetRegion() {
   SCOPED_ANNOTATION(AnnotateEnterTargetRegion);
-  //Printf("enter target region, tid %d \n", thr->tid);
   thr->is_on_target = true;
 }
 
@@ -596,7 +599,6 @@ AnnotateEnterTargetRegion() {
 void INTERFACE_ATTRIBUTE
 AnnotateExitTargetRegion() {
   SCOPED_ANNOTATION(AnnotateExitTargetRegion)
-  //Printf("exit target region, tid %d \n", thr->tid);
   thr->is_on_target = false;
 }
 

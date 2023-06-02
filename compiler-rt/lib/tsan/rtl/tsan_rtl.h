@@ -555,6 +555,9 @@ ALWAYS_INLINE
 void MemoryAccessRange(ThreadState *thr, uptr pc, uptr addr, uptr size,
                        bool is_write) {
   // Printf("%p is in runtime? %s\n", thr, thr->is_in_runtime ? "yes" : "no");
+  // if (addr <= 0x7b1400000230 && addr + size > 0x7b1400000230) {
+  //   Printf("MemAccessRange %s [%p, %p], size %lu on %s, runtime %s \n", (is_write ? "Write" : "Read"), (char *)addr, (char *)addr + size, size, (thr->is_on_target ? "Target" : "Host"), (thr->is_in_runtime ? "yes" : "no"));
+  // }
   if (thr->is_in_runtime)
     return;
   if (size == 0)

@@ -185,6 +185,8 @@ void __attribute__((weak))
 AnnotateEnterTargetRegion() { assert(false && "Fail to invoke AnnotateEnterTargetRegion in tsan"); }
 void __attribute__((weak))
 AnnotateExitTargetRegion() { assert(false && "Fail to invoke AnnotateExitTargetRegion in tsan"); }
+void __attribute__((weak))
+AnnotatePrintf(const char *str) { assert(false && "Fail to invoke AnnotatePrintf in tsan"); }
 int __attribute__((weak)) RunningOnValgrind() {
   runOnTsan = 0;
   return 0;
@@ -221,6 +223,13 @@ void __attribute__((weak)) __tsan_func_exit(void) {}
 // Function entry/exit
 #define TsanFuncEntry(pc) __tsan_func_entry(pc)
 #define TsanFuncExit() __tsan_func_exit()
+
+#define TsanPrintf(...)            \
+  do {                             \
+    char temp[200];                \
+    sprintf(temp, __VA_ARGS__);    \
+    /*AnnotatePrintf(temp);*/          \
+  } while(0)
 
 /// Required OMPT inquiry functions.
 static ompt_get_parallel_info_t ompt_get_parallel_info;
@@ -670,7 +679,15 @@ static void ompt_tsan_parallel_begin(ompt_data_t *parent_task_data,
     // assert(ret == 2 && "parent task must exist");
     Task = ToTaskData(parent_task);
   }
-
+  char *Par;
+  if (flag & ompt_parallel_league) {
+    Par = "teams";
+  } else if (flag & ompt_parallel_team) {
+    Par = "parallel";
+  } else {
+    Par = "other par";
+  }
+  TsanPrintf("%s begin on %s %p, task %p, team size %u\n", Par, (Task->IsOnTarget ? "target" : "host"), parallel_data->ptr, parent_task_data->ptr, requested_team_size);
   if (Task->IsOnTarget) {
     Data->IsOnTarget = true;
   } else {
@@ -690,7 +707,15 @@ static void ompt_tsan_parallel_end(ompt_data_t *parallel_data,
   ParallelData *Data = ToParallelData(parallel_data);
   TsanHappensAfter(Data->GetBarrierPtr(0));
   TsanHappensAfter(Data->GetBarrierPtr(1));
-
+  char *Par;
+  if (flag & ompt_parallel_league) {
+    Par = "teams";
+  } else if (flag & ompt_parallel_team) {
+    Par = "parallel";
+  } else {
+    Par = "other par";
+  }
+  TsanPrintf("%s end on %s %p, task %p\n", Par, (ToTaskData(task_data)->IsOnTarget ? "target" : "host"), parallel_data->ptr, task_data->ptr);
   Data->Delete();
 
 #if (LLVM_VERSION >= 40)
@@ -717,7 +742,7 @@ static void ompt_tsan_implicit_task(ompt_scope_endpoint_t endpoint,
     TsanFuncEntry(ToParallelData(parallel_data)->codePtr);
 
     // ompt_get_task_info(level,flags,task_data,task_frame,parallel_data,thread_num)
-    // level 0 is the current task, level 1 is the paret task.
+    // level 0 is the current task, level 1 is the parent task.
     if (type & ompt_task_initial) {
       int dd = 1;
       ompt_data_t *spt = nullptr;
@@ -732,7 +757,7 @@ static void ompt_tsan_implicit_task(ompt_scope_endpoint_t endpoint,
         
       }
     }
-
+    TsanPrintf("%s task on %s %p begin, parallel %p, flag 0x%08x", (type & ompt_task_initial ? "initial" : "implicit"), (Task->IsOnTarget ? "target" : "host"), task_data->ptr, parallel_data->ptr, type);
     if (Task->IsOnTarget) {
       AnnotateEnterTargetRegion();
     }
@@ -743,9 +768,10 @@ static void ompt_tsan_implicit_task(ompt_scope_endpoint_t endpoint,
     if (!Data) {
       return;
     }
-    if (Data->IsOnTarget) {
-      AnnotateExitTargetRegion();
-    }
+    TsanPrintf("%s task on %s %p end, flag 0x%08x", (type & ompt_task_initial ? "initial" : "implicit"), (Data->IsOnTarget ? "target" : "host"), task_data->ptr, type);
+    // if (Data->IsOnTarget) {
+    //   AnnotateExitTargetRegion();
+    // }
 #ifdef DEBUG
     assert(Data->freed == 0 && "Implicit task end should only be called once!");
     Data->freed = 1;
@@ -1170,10 +1196,12 @@ static void ompt_tsan_target(ompt_target_t kind, ompt_scope_endpoint_t endpoint,
     case ompt_scope_begin:
       Task->IsOnTarget = true;
       TsanFuncEntry(codeptr_ra);
+      TsanPrintf("Target %lu begin\n", target_id);
       AnnotateEnterTargetRegion(); // FIXME: OMPT missing implicit task event when the program only uses #pragma omp target
       break;
     case ompt_scope_end:
       Task->IsOnTarget = false;
+      TsanPrintf("Target %lu end\n", target_id);
       AnnotateExitTargetRegion(); // FIXME: OMPT missing implicit task event when the program only uses #pragma omp target
       TsanFuncExit();
       break;

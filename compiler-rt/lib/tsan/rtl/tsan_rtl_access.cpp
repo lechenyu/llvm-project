@@ -182,12 +182,15 @@ NOINLINE void DoReportDMI(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
   // const m128 mask_state = _mm_set1_epi32(kGetStateBitMask);
   // m128 state = _mm_and_si128(shadow, mask_state);
   // Printf("%d, %d, %d, %d\n", _mm_extract_epi32(state, 0), _mm_extract_epi32(state, 1), _mm_extract_epi32(state, 2), _mm_extract_epi32(state, 3));
-  
+  // if (ShadowToMem(shadow_mem) != 0x7b14000000f0) {
+  //   return;
+  // }
   if (typ & kAccessSlotLocked)
     SlotUnlock(thr);
   ReportDMI(thr, shadow_mem, cur, typ, dmi_typ);
   if (typ & kAccessSlotLocked)
     SlotLock(thr);
+  // PrintCurrentStack(thr, ((uptr)__builtin_return_address(0)));
   // Die();
 }
 
@@ -483,7 +486,25 @@ void CheckBound(uptr base, uptr addr, uptr size) {
 
 ALWAYS_INLINE USED
 bool CheckMapping(ThreadState* thr, uptr addr, uptr size, m128 state, Shadow& cur, AccessType typ) {
-
+  // if (addr == 0x7b14000000f0 || addr == 0x7b1400000230) {
+  //   if (thr->is_on_target) {
+  //     Node* mapping = ctx->t2h.find(addr, size);
+  //     if (mapping) {
+  //       uptr host_addr = mapping->info.start + (addr - mapping->interval.left_end);
+  //       RawShadow *shadow_mem = MemToShadow((uptr)host_addr);
+  //       const m128 shadow = _mm_load_si128(reinterpret_cast<m128*>(shadow_mem));
+  //       const m128 mask_state = _mm_set1_epi32(kGetStateBitMask);
+  //       m128 state = _mm_and_si128(shadow, mask_state);
+  //       Printf("%d %s, %s, %p, %d, %d, %d, %d\n", thr->tid, "Read", "Target", (char *)addr, _mm_extract_epi32(state, 0), _mm_extract_epi32(state, 1), _mm_extract_epi32(state, 2), _mm_extract_epi32(state, 3));
+  //     }
+  //   } else {
+  //     RawShadow *shadow_mem = MemToShadow((uptr)addr);
+  //     const m128 shadow = _mm_load_si128(reinterpret_cast<m128*>(shadow_mem));
+  //     const m128 mask_state = _mm_set1_epi32(kGetStateBitMask);
+  //     m128 state = _mm_and_si128(shadow, mask_state);
+  //     Printf("%d %s, %s, %p, %d, %d, %d, %d\n", thr->tid, "Read", "Host", (char *)addr, _mm_extract_epi32(state, 0), _mm_extract_epi32(state, 1), _mm_extract_epi32(state, 2), _mm_extract_epi32(state, 3));
+  //   }
+  // }
   //memory access checking, check weather the read see the latest value
   if (thr->is_on_target) {
     Node* mapping = ctx->t2h.find(addr, size);
@@ -546,6 +567,25 @@ bool CheckMapping(ThreadState* thr, uptr addr, uptr size, m128 state, Shadow& cu
 
 ALWAYS_INLINE USED
 void UpdateMapping(ThreadState *thr, uptr addr, uptr size, m128 shadow, m128 &state, RawShadow* shadow_mem) {
+  // if (addr == 0x7b14000000f0 || addr == 0x7b1400000230) {
+  //   if (thr->is_on_target) {
+  //     Node* mapping = ctx->t2h.find(addr, size);
+  //     if (mapping) {
+  //       uptr host_addr = mapping->info.start + (addr - mapping->interval.left_end);
+  //       RawShadow *shadow_mem = MemToShadow((uptr)host_addr);
+  //       const m128 shadow = _mm_load_si128(reinterpret_cast<m128*>(shadow_mem));
+  //       const m128 mask_state = _mm_set1_epi32(kGetStateBitMask);
+  //       m128 state = _mm_and_si128(shadow, mask_state);
+  //       Printf("%d %s, %s, %p, %d, %d, %d, %d\n", thr->tid, "Write", "Target", (char *)addr, _mm_extract_epi32(state, 0), _mm_extract_epi32(state, 1), _mm_extract_epi32(state, 2), _mm_extract_epi32(state, 3));
+  //     }
+  //   } else {
+  //     RawShadow *shadow_mem = MemToShadow((uptr)addr);
+  //     const m128 shadow = _mm_load_si128(reinterpret_cast<m128*>(shadow_mem));
+  //     const m128 mask_state = _mm_set1_epi32(kGetStateBitMask);
+  //     m128 state = _mm_and_si128(shadow, mask_state);
+  //     Printf("%d %s, %s, %p, %d, %d, %d, %d\n", thr->tid, "Write", "Host", (char *)addr, _mm_extract_epi32(state, 0), _mm_extract_epi32(state, 1), _mm_extract_epi32(state, 2), _mm_extract_epi32(state, 3));
+  //   }
+  // }
   if (thr->is_on_target) {
     // Printf(" Write on Target \n");
     Node* mapping = ctx->t2h.find(addr, size);
@@ -631,7 +671,6 @@ ALWAYS_INLINE USED void MemoryAccess(ThreadState* thr, uptr pc, uptr addr,
            DumpShadow(memBuf[1], shadow_mem[1]),
            DumpShadow(memBuf[2], shadow_mem[2]),
            DumpShadow(memBuf[3], shadow_mem[3]));
-
   FastState fast_state = thr->fast_state;
   if (UNLIKELY(fast_state.GetIgnoreBit())) {
     if (!(typ & kAccessRead)) {

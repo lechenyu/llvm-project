@@ -25,22 +25,6 @@
 #include <cstdlib>
 #include <mutex>
 
-// Annotate function defined in ThreadSanitizer
-extern "C" __attribute__((weak)) void AnnotateEnterRuntime();
-//{ FATAL_MESSAGE0(1, "Fail to invoke AnnotateEnterRuntime in tsan"); }
-extern "C" __attribute__((weak)) void AnnotateExitRuntime(); 
-//{ FATAL_MESSAGE0(1, "Fail to invoke AnnotateExitRuntime in tsan"); }
-
-
-class TsanAnnotate {
-public:
-  TsanAnnotate() {
-    AnnotateEnterRuntime();
-  }
-  ~TsanAnnotate() {
-    AnnotateExitRuntime();
-  }
-};
 ////////////////////////////////////////////////////////////////////////////////
 /// adds requires flags
 EXTERN void __tgt_register_requires(int64_t Flags) {
@@ -341,7 +325,6 @@ EXTERN int __tgt_target_kernel_internal(ident_t *Loc, int64_t DeviceId,
                                         __tgt_kernel_arguments *Args,
                                         bool Nowait, void *CodePtr) {
   TIMESCOPE_WITH_IDENT(Loc);
-  TsanAnnotate TA{};
   DP("Entering target region with entry point " DPxMOD " and device Id %" PRId64
      "\n",
      DPxPTR(HostPtr), DeviceId);
