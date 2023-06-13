@@ -760,6 +760,8 @@ static void ompt_tsan_implicit_task(ompt_scope_endpoint_t endpoint,
     TsanPrintf("%s task on %s %p begin, parallel %p, flag 0x%08x", (type & ompt_task_initial ? "initial" : "implicit"), (Task->IsOnTarget ? "target" : "host"), task_data->ptr, parallel_data->ptr, type);
     if (Task->IsOnTarget) {
       AnnotateEnterTargetRegion();
+    } else {
+      AnnotateExitTargetRegion();
     }
     break;
   }
@@ -1093,8 +1095,7 @@ static void ompt_tsan_task_schedule(ompt_data_t *first_task_data,
   // Update isOnTarget in tsan
   if(ToTask->IsOnTarget){
     AnnotateEnterTargetRegion();
-  }
-  else if(!ToTask->IsOnTarget){
+  } else {
     AnnotateExitTargetRegion();
   }
 }
