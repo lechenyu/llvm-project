@@ -11,6 +11,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define _GNU_SOURCE
+#include <dlfcn.h>
+
 #include "omptarget.h"
 #include "device.h"
 #include "private.h"
@@ -73,8 +76,17 @@ void *&AsyncInfoTy::getVoidPtrLocation() {
  */
 static const int64_t Alignment = 8;
 
+void (* TsanAnnotate::AnnotateEnterRuntime)(){nullptr};
+void (* TsanAnnotate::AnnotateExitRuntime)(){nullptr};
+
 /// Map global data and execute pending ctors
 static int initLibrary(DeviceTy &Device) {
+  /*
+   * Look up TSan annotate functions
+  */
+  TsanAnnotate::AnnotateEnterRuntime = (void (*)(void))dlsym(RTLD_DEFAULT, "AnnotateEnterRuntime");
+  TsanAnnotate::AnnotateExitRuntime = (void (*)(void))dlsym(RTLD_DEFAULT, "AnnotateExitRuntime");
+
   /*
    * Map global data
    */
