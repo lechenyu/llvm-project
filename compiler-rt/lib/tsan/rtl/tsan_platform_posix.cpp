@@ -72,12 +72,12 @@ void InitializeShadowMemory() {
       meta, meta + meta_size, meta_size >> 30);
 
   // TODO: shadow mapping memory
-  if (!MmapFixedSuperNoReserve(Shadow2Beg(), Shadow2End() - Shadow2Beg(), "shadow2")) {
-    Printf("FATAL: ThreadSanitizer can not mmap the shadow2 \n");
+  if (!MmapFixedSuperNoReserve(VsmBeg(), VsmEnd() - VsmBeg(), "variable state machine")) {
+    Printf("FATAL: ThreadSanitizer can not mmap the variable state machine \n");
     Printf("FATAL: Make sure to compile with -fPIE and to link with -pie.\n");
     Die();
   }
-  DontDumpShadow(Shadow2Beg(), Shadow2End() - Shadow2Beg());
+  DontDumpShadow(VsmBeg(), VsmEnd() - VsmBeg());
 
   InitializeShadowMemoryPlatform();
 

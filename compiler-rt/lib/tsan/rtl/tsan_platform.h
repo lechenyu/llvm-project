@@ -41,9 +41,9 @@ C/C++ on linux/x86_64 and freebsd/x86_64
 0000 0000 1000 - 0080 0000 0000: main binary and/or MAP_32BIT mappings (512GB)
 0040 0000 0000 - 0100 0000 0000: -
 0100 0000 0000 - 1000 0000 0000: shadow, size: 0F00 0000 0000
-1000 0000 0000 - 1F00 0000 0000: -
-1F00 0000 0000 - 2680 0000 0000: shadow2, size: 0780 0000 0000
-2680 0000 0000 - 3000 0000 0000: -
+1000 0000 0000 - 1100 0000 0000: -
+1100 0000 0000 - 1880 0000 0000: variable state machine (VSM), size: 0780 0000 0000
+1880 0000 0000 - 3000 0000 0000: -
 3000 0000 0000 - 4000 0000 0000: metainfo (memory blocks and sync objects)
 4000 0000 0000 - 5500 0000 0000: -
 5500 0000 0000 - 5680 0000 0000: pie binaries without ASLR or on 4.1+ kernels
@@ -68,7 +68,7 @@ struct Mapping48AddressSpace {
   static const uptr kMetaShadowBeg = 0x300000000000ull;
   static const uptr kMetaShadowEnd = 0x340000000000ull;
   static const uptr kShadowBeg     = 0x010000000000ull;
-  static const uptr kShadowEnd = 0x100000000000ull;
+  static const uptr kShadowEnd     = 0x100000000000ull;
   static const uptr kHeapMemBeg    = 0x7b0000000000ull;
   static const uptr kHeapMemEnd    = 0x7c0000000000ull;
   static const uptr kLoAppMemBeg   = 0x000000001000ull;
@@ -77,16 +77,17 @@ struct Mapping48AddressSpace {
   static const uptr kMidAppMemEnd  = 0x568000000000ull;
   static const uptr kHiAppMemBeg   = 0x7e8000000000ull;
   static const uptr kHiAppMemEnd   = 0x800000000000ull;
-  static const uptr kShadowMsk = 0x780000000000ull;
-  static const uptr kShadowXor = 0x040000000000ull;
-  static const uptr kShadowAdd = 0x000000000000ull;
+  static const uptr kShadowMsk     = 0x780000000000ull;
+  static const uptr kShadowXor     = 0x040000000000ull;
+  static const uptr kShadowAdd     = 0x000000000000ull;
   static const uptr kVdsoBeg       = 0xf000000000000000ull;
   // mapping
-  static const uptr kShadowMappingBeg = kShadowEnd + (kShadowEnd - kShadowBeg);
-  static const uptr kShadowMappingEnd = kShadowMappingBeg + (kShadowEnd - kShadowBeg) / (kShadowMultiplier / kShadowMappingMultiplier);
+  // static const uptr kShadowMappingBeg = kShadowEnd + (kShadowEnd - kShadowBeg);
+  // static const uptr kShadowMappingEnd = kShadowMappingBeg + (kShadowEnd - kShadowBeg) / (kShadowMultiplier / kShadowMappingMultiplier);
 
-  // static const uptr kShadowMappingBeg = 0x1F0000000000ull;
-  // static const uptr kShadowMappingEnd = 0x268000000000ull;
+  static const uptr kVsmBeg = 0x110000000000ull;
+  static const uptr kVsmEnd = 0x188000000000ull;
+  static const uptr kVsmAdd = 0x100000000000ull;
 };
 
 /*
@@ -728,9 +729,9 @@ ALWAYS_INLINE
 uptr ShadowEnd(void) { return SelectMapping<MappingField>(kShadowEnd); }
 
 ALWAYS_INLINE
-uptr Shadow2Beg(void) { return Mapping48AddressSpace::kShadowMappingBeg; }
+uptr VsmBeg(void) { return Mapping48AddressSpace::kVsmBeg; }
 ALWAYS_INLINE
-uptr Shadow2End(void) { return Mapping48AddressSpace::kShadowMappingEnd; }
+uptr VsmEnd(void) { return Mapping48AddressSpace::kVsmEnd; }
 
 ALWAYS_INLINE
 uptr MetaShadowBeg(void) { return SelectMapping<MappingField>(kMetaShadowBeg); }
@@ -763,9 +764,9 @@ bool IsShadowMem(RawShadow *p) {
 }
 
 ALWAYS_INLINE
-bool IsShadowMappingMem(RawShadow *p) {
+bool IsVsmMem(RawShadow *p) {
   uptr mem = reinterpret_cast<uptr>(p);
-  return (mem >= Mapping48AddressSpace::kShadowMappingBeg && mem <= Mapping48AddressSpace::kShadowMappingEnd);
+  return (mem >= Mapping48AddressSpace::kVsmBeg && mem <= Mapping48AddressSpace::kVsmEnd);
 }
 
 struct IsMetaMemImpl {
@@ -797,17 +798,13 @@ RawShadow *MemToShadow(uptr x) {
 }
 
 ALWAYS_INLINE
-uptr MemToShadow_uptr(uptr x) {
-  return SelectMapping<MemToShadowImpl>(x);
-}
-
-ALWAYS_INLINE
-RawShadow *MemToShadow2(uptr x) {
-  uptr shadow1 = MemToShadow_uptr(x);
-  uptr offset = shadow1 - Mapping48AddressSpace::kShadowBeg;
-  offset = offset / ((u64)kShadowMultiplier / kShadowMappingMultiplier);
-  uptr shadow2 = (Mapping48AddressSpace::kShadowMappingBeg + offset);
-  return reinterpret_cast<RawShadow *>(shadow2); 
+RawVsm *MemToVsm(uptr x) {
+    DCHECK(IsAppMemImpl::Apply<Mapping48AddressSpace>(x));
+    uptr p = (((x) & ~(Mapping48AddressSpace::kShadowMsk | (kVsmCell - 1))) ^
+            Mapping48AddressSpace::kShadowXor) *
+               kVsmMultiplier +
+           Mapping48AddressSpace::kVsmAdd;
+    return reinterpret_cast<RawVsm *>(p);
 }
 
 struct MemToMetaImpl {

@@ -176,43 +176,43 @@ class Shadow {
       static_cast<RawShadow>(1 << kIsReadShift);
 };
 
+class VariableStateMachine {
+  static constexpr RawVsm kEmpty = static_cast<RawVsm>(0);
 
-class Shadow2{
-  static constexpr RawShadow2 kEmpty = static_cast<RawShadow2>(0);
+ public:
+  explicit VariableStateMachine(RawVsm x = VariableStateMachine::kEmpty) {
+    raw_ = static_cast<u8>(x);
+  }
 
-  public:
-    explicit Shadow2(RawShadow2 x = Shadow2::kEmpty) { 
-      raw_ = static_cast<u8>(x);
-    }
+  bool IsHostInit() { return part_.is_host_init_; }
 
-    bool isHost_init(){
-      return part_.isHost_init;
-    }
+  bool IsDeviceInit() { return part_.is_dev_init_; }
 
-    bool isDev_init(){
-      return part_.isDev_init;
-    }
+  bool IsHostLatest() { return part_.is_host_latest_; }
 
-    bool isHost_updated(){
-      return part_.isHost_updated;
-    }
+  bool IsDeviceLatest() { return part_.is_dev_latest_; }
 
-    bool isDev_updated(){
-      return part_.isDev_updated;
-    }
+ private:
+  struct Parts {
+    u8 is_host_init_ : 1;
+    u8 is_dev_init_ : 1;
+    u8 is_host_latest_ : 1;
+    u8 is_dev_latest_ : 1;
+    u8 padding_ : 4;
+  };
+  union {
+    Parts part_;
+    u8 raw_;
+  };
 
-  private:
-    struct Parts {
-      u8 isHost_init : 1;
-      u8 isDev_init : 1;
-      u8 isHost_updated : 1;
-      u8 isDev_updated : 1;
-      u8 padding : 4;
-    };
-    union {
-      Parts part_;
-      u8 raw_;
-    };
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+  static constexpr uptr kPaddingShift = 7;
+#else
+  static constexpr uptr kPaddingShift = 0;
+#endif
+
+ public:
+  static constexpr RawVsm kRodata = static_cast<RawVsm>(1 << kPaddingShift);
 };
 
 static_assert(sizeof(Shadow) == kShadowSize, "bad Shadow size");
@@ -227,13 +227,13 @@ ALWAYS_INLINE void StoreShadow(RawShadow *sp, RawShadow s) {
                memory_order_relaxed);
 }
 
-ALWAYS_INLINE RawShadow2 LoadShadow2(RawShadow2 *p) {
-  return static_cast<RawShadow2>(
+ALWAYS_INLINE RawVsm LoadVsm(RawVsm *p) {
+  return static_cast<RawVsm>(
       atomic_load((atomic_uint8_t *)p, memory_order_relaxed));
 }
 
-ALWAYS_INLINE void StoreShadow2(RawShadow2 *sp, RawShadow2 s) {
-  atomic_store((atomic_uint8_t *)sp, static_cast<u8>(s),
+ALWAYS_INLINE void StoreVsm(RawVsm *vp, RawVsm v) {
+  atomic_store((atomic_uint8_t *)vp, static_cast<u8>(v),
                memory_order_relaxed);
 }
 

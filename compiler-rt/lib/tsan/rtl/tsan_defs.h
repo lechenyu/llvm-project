@@ -86,16 +86,16 @@ const uptr kShadowSize = sizeof(RawShadow);
 // Shadow memory is kShadowMultiplier times larger than user memory.
 const uptr kShadowMultiplier = kShadowSize * kShadowCnt / kShadowCell;
 
-// Shadow2 for OpenMP mapping, used by arbalest
-enum class RawShadow2 : u8 {};
+// Variable State Machine (VSM) for OpenMP data mapping, used by Arbalest
+enum class RawVsm : u8 {};
 
-const uptr kShadowMappingCnt = 8; // Count of shadow values in a shadow cell.
+const uptr kVsmCnt = 8; // Count of VSM values in a VSM cell.
 
-const uptr kShadowMappingCell = 8; // That many user bytes are mapped onto a single shadow cell.
+const uptr kVsmCell = 8; // That many user bytes are mapped onto a single VSM cell.
 
-const uptr kShadowMappingSize = sizeof(u8); // Single shadow value size.
+const uptr kVsmSize = sizeof(RawVsm); // Single VSM value size.
 
-const uptr kShadowMappingMultiplier = kShadowMappingSize * kShadowMappingCnt / kShadowMappingCell;
+const uptr kVsmMultiplier = kVsmSize * kVsmCnt / kVsmCell;
 
 
 // That many user bytes are mapped onto a single meta shadow cell.

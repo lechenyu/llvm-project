@@ -149,9 +149,6 @@ void WriteMemoryProfile(char *buf, uptr buf_size, u64 uptime_ns) {
 }
 
 
-// TODO: arbalest 
-// create a similar MapRodata function
-
 #if !SANITIZER_GO
 // Mark shadow for .rodata sections with the special Shadow::kRodata marker.
 // Accesses to .rodata can't race, so this saves time, memory and trace space.
@@ -211,8 +208,66 @@ static void MapRodata() {
   internal_close(fd);
 }
 
+// Mark shadow for .rodata section. No data inconsistency will arise in .rodata
+static void MapRodataForVsm() {
+  // First create temp file.
+  const char *tmpdir = GetEnv("TMPDIR");
+  if (tmpdir == 0)
+    tmpdir = GetEnv("TEST_TMPDIR");
+#ifdef P_tmpdir
+  if (tmpdir == 0)
+    tmpdir = P_tmpdir;
+#endif
+  if (tmpdir == 0)
+    return;
+  char name[256];
+  internal_snprintf(name, sizeof(name), "%s/tsan.vsm.rodata.%d",
+                    tmpdir, (int)internal_getpid());
+  uptr openrv = internal_open(name, O_RDWR | O_CREAT | O_EXCL, 0600);
+  if (internal_iserror(openrv))
+    return;
+  internal_unlink(name);  // Unlink it now, so that we can reuse the buffer.
+  fd_t fd = openrv;
+  // Fill the file with VariableStateMachine::kRodata.
+  const uptr kMarkerSize = 512 * 1024 / sizeof(RawVsm);
+  InternalMmapVector<RawVsm> marker(kMarkerSize);
+  // volatile to prevent insertion of memset
+  for (volatile RawVsm *p = marker.data(); p < marker.data() + kMarkerSize;
+       p++)
+    *p = VariableStateMachine::kRodata;
+  internal_write(fd, marker.data(), marker.size() * sizeof(RawVsm));
+  // Map the file into memory.
+  uptr page = internal_mmap(0, GetPageSizeCached(), PROT_READ | PROT_WRITE,
+                            MAP_PRIVATE | MAP_ANONYMOUS, fd, 0);
+  if (internal_iserror(page)) {
+    internal_close(fd);
+    return;
+  }
+  // Map the file into shadow of .rodata sections.
+  MemoryMappingLayout proc_maps(/*cache_enabled*/true);
+  // Reusing the buffer 'name'.
+  MemoryMappedSegment segment(name, ARRAY_SIZE(name));
+  while (proc_maps.Next(&segment)) {
+    if (segment.filename[0] != 0 && segment.filename[0] != '[' &&
+        segment.IsReadable() && segment.IsExecutable() &&
+        !segment.IsWritable() && IsAppMem(segment.start)) {
+      // Assume it's .rodata
+      char *shadow_start = (char *)MemToVsm(segment.start);
+      char *shadow_end = (char *)MemToVsm(segment.end);
+      for (char *p = shadow_start; p < shadow_end;
+           p += marker.size() * sizeof(RawVsm)) {
+        internal_mmap(
+            p, Min<uptr>(marker.size() * sizeof(RawVsm), shadow_end - p),
+            PROT_READ, MAP_PRIVATE | MAP_FIXED, fd, 0);
+      }
+    }
+  }
+  internal_close(fd);
+}
+
 void InitializeShadowMemoryPlatform() {
   MapRodata();
+  MapRodataForVsm();
 }
 
 #endif  // #if !SANITIZER_GO

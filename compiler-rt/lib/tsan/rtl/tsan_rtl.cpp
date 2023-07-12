@@ -73,11 +73,11 @@ void OnInitialize() {
   uptr begins[] = {Mapping48AddressSpace::kLoAppMemBeg, Mapping48AddressSpace::kMidAppMemBeg, Mapping48AddressSpace::kHeapMemBeg, Mapping48AddressSpace::kHiAppMemBeg};  
   uptr ends[] =   {Mapping48AddressSpace::kLoAppMemEnd - 1, Mapping48AddressSpace::kMidAppMemEnd - 1, Mapping48AddressSpace::kHeapMemEnd - 1, Mapping48AddressSpace::kHiAppMemEnd - 1};
   const char *desc[] = {"LoApp", "MidApp", "Heap", "HiApp"};
-  for (int i = 0; i < (sizeof(desc) / sizeof(char *)); i++) {
+  for (u64 i = 0; i < (sizeof(desc) / sizeof(char *)); i++) {
     Printf("%s:\n", desc[i]);
-    Printf("range: [%p, %p] \n", begins[i], ends[i]);
+    Printf("range: [%p, %p] \n", reinterpret_cast<char *>(begins[i]), reinterpret_cast<char *>(ends[i]));
     Printf("shadow range: [%p, %p]\n", MemToShadow(begins[i]), MemToShadow(ends[i]));
-    Printf("shadow2 (mapping) range: [%p, %p]\n", MemToShadow2(begins[i]), MemToShadow2(ends[i]));
+    Printf("vsm range: [%p, %p]\n", MemToVsm(begins[i]), MemToVsm(ends[i]));
     Printf("\n");
   }
 
