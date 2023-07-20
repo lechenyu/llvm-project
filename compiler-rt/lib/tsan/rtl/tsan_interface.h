@@ -28,6 +28,28 @@ extern "C" {
 
 #if !SANITIZER_GO
 
+SANITIZER_INTERFACE_ATTRIBUTE void __arbalest_read1(void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __arbalest_read2(void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __arbalest_read4(void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __arbalest_read8(void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __arbalest_read16(void *addr);
+
+SANITIZER_INTERFACE_ATTRIBUTE void __arbalest_write1(void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __arbalest_write2(void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __arbalest_write4(void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __arbalest_write8(void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __arbalest_write16(void *addr);
+
+SANITIZER_INTERFACE_ATTRIBUTE void __arbalest_unaligned_read2(const void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __arbalest_unaligned_read4(const void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __arbalest_unaligned_read8(const void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __arbalest_unaligned_read16(const void *addr);
+
+SANITIZER_INTERFACE_ATTRIBUTE void __arbalest_unaligned_write2(void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __arbalest_unaligned_write4(void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __arbalest_unaligned_write8(void *addr);
+SANITIZER_INTERFACE_ATTRIBUTE void __arbalest_unaligned_write16(void *addr);
+
 // This function should be called at the very beginning of the process,
 // before any instrumented code is executed and before any call to malloc.
 SANITIZER_INTERFACE_ATTRIBUTE void __tsan_init();

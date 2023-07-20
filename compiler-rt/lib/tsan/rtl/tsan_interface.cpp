@@ -56,6 +56,14 @@ void __tsan_unaligned_write16(void *addr) {
   UnalignedMemoryAccess(thr, pc, (uptr)addr + 8, 8, kAccessWrite);
 }
 
+void __arbalest_unaligned_read16(const void *addr) {
+
+}
+
+void __arbalest_unaligned_write16(void *addr) {
+  
+}
+
 extern "C" {
 SANITIZER_INTERFACE_ATTRIBUTE
 void *__tsan_get_current_fiber() {

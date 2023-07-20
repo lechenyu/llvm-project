@@ -17,6 +17,69 @@
 #define CALLERPC ((uptr)__builtin_return_address(0))
 
 using namespace __tsan;
+void __arbalest_read1(void *addr) {
+
+}
+
+void __arbalest_read2(void *addr) {
+
+}
+
+void __arbalest_read4(void *addr) {
+
+}
+
+void __arbalest_read8(void *addr) {
+
+}
+
+void __arbalest_read16(void *addr) {
+
+}
+
+void __arbalest_write1(void *addr) {
+
+}
+
+void __arbalest_write2(void *addr) {
+
+}
+
+void __arbalest_write4(void *addr){
+
+}
+
+void __arbalest_write8(void *addr) {
+
+}
+
+void __arbalest_write16(void *addr) {
+
+}
+
+void __arbalest_unaligned_read2(const void *addr) {
+
+}
+
+void __arbalest_unaligned_read4(const void *addr) {
+
+}
+
+void __arbalest_unaligned_read8(const void *addr) {
+
+}
+
+void __arbalest_unaligned_write2(void *addr) {
+
+}
+
+void __arbalest_unaligned_write4(void *addr) {
+
+}
+
+void __arbalest_unaligned_write8(void *addr) {
+
+}
 
 void __tsan_read1(void *addr) {
   MemoryAccess(cur_thread(), CALLERPC, (uptr)addr, 1, kAccessRead);
