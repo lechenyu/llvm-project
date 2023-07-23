@@ -71,6 +71,10 @@ class Vector {
     end_--;
   }
 
+  T& Back() {
+    return end_[-1]; 
+  }
+
   void Resize(uptr size) {
     if (size == 0) {
       end_ = begin_;
