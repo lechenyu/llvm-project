@@ -73,6 +73,7 @@ EXTERN void __tgt_target_data_begin_internal(
     void **Args, int64_t *ArgSizes, int64_t *ArgTypes, map_var_info_t *ArgNames,
     void **ArgMappers, bool Nowait, void *CodePtr) {
   TIMESCOPE_WITH_IDENT(Loc);
+  TsanAnnotate TA{};
   DP("Entering data begin region for device %" PRId64 " with %d mappings\n",
      DeviceId, ArgNum);
   if (checkDeviceAndCtors(DeviceId, Loc)) {
@@ -159,6 +160,7 @@ __tgt_target_data_end_internal(ident_t *Loc, int64_t DeviceId, int32_t ArgNum,
                                int64_t *ArgTypes, map_var_info_t *ArgNames,
                                void **ArgMappers, bool Nowait, void *CodePtr) {
   TIMESCOPE_WITH_IDENT(Loc);
+  TsanAnnotate TA{};
   DP("Entering data end region with %d mappings\n", ArgNum);
   if (checkDeviceAndCtors(DeviceId, Loc)) {
     DP("Not offloading to device %" PRId64 "\n", DeviceId);
@@ -239,6 +241,7 @@ EXTERN void __tgt_target_data_update_internal(
     void **Args, int64_t *ArgSizes, int64_t *ArgTypes, map_var_info_t *ArgNames,
     void **ArgMappers, bool Nowait, void *CodePtr) {
   TIMESCOPE_WITH_IDENT(Loc);
+  TsanAnnotate TA{};
   DP("Entering data update with %d mappings\n", ArgNum);
   if (checkDeviceAndCtors(DeviceId, Loc)) {
     DP("Not offloading to device %" PRId64 "\n", DeviceId);

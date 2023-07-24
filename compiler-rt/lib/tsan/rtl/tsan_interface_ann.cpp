@@ -345,6 +345,41 @@ AnnotateMemoryIsInitialized(char *f, int l, uptr mem, uptr sz) {}
 void INTERFACE_ATTRIBUTE
 AnnotateMemoryIsUninitialized(char *f, int l, uptr mem, uptr sz) {}
 
+void INTERFACE_ATTRIBUTE
+AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 optype) {
+  SCOPED_ANNOTATION(AnnotateMapping);
+}
+
+void INTERFACE_ATTRIBUTE
+AnnotatePrintf(const char *str) {
+  Printf("%s\n", str);
+}
+
+void INTERFACE_ATTRIBUTE
+AnnotateEnterTargetRegion() {
+  SCOPED_ANNOTATION(AnnotateEnterTargetRegion);
+  thr->is_on_target = true;
+}
+
+
+void INTERFACE_ATTRIBUTE
+AnnotateExitTargetRegion() {
+  SCOPED_ANNOTATION(AnnotateExitTargetRegion)
+  thr->is_on_target = false;
+}
+
+void INTERFACE_ATTRIBUTE AnnotateEnterRuntime() {
+  SCOPED_ANNOTATION(AnnotateEnterRuntime);
+  //Printf("%p Enter runtime\n", thr);
+  thr->is_in_runtime = true;
+}
+
+void INTERFACE_ATTRIBUTE AnnotateExitRuntime() {
+  SCOPED_ANNOTATION(AnnotateExitRuntime);
+  //Printf("%p Exit runtime\n", thr);
+  thr->is_in_runtime = false;
+}
+
 // Note: the parameter is called flagz, because flags is already taken
 // by the global function that returns flags.
 INTERFACE_ATTRIBUTE

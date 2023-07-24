@@ -53,6 +53,25 @@ extern bool checkDeviceAndCtors(int64_t &DeviceID, ident_t *Loc);
 extern void *targetAllocExplicit(size_t Size, int DeviceNum, int Kind,
                                  const char *Name);
 
+// Annotate entering/exiting runtime
+class TsanAnnotate {
+public:
+  static void (*AnnotateEnterRuntime)();
+  static void (*AnnotateExitRuntime)();
+
+public:
+  TsanAnnotate() {
+    if (AnnotateEnterRuntime) {
+      AnnotateEnterRuntime();
+    }
+  }
+  ~TsanAnnotate() {
+    if (AnnotateExitRuntime) {
+      AnnotateExitRuntime();
+    }
+  }
+};
+
 // This structure stores information of a mapped memory region.
 struct MapComponentInfoTy {
   void *Base;

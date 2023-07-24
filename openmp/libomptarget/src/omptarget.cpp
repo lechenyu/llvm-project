@@ -11,6 +11,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define _GNU_SOURCE
+#include <dlfcn.h>
+
 #include "omptarget.h"
 #include "device.h"
 #include "private.h"
@@ -73,8 +76,17 @@ void *&AsyncInfoTy::getVoidPtrLocation() {
  */
 static const int64_t Alignment = 8;
 
+void (* TsanAnnotate::AnnotateEnterRuntime)(){nullptr};
+void (* TsanAnnotate::AnnotateExitRuntime)(){nullptr};
+
 /// Map global data and execute pending ctors
 static int initLibrary(DeviceTy &Device) {
+    /*
+   * Look up TSan annotate functions
+  */
+  TsanAnnotate::AnnotateEnterRuntime = (void (*)(void))dlsym(RTLD_DEFAULT, "AnnotateEnterRuntime");
+  TsanAnnotate::AnnotateExitRuntime = (void (*)(void))dlsym(RTLD_DEFAULT, "AnnotateExitRuntime");
+  
   /*
    * Map global data
    */
@@ -1641,6 +1653,7 @@ int target(ident_t *Loc, DeviceTy &Device, void *HostPtr, int32_t ArgNum,
 
   int Ret;
   if (ArgNum) {
+    TsanAnnotate TA{};
     // Process data, such as data mapping, before launching the kernel
     Ret = processDataBefore(Loc, DeviceId, HostPtr, ArgNum, ArgBases, Args,
                             ArgSizes, ArgTypes, ArgNames, ArgMappers, TgtArgs,
@@ -1675,6 +1688,7 @@ int target(ident_t *Loc, DeviceTy &Device, void *HostPtr, int32_t ArgNum,
   }
 
   if (ArgNum) {
+    TsanAnnotate TA{};
     // Transfer data back and deallocate target memory for (first-)private
     // variables
     Ret = processDataAfter(Loc, DeviceId, HostPtr, ArgNum, ArgBases, Args,

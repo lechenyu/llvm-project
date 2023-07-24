@@ -231,6 +231,10 @@ struct ThreadState {
 
   const ReportDesc *current_report;
 
+  bool is_on_target;
+
+  bool is_in_runtime;
+
   explicit ThreadState(Tid tid);
 } ALIGNED(SANITIZER_CACHE_LINE_SIZE);
 

@@ -179,6 +179,21 @@ void __attribute__((weak)) AnnotateIgnoreWritesEnd(const char *file, int line) {
 void __attribute__((weak))
 AnnotateNewMemory(const char *file, int line, const volatile void *cv,
                   size_t size) {}
+void __attribute__((weak))
+AnnotateMapping(const void *src_addr, const void *dest_addr, uintptr_t bytes,
+                uint8_t optype) {
+  assert(false && "Fail to invoke AnnotateMapping in tsan");
+}
+void __attribute__((weak)) AnnotateEnterTargetRegion() {
+  assert(false && "Fail to invoke AnnotateEnterTargetRegion in tsan");
+}
+void __attribute__((weak)) AnnotateExitTargetRegion() {
+  assert(false && "Fail to invoke AnnotateExitTargetRegion in tsan");
+}
+void __attribute__((weak)) AnnotatePrintf(const char *str) {
+  assert(false && "Fail to invoke AnnotatePrintf in tsan");
+}
+
 int __attribute__((weak)) RunningOnValgrind() {
   runOnTsan = 0;
   return 0;
@@ -216,9 +231,19 @@ void __attribute__((weak)) __tsan_func_exit(void) {}
 #define TsanFuncEntry(pc) __tsan_func_entry(pc)
 #define TsanFuncExit() __tsan_func_exit()
 
+#define VPrintf(...)                 \
+  do {                               \
+    if (archer_flags->verbose) {     \
+      char temp[400];                \
+      sprintf(temp, __VA_ARGS__);    \
+      AnnotatePrintf(temp);          \
+    }                                \
+  } while(0)
+
 /// Required OMPT inquiry functions.
 static ompt_get_parallel_info_t ompt_get_parallel_info;
 static ompt_get_thread_data_t ompt_get_thread_data;
+static ompt_get_task_info_t ompt_get_task_info;
 
 typedef char ompt_tsan_clockid;
 
@@ -418,6 +443,8 @@ struct ParallelData final : DataPoolEntry<ParallelData> {
   /// Two addresses for relationships with barriers.
   ompt_tsan_clockid Barrier[2];
 
+  bool IsOnTarget{false};
+
   const void *codePtr;
 
   void *GetParallelPtr() { return &(Barrier[1]); }
@@ -470,6 +497,7 @@ struct Taskgroup final : DataPoolEntry<Taskgroup> {
   Taskgroup(DataPool<Taskgroup> *dp) : DataPoolEntry<Taskgroup>(dp) {}
 };
 
+static int InitialDevice;
 struct TaskData;
 typedef DataPool<TaskData> TaskDataPool;
 template <> __thread TaskDataPool *TaskDataPool::ThreadDataPool = nullptr;
@@ -494,6 +522,8 @@ struct TaskData final : DataPoolEntry<TaskData> {
 
   /// Index of which barrier to use next.
   char BarrierIndex{0};
+
+  bool IsOnTarget{false};
 
   /// Count how often this structure has been put into child tasks + 1.
   std::atomic_int RefCount{1};
@@ -551,6 +581,7 @@ struct TaskData final : DataPoolEntry<TaskData> {
       // Copy over pointer to taskgroup. This task may set up its own stack
       // but for now belongs to its parent's taskgroup.
       TaskGroup = Parent->TaskGroup;
+      IsOnTarget = Parent->IsOnTarget;
     }
     return this;
   }
@@ -560,6 +591,9 @@ struct TaskData final : DataPoolEntry<TaskData> {
     execution = 1;
     ImplicitTask = this;
     Team = team;
+    if(Team) {
+      IsOnTarget = Team->IsOnTarget;
+    }
     return this;
   }
 
@@ -642,6 +676,30 @@ static void ompt_tsan_parallel_begin(ompt_data_t *parent_task_data,
                                      const void *codeptr_ra) {
   ParallelData *Data = ParallelData::New(codeptr_ra);
   parallel_data->ptr = Data;
+  
+  TaskData *Task = ToTaskData(parent_task_data);
+
+  //FIXME: a workaround to fix the missing implicit task event for parent_task_data
+  if (!Task) {
+    ompt_data_t *parent_task = nullptr;
+    // int ret = ompt_get_task_info(1, NULL, &parent_task, NULL, NULL, NULL);
+    // assert(ret == 2 && "parent task must exist");
+    Task = ToTaskData(parent_task);
+  }
+  char *Par;
+  if (flag & ompt_parallel_league) {
+    Par = "teams";
+  } else if (flag & ompt_parallel_team) {
+    Par = "parallel";
+  } else {
+    Par = "other par";
+  }
+  VPrintf("%s begin on %s %p, task %p, team size %u\n", Par, (Task->IsOnTarget ? "target" : "host"), parallel_data->ptr, parent_task_data->ptr, requested_team_size);
+  if (Task->IsOnTarget) {
+    Data->IsOnTarget = true;
+  } else {
+    Data->IsOnTarget = false;
+  }
 
   TsanHappensBefore(Data->GetParallelPtr());
   if (archer_flags->ignore_serial && ToTaskData(parent_task_data)->isInitial())
@@ -656,7 +714,16 @@ static void ompt_tsan_parallel_end(ompt_data_t *parallel_data,
   ParallelData *Data = ToParallelData(parallel_data);
   TsanHappensAfter(Data->GetBarrierPtr(0));
   TsanHappensAfter(Data->GetBarrierPtr(1));
-
+  
+  char *Par;
+  if (flag & ompt_parallel_league) {
+    Par = "teams";
+  } else if (flag & ompt_parallel_team) {
+    Par = "parallel";
+  } else {
+    Par = "other par";
+  }
+  VPrintf("%s end on %s %p, task %p\n", Par, (ToTaskData(task_data)->IsOnTarget ? "target" : "host"), parallel_data->ptr, task_data->ptr);
   Data->Delete();
 
 #if (LLVM_VERSION >= 40)
@@ -673,16 +740,48 @@ static void ompt_tsan_implicit_task(ompt_scope_endpoint_t endpoint,
                                     unsigned int team_size,
                                     unsigned int thread_num, int type) {
   switch (endpoint) {
-  case ompt_scope_begin:
+  case ompt_scope_begin: {
     if (type & ompt_task_initial) {
       parallel_data->ptr = ParallelData::New(nullptr);
     }
-    task_data->ptr = TaskData::New(ToParallelData(parallel_data), type);
+    TaskData* Task = TaskData::New(ToParallelData(parallel_data), type);
+    task_data->ptr = Task;
     TsanHappensAfter(ToParallelData(parallel_data)->GetParallelPtr());
     TsanFuncEntry(ToParallelData(parallel_data)->codePtr);
+    
+    // ompt_get_task_info(level,flags,task_data,task_frame,parallel_data,thread_num)
+    // level 0 is the current task, level 1 is the parent task.
+    if (type & ompt_task_initial) {
+      int dd = 1;
+      ompt_data_t *spt = nullptr;
+      ompt_get_task_info(dd, NULL, &spt, NULL, NULL, NULL);
+      if (spt) {
+        TaskData* parent_task = (TaskData*) spt->ptr;
+        if (parent_task->IsOnTarget)
+        {
+          Task->IsOnTarget = true;
+        }
+
+      }
+    }
+    VPrintf("%s task on %s %p begin, parallel region %p, flag 0x%08x", (type & ompt_task_initial ? "initial" : "implicit"), (Task->IsOnTarget ? "target" : "host"), task_data->ptr, parallel_data->ptr, type);
+    if (Task->IsOnTarget) {
+      AnnotateEnterTargetRegion();
+    } else {
+      AnnotateExitTargetRegion();
+    }
+
     break;
+  }
   case ompt_scope_end: {
     TaskData *Data = ToTaskData(task_data);
+    if (!Data) {
+      return;
+    }
+    VPrintf("%s task on %s %p end, flag 0x%08x", (type & ompt_task_initial ? "initial" : "implicit"), (Data->IsOnTarget ? "target" : "host"), task_data->ptr, type);
+    // if (Data->IsOnTarget) {
+    //   AnnotateExitTargetRegion();
+    // }
 #ifdef DEBUG
     assert(Data->freed == 0 && "Implicit task end should only be called once!");
     Data->freed = 1;
@@ -709,6 +808,9 @@ static void ompt_tsan_sync_region(ompt_sync_region_t kind,
                                   ompt_data_t *task_data,
                                   const void *codeptr_ra) {
   TaskData *Data = ToTaskData(task_data);
+  if (!Data) {
+    return;
+  }
   switch (endpoint) {
   case ompt_scope_begin:
   case ompt_scope_beginend:
@@ -997,6 +1099,13 @@ static void ompt_tsan_task_schedule(ompt_data_t *first_task_data,
   // 1. Task will begin execution after it has been created.
   // 2. Task will resume after it has been switched away.
   TsanHappensAfter(ToTask->GetTaskPtr());
+
+  // Update isOnTarget in tsan
+  if(ToTask->IsOnTarget){
+    AnnotateEnterTargetRegion();
+  } else {
+    AnnotateExitTargetRegion();
+  }
 }
 
 static void ompt_tsan_dependences(ompt_data_t *task_data,
@@ -1054,6 +1163,58 @@ static void ompt_tsan_mutex_released(ompt_mutex_t kind, ompt_wait_id_t wait_id,
   Lock.unlock();
 }
 
+char *device_mem_flag_str[] = {"to", "from", "alloc", "release", "associate", "disassociate"};
+
+static void ompt_tsan_device_mem(ompt_data_t *target_task_data,
+                                ompt_data_t *target_data,
+                                unsigned int device_mem_flag,
+                                void *orig_base_addr, void *orig_addr,
+                                int orig_device_num, void *dest_addr,
+                                int dest_device_num, size_t bytes,
+                                const void *codeptr_ra) {                              
+  if (archer_flags->verbose) {
+    char buf[200];
+    int offset = 0;
+    unsigned flag_num = sizeof(device_mem_flag_str) / sizeof(char *);
+    unsigned bit = 1;
+    for (unsigned i = 0; i < flag_num; i++) {
+      if (bit & device_mem_flag) {
+        if (offset) {
+          offset += sprintf(buf + offset, "|");
+        }
+        offset += sprintf(buf + offset, "%s", device_mem_flag_str[i]);
+      }
+      bit <<= 1;
+    }
+    VPrintf("ompt tsan device mem, orig_addr is %p, dev_addr is %p, size is %lu, mapping type (%#03x) is %s\n", orig_addr, dest_addr, bytes, device_mem_flag, buf);
+  }
+  AnnotateMapping(orig_addr, dest_addr, bytes, device_mem_flag);
+}
+
+static void ompt_tsan_target(ompt_target_t kind, ompt_scope_endpoint_t endpoint,
+                      int device_num, ompt_data_t *task_data,
+                      ompt_id_t target_id, const void *codeptr_ra) {
+  TaskData *Task = ToTaskData(task_data);
+  switch (endpoint) {
+  case ompt_scope_begin:
+    Task->IsOnTarget = true;
+    TsanFuncEntry(codeptr_ra);
+    VPrintf("Target %lu begin, encounter task %p\n", target_id, task_data->ptr);
+    AnnotateEnterTargetRegion(); // FIXME: OMPT missing implicit task event when the program only uses #pragma omp target
+    break;
+  case ompt_scope_end:
+    Task->IsOnTarget = false;
+    VPrintf("Target %lu end, encounter task %p\n", target_id, task_data->ptr);
+    AnnotateExitTargetRegion(); // FIXME: OMPT missing implicit task event when the program only uses #pragma omp target
+    TsanFuncExit();
+    break;
+  case ompt_scope_beginend:
+    // should not appear
+    break;
+  }
+
+}
+
 // callback , signature , variable to store result , required support level
 #define SET_OPTIONAL_CALLBACK_T(event, type, result, level)                    \
   do {                                                                         \
@@ -1095,6 +1256,15 @@ static int ompt_tsan_initialize(ompt_function_lookup_t lookup, int device_num,
     exit(1);
   }
 
+  ompt_get_task_info =
+    (ompt_get_task_info_t)lookup("ompt_get_task_info");
+
+  if (ompt_get_task_info == NULL) {
+    fprintf(stderr, "Could not get inquiry function 'ompt_get_task_info', "
+                    "exiting...\n");
+    exit(1);
+  }
+
 #if (defined __APPLE__ && defined __MACH__)
 #define findTsanFunction(f, fSig)                                              \
   do {                                                                         \
@@ -1126,6 +1296,9 @@ static int ompt_tsan_initialize(ompt_function_lookup_t lookup, int device_num,
   SET_CALLBACK(task_schedule);
   SET_CALLBACK(dependences);
 
+  SET_CALLBACK(device_mem);
+  SET_CALLBACK(target);
+  
   SET_CALLBACK_T(mutex_acquired, mutex);
   SET_CALLBACK_T(mutex_released, mutex);
   SET_OPTIONAL_CALLBACK_T(reduction, sync_region, hasReductionCallback,
@@ -1139,6 +1312,11 @@ static int ompt_tsan_initialize(ompt_function_lookup_t lookup, int device_num,
   if (archer_flags->ignore_serial)
     TsanIgnoreWritesBegin();
 
+  InitialDevice = device_num;
+
+  fprintf(stderr, "\n\n*****************************" \
+                  "\nArbalest successfully starts"  \
+                  "\n*****************************\n\n");
   return 1; // success
 }
 
