@@ -679,13 +679,14 @@ static void ompt_tsan_parallel_begin(ompt_data_t *parent_task_data,
   
   TaskData *Task = ToTaskData(parent_task_data);
 
-  //FIXME: a workaround to fix the missing implicit task event for parent_task_data
-  if (!Task) {
-    ompt_data_t *parent_task = nullptr;
-    // int ret = ompt_get_task_info(1, NULL, &parent_task, NULL, NULL, NULL);
-    // assert(ret == 2 && "parent task must exist");
-    Task = ToTaskData(parent_task);
-  }
+  // FIXME: a workaround to fix the missing implicit task event for parent_task_data
+  // This problem should not exist in llvm 15.
+  // if (!Task) {
+  //   ompt_data_t *parent_task = nullptr;
+  //   // int ret = ompt_get_task_info(1, NULL, &parent_task, NULL, NULL, NULL);
+  //   // assert(ret == 2 && "parent task must exist");
+  //   Task = ToTaskData(parent_task);
+  // }
   char *Par;
   if (flag & ompt_parallel_league) {
     Par = "teams";
@@ -694,7 +695,9 @@ static void ompt_tsan_parallel_begin(ompt_data_t *parent_task_data,
   } else {
     Par = "other par";
   }
-  VPrintf("%s begin on %s %p, task %p, team size %u\n", Par, (Task->IsOnTarget ? "target" : "host"), parallel_data->ptr, parent_task_data->ptr, requested_team_size);
+  VPrintf("%s begin on %s %p, task %p, team size %u\n", Par,
+          (Task->IsOnTarget ? "target" : "host"), parallel_data->ptr,
+          parent_task_data->ptr, requested_team_size);
   if (Task->IsOnTarget) {
     Data->IsOnTarget = true;
   } else {
@@ -723,7 +726,9 @@ static void ompt_tsan_parallel_end(ompt_data_t *parallel_data,
   } else {
     Par = "other par";
   }
-  VPrintf("%s end on %s %p, task %p\n", Par, (ToTaskData(task_data)->IsOnTarget ? "target" : "host"), parallel_data->ptr, task_data->ptr);
+  VPrintf("%s end on %s %p, task %p\n", Par,
+          (ToTaskData(task_data)->IsOnTarget ? "target" : "host"),
+          parallel_data->ptr, task_data->ptr);
   Data->Delete();
 
 #if (LLVM_VERSION >= 40)
@@ -764,7 +769,12 @@ static void ompt_tsan_implicit_task(ompt_scope_endpoint_t endpoint,
 
       }
     }
-    VPrintf("%s task on %s %p begin, parallel region %p, flag 0x%08x", (type & ompt_task_initial ? "initial" : "implicit"), (Task->IsOnTarget ? "target" : "host"), task_data->ptr, parallel_data->ptr, type);
+    // FIXME: The team size is incorrect for target teams distribute
+    VPrintf(
+        "%s task on %s %p begin, parallel region %p, team size %u, flag 0x%08x\n",
+        (type & ompt_task_initial ? "initial" : "implicit"),
+        (Task->IsOnTarget ? "target" : "host"), task_data->ptr,
+        parallel_data->ptr, team_size, type);
     if (Task->IsOnTarget) {
       AnnotateEnterTargetRegion();
     } else {
@@ -778,7 +788,9 @@ static void ompt_tsan_implicit_task(ompt_scope_endpoint_t endpoint,
     if (!Data) {
       return;
     }
-    VPrintf("%s task on %s %p end, flag 0x%08x", (type & ompt_task_initial ? "initial" : "implicit"), (Data->IsOnTarget ? "target" : "host"), task_data->ptr, type);
+    VPrintf("%s task on %s %p end, flag 0x%08x\n",
+            (type & ompt_task_initial ? "initial" : "implicit"),
+            (Data->IsOnTarget ? "target" : "host"), task_data->ptr, type);
     // if (Data->IsOnTarget) {
     //   AnnotateExitTargetRegion();
     // }
@@ -1163,7 +1175,8 @@ static void ompt_tsan_mutex_released(ompt_mutex_t kind, ompt_wait_id_t wait_id,
   Lock.unlock();
 }
 
-char *device_mem_flag_str[] = {"to", "from", "alloc", "release", "associate", "disassociate"};
+static char *device_mem_flag_str[] = {"to",      "from",      "alloc",
+                               "release", "associate", "disassociate"};
 
 static void ompt_tsan_device_mem(ompt_data_t *target_task_data,
                                 ompt_data_t *target_data,
@@ -1186,33 +1199,52 @@ static void ompt_tsan_device_mem(ompt_data_t *target_task_data,
       }
       bit <<= 1;
     }
-    VPrintf("ompt tsan device mem, orig_addr is %p, dev_addr is %p, size is %lu, mapping type (%#03x) is %s\n", orig_addr, dest_addr, bytes, device_mem_flag, buf);
+    VPrintf("ompt tsan device mem, orig_addr is %p, dev_addr is %p, size is "
+            "%lu, mapping type (%#03x) is %s\n",
+            orig_addr, dest_addr, bytes, device_mem_flag, buf);
   }
   AnnotateMapping(orig_addr, dest_addr, bytes, device_mem_flag);
 }
 
+static char *target_kind_str[] = {nullptr,
+                                  "target",
+                                  "target enter data",
+                                  "target exit data",
+                                  "target update",
+                                  nullptr,
+                                  nullptr,
+                                  nullptr,
+                                  nullptr,
+                                  "target nowait",
+                                  "target enter data nowait",
+                                  "target exit data nowait",
+                                  "target update nowait"};
+
 static void ompt_tsan_target(ompt_target_t kind, ompt_scope_endpoint_t endpoint,
-                      int device_num, ompt_data_t *task_data,
-                      ompt_id_t target_id, const void *codeptr_ra) {
+                             int device_num, ompt_data_t *task_data,
+                             ompt_id_t target_id, const void *codeptr_ra) {
   TaskData *Task = ToTaskData(task_data);
   switch (endpoint) {
   case ompt_scope_begin:
     Task->IsOnTarget = true;
     TsanFuncEntry(codeptr_ra);
-    VPrintf("Target %lu begin, encounter task %p\n", target_id, task_data->ptr);
-    AnnotateEnterTargetRegion(); // FIXME: OMPT missing implicit task event when the program only uses #pragma omp target
+    VPrintf("%s %lu begin, encounter task %p\n", target_kind_str[kind],
+            target_id, task_data->ptr);
+    AnnotateEnterTargetRegion(); // FIXME: OMPT missing implicit task event when
+                                 // the program only uses #pragma omp target
     break;
   case ompt_scope_end:
     Task->IsOnTarget = false;
-    VPrintf("Target %lu end, encounter task %p\n", target_id, task_data->ptr);
-    AnnotateExitTargetRegion(); // FIXME: OMPT missing implicit task event when the program only uses #pragma omp target
+    VPrintf("%s %lu end, encounter task %p\n", target_kind_str[kind], target_id,
+            task_data->ptr);
+    AnnotateExitTargetRegion(); // FIXME: OMPT missing implicit task event when
+                                // the program only uses #pragma omp target
     TsanFuncExit();
     break;
   case ompt_scope_beginend:
     // should not appear
     break;
   }
-
 }
 
 // callback , signature , variable to store result , required support level
