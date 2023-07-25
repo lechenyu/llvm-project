@@ -36,6 +36,8 @@ struct Interval {
   uptr left_end;   // included
   uptr right_end;  // excluded
 
+  static const Interval UNIVERSAL;
+  
   bool operator<(const Interval &other) const {
     if (this->right_end <= other.left_end) {
       return true;
@@ -61,6 +63,17 @@ struct Interval {
     return this->left_end == other.left_end &&
            this->right_end == other.right_end;
   }
+
+  bool operator!=(const Interval &other) const {
+    return !(*this == other);
+  }
+
+  bool isOverlap(const Interval &other) const {
+    return !contains(other) &&
+           this->left_end < other.right_end && 
+           this->right_end > other.left_end;
+  }
+
 };
 
 struct MapInfo {
@@ -181,6 +194,9 @@ class IntervalTree {
   }
 
   bool satisfyBalanceFactor(Node *head) {
+    if (!head) {
+      return true;
+    }
     int bf = height(head->left_child) - height(head->right_child);
     if (bf > 1 || bf < -1) {
       return false;
@@ -192,7 +208,18 @@ class IntervalTree {
     }
   }
 
-  void print_by_height(Node *head);
+  void searchRange(Vector<Interval> &result, const Interval &range) {
+    Node *node = searchUtil(root, range);
+    if (node) {
+      result.PushBack(node->interval);
+    } else {
+      searchRangeHelper(root, result, range, Interval::UNIVERSAL);
+    }
+  }
+
+  void removeAllNodesWithinRange(const Interval &range);
+
+  void printByHeight(Node *head);
 
  private:
   Node *rightRotation(Node *head);
@@ -200,6 +227,8 @@ class IntervalTree {
   Node *insertUtil(Node *head, const Interval &interval, const MapInfo &info);
   Node *removeUtil(Node *head, const Interval &i);
   Node *searchUtil(Node *head, const Interval &i);
+  void searchRangeHelper(Node *head, Vector<Interval> &result,
+                         const Interval &range, const Interval &all);
 };
 }  // namespace __tsan
 #endif  // TSAN_AVLTREE_H

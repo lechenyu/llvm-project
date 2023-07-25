@@ -5,7 +5,9 @@
 
 namespace __tsan {
 
-void IntervalTree::print_by_height(Node *head) {
+const Interval Interval::UNIVERSAL{0ul, 0xffffffffffffffff};
+
+void IntervalTree::printByHeight(Node *head) {
   Printf("\n");
   if (head == nullptr) {
     return;
@@ -186,16 +188,19 @@ Node *IntervalTree::removeUtil(Node *head, const Interval &i) {
       }
       InternalFree(head);
       head = nullptr;
+      size -= 1;
     } else if (head->right_child == nullptr) {
       Node *l = head->left_child;
       InternalFree(head);
       head = l;
       head->parent = p;
+      size -= 1;
     } else if (head->left_child == nullptr) {
       Node *r = head->right_child;
       InternalFree(head);
       head = r;
       head->parent = p;
+      size -= 1;
     } else {
       Node *r = head->right_child;
       while (r->left_child != nullptr) r = r->left_child;
@@ -218,7 +223,6 @@ Node *IntervalTree::removeUtil(Node *head, const Interval &i) {
 
   head->height = 1 + max(height(head->left_child), height(head->right_child));
   int bal = height(head->left_child) - height(head->right_child);
-// bug
   if (bal > 1) {
     if (height(head->left_child->left_child) >= height(head->left_child->right_child)) {
       return rightRotation(head);
@@ -279,6 +283,44 @@ int sortHelper(Node *n, Node **result, int next_idx) {
     next_idx = sortHelper(n->right_child, result, next_idx);
   }
   return next_idx;
+}
+
+void IntervalTree::searchRangeHelper(Node *head, Vector<Interval> &result,
+                                     const Interval &range,
+                                     const Interval &all) {
+  if (!head) {
+    return;
+  }
+  Interval allLeft = {all.left_end, head->interval.left_end};
+  Interval allRight = {head->interval.right_end, all.right_end};
+  if (head->left_child && allLeft.isOverlap(range)) {
+    searchRangeHelper(head->left_child, result, range, allLeft);
+  }
+  if (head->interval.isOverlap(range)) {
+    result.PushBack(head->interval);
+  }
+  if (head->right_child && allRight.isOverlap(range)) {
+    searchRangeHelper(head->right_child, result, range, allRight);
+  }
+}
+
+void IntervalTree::removeAllNodesWithinRange(const Interval &range) {
+  Vector<Interval> result{};
+  searchRange(result, range);
+  for (uptr i = 0; i < result.Size(); i++) {
+    remove(result[i]);
+  }
+  if (result.Size()) {
+    if (result[0].left_end < range.left_end) {
+      insert({result[0].left_end, range.left_end},
+             {result[0].left_end, range.left_end - result[0].left_end});
+    }
+    Interval &last = result.Back();
+    if (last.right_end > range.right_end) {
+      insert({range.right_end, last.right_end},
+             {range.right_end, last.right_end - range.right_end});
+    }
+  }
 }
 
 IntervalTree::Iterator::Iterator(Node *root, u32 size)

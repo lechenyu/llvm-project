@@ -399,7 +399,9 @@ Context::Context()
       racy_stacks(),
       fired_suppressions_mtx(MutexTypeFired),
       slot_mtx(MutexTypeSlots),
-      resetting() {
+      resetting(), 
+      t_to_h(),
+      h_to_t() {
   fired_suppressions.reserve(8);
   for (uptr i = 0; i < ARRAY_SIZE(slots); i++) {
     TidSlot* slot = &slots[i];

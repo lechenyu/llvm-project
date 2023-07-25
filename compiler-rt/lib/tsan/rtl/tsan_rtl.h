@@ -47,6 +47,7 @@
 #include "tsan_sync.h"
 #include "tsan_trace.h"
 #include "tsan_vector_clock.h"
+#include "tsan_avltree.h"
 
 #if SANITIZER_WORDSIZE != 64
 # error "ThreadSanitizer is supported only on 64-bit platforms"
@@ -380,6 +381,8 @@ struct Context {
   uptr mapped_shadow_begin;
   uptr mapped_shadow_end;
 #endif
+  IntervalTree t_to_h;
+  IntervalTree h_to_t;
 };
 
 extern Context *ctx;  // The one and the only global runtime context.
