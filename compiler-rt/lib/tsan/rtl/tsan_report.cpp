@@ -93,6 +93,12 @@ static const char *ReportTypeString(ReportType typ, uptr tag) {
       return "signal handler spoils errno";
     case ReportTypeDeadlock:
       return "lock-order-inversion (potential deadlock)";
+    case ReportTypeStaleAccess:
+      return "data inconsistency (stale access)";
+    case ReportTypeUninitializedAccess:
+      return "data inconsistency (uninitialized access)";
+    case ReportTypeBufferOverflow:
+      return "data inconsistency (buffer overflow)";
     // No default case so compiler warns us if we miss one
   }
   UNREACHABLE("missing case");
@@ -297,13 +303,14 @@ static SymbolizedStack *SkipTsanInternalFrames(SymbolizedStack *frames) {
   return frames;
 }
 
-void PrintReport(const ReportDesc *rep) {
+void PrintReport(const ThreadState *thr, const ReportDesc *rep) {
   Decorator d;
   Printf("==================\n");
   const char *rep_typ_str = ReportTypeString(rep->typ, rep->tag);
   Printf("%s", d.Warning());
-  Printf("WARNING: ThreadSanitizer: %s (pid=%d)\n", rep_typ_str,
-         (int)internal_getpid());
+  Printf("WARNING: ThreadSanitizer: %s (pid=%d) %s \n", rep_typ_str,
+         (int)internal_getpid(),
+         thr->is_on_target ? "on the target" : "on the host");
   Printf("%s", d.Default());
 
   if (rep->typ == ReportTypeErrnoInSignal)
@@ -444,7 +451,7 @@ static void PrintThread(const ReportThread *rt) {
   PrintStack(rt->stack);
 }
 
-void PrintReport(const ReportDesc *rep) {
+void PrintReport(const ThreadState *thr, const ReportDesc *rep) {
   Printf("==================\n");
   if (rep->typ == ReportTypeRace) {
     Printf("WARNING: DATA RACE");

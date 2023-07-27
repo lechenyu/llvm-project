@@ -284,6 +284,11 @@ class ThreadContext final : public ThreadContextBase {
   void OnDetached(void *arg) override;
 };
 
+struct DMIStack {
+  MD5Hash hash;
+  bool operator==(const DMIStack &other) const;
+};
+
 struct RacyStacks {
   MD5Hash hash[2];
   bool operator==(const RacyStacks &other) const;
@@ -353,7 +358,8 @@ struct Context {
   // we will also wrongly filter it out while RestoreStack would actually
   // succeed for that second memory access.
   RawShadow last_spurious_race;
-
+  Mutex dmi_mtx;
+  Vector<DMIStack> dmi_stacks;
   Mutex racy_mtx;
   Vector<RacyStacks> racy_stacks;
   // Number of fired suppressions may be large enough.
@@ -383,6 +389,7 @@ struct Context {
 #endif
   IntervalTree t_to_h;
   IntervalTree h_to_t;
+  bool arbalest_verbose;
 };
 
 extern Context *ctx;  // The one and the only global runtime context.
@@ -448,6 +455,12 @@ class ScopedReport : public ScopedReportBase {
   ScopedErrorReportLock lock_;
 };
 
+enum DMIType {
+  USE_OF_UNINITIALIZED_MEMORY = 0,
+  USE_OF_STALE_DATA = 1,
+  BUFFER_OVERFLOW = 2
+};
+
 bool ShouldReport(ThreadState *thr, ReportType typ);
 ThreadContext *IsThreadStackOrTls(uptr addr, bool *is_stack);
 
@@ -499,6 +512,8 @@ void ForkChildAfter(ThreadState *thr, uptr pc, bool start_thread);
 
 void ReportRace(ThreadState *thr, RawShadow *shadow_mem, Shadow cur, Shadow old,
                 AccessType typ);
+void ReportDMI(ThreadState *thr, uptr addr, uptr size, AccessType typ,
+               DMIType dmi_typ);
 bool OutputReport(ThreadState *thr, const ScopedReport &srep);
 bool IsFiredSuppression(Context *ctx, ReportType type, StackTrace trace);
 bool IsExpectedReport(uptr addr, uptr size);

@@ -222,6 +222,7 @@ enum {
   MutexTypeTrace,
   MutexTypeSlot,
   MutexTypeSlots,
+  MutexTypeDMI,
 };
 
 }  // namespace __tsan

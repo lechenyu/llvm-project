@@ -601,10 +601,24 @@ bool RacyStacks::operator==(const RacyStacks &other) const {
   return false;
 }
 
+bool DMIStack::operator==(const DMIStack &other) const {
+  return hash == other.hash;
+}
+
 static bool FindRacyStacks(const RacyStacks &hash) {
   for (uptr i = 0; i < ctx->racy_stacks.Size(); i++) {
     if (hash == ctx->racy_stacks[i]) {
       VPrintf(2, "ThreadSanitizer: suppressing report as doubled (stack)\n");
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool FindDMIStack(const DMIStack &hash) {
+  for (uptr i = 0; i < ctx->dmi_stacks.Size(); i++) {
+    if (hash == ctx->dmi_stacks[i]) {
+      VPrintf(2, "ThreadSanitizer: suppressing report as doubled (stack) for data inconsistency\n");
       return true;
     }
   }
@@ -626,6 +640,23 @@ static bool HandleRacyStacks(ThreadState *thr, VarSizeStackTrace traces[2]) {
   if (FindRacyStacks(hash))
     return true;
   ctx->racy_stacks.PushBack(hash);
+  return false;
+}
+
+static bool HandleDMIStack(ThreadState *thr, const VarSizeStackTrace &trace) {
+  if (!flags()->suppress_equal_stacks)
+    return false;
+  DMIStack hash;
+  hash.hash = md5_hash(trace.trace, trace.size * sizeof(uptr));
+  {
+    ReadLock lock(&ctx->dmi_mtx);
+    if (FindDMIStack(hash))
+      return true;
+  }
+  Lock lock(&ctx->dmi_mtx);
+  if (FindDMIStack(hash))
+    return true;
+  ctx->dmi_stacks.PushBack(hash);
   return false;
 }
 
@@ -660,7 +691,7 @@ bool OutputReport(ThreadState *thr, const ScopedReport &srep) {
       return false;
     }
   }
-  PrintReport(rep);
+  PrintReport(thr, rep);
   __tsan_on_report(rep);
   ctx->nreported++;
   if (flags()->halt_on_error)
@@ -820,6 +851,82 @@ void ReportRace(ThreadState *thr, RawShadow *shadow_mem, Shadow cur, Shadow old,
       s[1].epoch() <= thr->last_sleep_clock.Get(s[1].sid()))
     rep.AddSleep(thr->last_sleep_stack_id);
 #endif
+  OutputReport(thr, rep);
+}
+
+void ReportDMI(ThreadState *thr, uptr addr, uptr size, AccessType typ, DMIType dmi_typ) {
+  CheckedMutex::CheckNoLocks();
+
+  // Symbolizer makes lots of intercepted calls. If we try to process them,
+  // at best it will cause deadlocks on internal mutexes.
+  ScopedIgnoreInterceptors ignore;
+
+  DPrintf("#%d: ReportDMI %p\n", thr->tid, (void *)addr);
+
+  ReportType rep_typ;
+
+  switch (dmi_typ)
+  {
+  case USE_OF_UNINITIALIZED_MEMORY:
+    rep_typ = ReportTypeUninitializedAccess;
+    break;
+
+  case USE_OF_STALE_DATA:
+    rep_typ = ReportTypeStaleAccess;
+    break;
+
+  case BUFFER_OVERFLOW:
+    rep_typ = ReportTypeBufferOverflow;
+    break;
+
+  // default:
+  //   return;
+  }
+
+  if (!ShouldReport(thr, rep_typ))
+    return;
+
+  if (IsFiredSuppression(ctx, rep_typ, addr))
+    return;
+
+  VarSizeStackTrace trace;
+  Tid tid = thr->tid;
+  uptr tag = kExternalTagNone;
+
+  ObtainCurrentStack(thr, thr->trace_prev_pc, &trace, &tag);
+  if (IsFiredSuppression(ctx, rep_typ, trace))
+    return;
+
+  MutexSet *mset = &thr->mset;
+
+
+  if (HandleDMIStack(thr, trace))
+    return;
+
+  ScopedReport rep(rep_typ, tag);
+
+  Shadow dummy_shadow(FastState{}, addr, size, typ);
+  
+  rep.AddMemoryAccess(addr, tag, dummy_shadow, tid, trace, mset);
+
+  ThreadContext *tctx = static_cast<ThreadContext *>(ctx->thread_registry.GetThreadLocked(tid));
+  rep.AddThread(tctx);
+
+  rep.AddLocation(addr, size);
+
+
+  if (flags()->print_full_thread_history) {
+    const ReportDesc *rep_desc = rep.GetReport();
+    for (uptr i = 0; i < rep_desc->threads.Size(); i++) {
+      Tid parent_tid = rep_desc->threads[i]->parent_tid;
+      if (parent_tid == kMainTid || parent_tid == kInvalidTid)
+        continue;
+      ThreadContext *parent_tctx = static_cast<ThreadContext *>(
+          ctx->thread_registry.GetThreadLocked(parent_tid));
+      rep.AddThread(parent_tctx);
+    }
+  }
+
   OutputReport(thr, rep);
 }
 

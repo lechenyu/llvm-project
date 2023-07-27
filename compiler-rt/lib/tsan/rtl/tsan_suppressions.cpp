@@ -86,6 +86,10 @@ static const char *conv(ReportType typ) {
       return kSuppressionSignal;
     case ReportTypeDeadlock:
       return kSuppressionDeadlock;
+    case ReportTypeStaleAccess:
+    case ReportTypeUninitializedAccess:
+    case ReportTypeBufferOverflow:
+      return kSuppressionDMI;
     // No default case so compiler warns us if we miss one
   }
   UNREACHABLE("missing case");

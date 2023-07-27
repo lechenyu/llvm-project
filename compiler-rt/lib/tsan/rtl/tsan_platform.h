@@ -764,7 +764,7 @@ bool IsShadowMem(RawShadow *p) {
 }
 
 ALWAYS_INLINE
-bool IsVsmMem(RawShadow *p) {
+bool IsVsmMem(RawVsm *p) {
   uptr mem = reinterpret_cast<uptr>(p);
   return (mem >= Mapping48AddressSpace::kVsmBeg && mem <= Mapping48AddressSpace::kVsmEnd);
 }
@@ -848,6 +848,27 @@ struct ShadowToMemImpl {
 ALWAYS_INLINE
 uptr ShadowToMem(RawShadow *s) {
   return SelectMapping<ShadowToMemImpl>(reinterpret_cast<uptr>(s));
+}
+
+ALWAYS_INLINE
+uptr VsmToMem(RawVsm *s) {
+  uptr sp = reinterpret_cast<uptr>(s);
+  if (!IsVsmMem(s))
+    return 0;
+  // The shadow mapping is non-linear and we've lost some bits, so we don't
+  // have an easy way to restore the original app address. But the mapping is
+  // a bijection, so we try to restore the address as belonging to
+  // low/mid/high range consecutively and see if shadow->app->shadow mapping
+  // gives us the same address.
+  uptr p = ((sp - Mapping48AddressSpace::kVsmAdd) / kVsmMultiplier) ^ Mapping48AddressSpace::kShadowXor;
+  if (p >= Mapping48AddressSpace::kLoAppMemBeg && p < Mapping48AddressSpace::kLoAppMemEnd && MemToVsm(p) == s)
+    return p;
+  if (Mapping48AddressSpace::kMidAppMemBeg) {
+    uptr p_mid = p + (Mapping48AddressSpace::kMidAppMemBeg & Mapping48AddressSpace::kShadowMsk);
+    if (p_mid >= Mapping48AddressSpace::kMidAppMemBeg && p_mid < Mapping48AddressSpace::kMidAppMemEnd && MemToVsm(p_mid) == s)
+      return p_mid;
+  }
+  return p | Mapping48AddressSpace::kShadowMsk;
 }
 
 // Compresses addr to kCompressedAddrBits stored in least significant bits.

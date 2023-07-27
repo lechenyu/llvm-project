@@ -193,6 +193,9 @@ void __attribute__((weak)) AnnotateExitTargetRegion() {
 void __attribute__((weak)) AnnotatePrintf(const char *str) {
   assert(false && "Fail to invoke AnnotatePrintf in tsan");
 }
+void __attribute__((weak)) AnnotateArbalestVerboseMode(bool is_verbose) {
+  assert(false && "Fail to invoke AnnotateArbalestVerboseMode in tsan");
+}
 
 int __attribute__((weak)) RunningOnValgrind() {
   runOnTsan = 0;
@@ -1345,7 +1348,8 @@ static int ompt_tsan_initialize(ompt_function_lookup_t lookup, int device_num,
     TsanIgnoreWritesBegin();
 
   InitialDevice = device_num;
-
+  
+  AnnotateArbalestVerboseMode(archer_flags->verbose);
   fprintf(stderr, "\n\n*****************************" \
                   "\nArbalest successfully starts"  \
                   "\n*****************************\n\n");
