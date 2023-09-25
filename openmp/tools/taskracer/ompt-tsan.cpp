@@ -7,50 +7,7 @@
 #define GRAPH_MACRO
 
 #ifdef GRAPH_MACRO
-#include <boost/graph/graph_traits.hpp>
-#include <boost/graph/adjacency_list.hpp>
-#include <boost/graph/graphml.hpp>
-
-using namespace boost;
-
-void print_graph();
-
-struct Vertex {
-  unsigned int id;
-  std::string end_event;
-  unsigned int has_race;
-  std::string race_stack;
-};
-
-struct Edge{
-  std::string type;
-};
-
-const std::string contedge = "CONT";
-const std::string iforkedge = "FORK_I";
-const std::string eforkedge = "FORK_E";
-const std::string joinedge = "JOIN";
-const std::string ejoinedge = "JOIN_E";
-const std::string barrieredge = "barrier";
-
-const std::string event_parallel_begin = "parallel_begin";
-const std::string event_parallel_end = "parallel_end";
-const std::string event_implicit_task = "implicit_task";
-const std::string event_sync_region_begin = "sync_region_begin";
-const std::string event_sync_region_end = "sync_region_end";
-const std::string event_task_create = "task_create";
-
-//Define the graph using those classes
-typedef adjacency_list<vecS, vecS, directedS, Vertex, Edge > Graph;
-//Some typedefs for simplicity
-typedef graph_traits<Graph>::vertex_descriptor vertex_t; // vertex_descriptor, in this case, is an index for the listS used to save all vertex. 
-typedef graph_traits<Graph>::edge_descriptor edge_t;
-
-//Instanciate a graph
-unsigned int vertex_size = 35;
-Graph g(vertex_size);
-dynamic_properties dp;
-
+  #include "graph-predefined.cpp"
 #endif
 
 enum NodeType {
@@ -90,140 +47,15 @@ static constexpr size_t kDefaultStackSize = 1024;
 static TreeNode *root = nullptr;
 static TreeNode kNullTaskWait = {kNullStepId, TASKWAIT};
 
-// ---------------------------------
-// Task Depend related part begin
-// ---------------------------------
-static int pagesize{0};
-typedef char ompt_tsan_clockid;
-
-// Data structure to provide a threadsafe pool of reusable objects.
-// DataPool<Type of objects>
-template <typename T> struct DataPool final {
-  static __thread DataPool<T> *ThreadDataPool;
-  std::mutex DPMutex{};
-
-  // store unused objects
-  std::vector<T *> DataPointer{};
-  std::vector<T *> RemoteDataPointer{};
-
-  // store all allocated memory to finally release
-  std::list<void *> memory;
-
-  // count remotely returned data (RemoteDataPointer.size())
-  std::atomic<int> remote{0};
-
-  // totally allocated data objects in pool
-  int total{0};
-  int getTotal() { return total; }
-  int getMissing() {
-    return total - DataPointer.size() - RemoteDataPointer.size();
-  }
-
-  // fill the pool by allocating a page of memory
-  void newDatas() {
-    if (remote > 0) {
-      const std::lock_guard<std::mutex> lock(DPMutex);
-      // DataPointer is empty, so just swap the vectors
-      DataPointer.swap(RemoteDataPointer);
-      remote = 0;
-      return;
-    }
-    // calculate size of an object including padding to cacheline size
-    size_t elemSize = sizeof(T);
-    size_t paddedSize = (((elemSize - 1) / 64) + 1) * 64;
-    // number of padded elements to allocate
-    int ndatas = pagesize / paddedSize;
-    char *datas = (char *)malloc(ndatas * paddedSize);
-    memory.push_back(datas);
-    for (int i = 0; i < ndatas; i++) {
-      DataPointer.push_back(new (datas + i * paddedSize) T(this));
-    }
-    total += ndatas;
-  }
-
-  // get data from the pool
-  T *getData() {
-    T *ret;
-    if (DataPointer.empty()){
-      newDatas();
-    }
-      
-    ret = DataPointer.back();
-    DataPointer.pop_back();
-    return ret;
-  }
-
-  // accesses to the thread-local datapool don't need locks
-  void returnOwnData(T *data) {
-    DataPointer.emplace_back(data);
-  }
-
-  // returning to a remote datapool using lock
-  void returnData(T *data) {
-    const std::lock_guard<std::mutex> lock(DPMutex);
-    RemoteDataPointer.emplace_back(data);
-    remote++;
-  }
-
-  ~DataPool() {
-    // we assume all memory is returned when the thread finished / destructor is
-    // called
-    // if (archer_flags->report_data_leak && getMissing() != 0) {
-    //   printf("ERROR: While freeing DataPool (%s) we are missing %i data "
-    //          "objects.\n",
-    //          __PRETTY_FUNCTION__, getMissing());
-    //   exit(-3);
-    // }
-    for (auto i : DataPointer)
-      if (i)
-        i->~T();
-    for (auto i : RemoteDataPointer)
-      if (i)
-        i->~T();
-    for (auto i : memory)
-      if (i)
-        free(i);
-  }
-};
-
-template <typename T> struct DataPoolEntry {
-  DataPool<T> *owner;
-
-  static T *New() { 
-    return DataPool<T>::ThreadDataPool->getData();
-  }
-
-  void Delete() {
-    static_cast<T *>(this)->Reset();
-    if (owner == DataPool<T>::ThreadDataPool)
-      owner->returnOwnData(static_cast<T *>(this));
-    else
-      owner->returnData(static_cast<T *>(this));
-  }
-
-  DataPoolEntry(DataPool<T> *dp) : owner(dp) {}
-};
-
-struct DependencyData;
-typedef DataPool<DependencyData> DependencyDataPool;
-template <>
-__thread DependencyDataPool *DependencyDataPool::ThreadDataPool = nullptr;
-
 // Data structure to store additional information for task dependency.
 // each variable has a dependencyData
 // For example, depend(out:i) depend(in:j)
 // We will have one DependencyData for i, one for j
 struct DependencyData final : DataPoolEntry<DependencyData> {
-  // std::vector<unsigned int> in = std::vector<unsigned int>();
-  // unsigned int out = 0;
-  // unsigned int inoutset = 0;
+  // TODO: need a thread safe concurrent vector
   std::vector<TreeNode*> in = std::vector<TreeNode*>();
   TreeNode* out = nullptr;
   TreeNode* inoutset = nullptr;
-  
-  // std::vector<unsigned int> *GetInPtr() { return &in; }
-  // unsigned int *GetOutPtr() { return &out; }
-  // unsigned int *GetInoutsetPtr() { return &inoutset; }
 
   void Reset() {}
 
@@ -234,81 +66,6 @@ struct DependencyData final : DataPoolEntry<DependencyData> {
   DependencyData(DataPool<DependencyData> *dp)
       : DataPoolEntry<DependencyData>(dp) {}
 };
-
-// struct TaskDependency {
-//   std::vector<unsigned int> *inPtr;
-//   unsigned int *outPtr;
-//   unsigned int *inoutsetPtr;
-//   ompt_dependence_type_t type;
-//   TaskDependency(DependencyData *depData, ompt_dependence_type_t type)
-//       : inPtr(depData->GetInPtr()), outPtr(depData->GetOutPtr()),
-//         inoutsetPtr(depData->GetInoutsetPtr()), type(type) {}
-        
-//   void AnnotateBegin(unsigned int current_step) {
-//     std::vector<unsigned int> depending_steps = std::vector<unsigned int>();
-
-//     if (type == ompt_dependence_type_out ||
-//         type == ompt_dependence_type_inout ||
-//         type == ompt_dependence_type_mutexinoutset) 
-//     {
-//       for(unsigned int steps: *inPtr){
-//         depending_steps.push_back(steps);
-//       }
-//       depending_steps.push_back(*outPtr);
-//       depending_steps.push_back(*inoutsetPtr);
-//     } else if (type == ompt_dependence_type_in) 
-//     {
-//       depending_steps.push_back(*outPtr);
-//       depending_steps.push_back(*inoutsetPtr);
-//     } else if (type == ompt_dependence_type_inoutset) 
-//     {
-//       for(unsigned int steps: *inPtr){
-//         depending_steps.push_back(steps);
-//       }
-//       depending_steps.push_back(*outPtr);
-//     }
-
-//   #ifdef GRAPH_MACRO
-//     printf("[AnnotateBegin] depending steps: ");
-//     for(unsigned int previous_step : depending_steps){
-//       if(previous_step != 0){
-//           printf("%d ", previous_step);
-//           edge_t e; bool b;
-//           boost::tie(e,b) = boost::edge(previous_step,current_step,g);
-//           if(!b){
-//             boost::tie(e,b) = boost::add_edge(previous_step,current_step,g);
-//             g[e].type = ejoinedge;
-//           }
-//       }
-//     }
-//     printf("\n");
-//   #endif
-//   }
-
-//   void AnnotateEnd(unsigned int current_step) {
-//     if (type == ompt_dependence_type_out ||
-//         type == ompt_dependence_type_inout ||
-//         type == ompt_dependence_type_mutexinoutset) 
-//     {
-//       *outPtr = current_step;
-//       inPtr->clear();
-//       // printf("[AnnotateEnd] Setting outPtr %u \n", current_step);
-//     } else if (type == ompt_dependence_type_in) 
-//     {
-//       inPtr->push_back(current_step);
-//       // printf("[AnnotateEnd] Setting inPtr %u \n", current_step);
-//     } else if (type == ompt_dependence_type_inoutset) 
-//     {
-//       *inoutsetPtr = current_step;
-//       inPtr->clear();
-//       // printf("[AnnotateEnd] Setting inoutPtr %u \n", current_step);
-//     }
-//   }
-// };
-
-// ---------------------------------
-// Task Depend related part end
-// ---------------------------------
 
 class task_t;
 class finish_t {
@@ -354,75 +111,59 @@ public:
       parent_task(parent), execution(0) {}
 };
 
-// static void releaseDependencies(task_t *task) {
-//   unsigned int cs = task->current_step_id;
-//   for (unsigned i = 0; i < task->DependencyCount; i++) {
-//     task->Dependencies[i].AnnotateEnd(cs);
-//   }
-// }
-
-// static void acquireDependencies(task_t *task) {
-//   unsigned int cs = task->current_step_id;
-//   for (unsigned i = 0; i < task->DependencyCount; i++) {
-//     task->Dependencies[i].AnnotateBegin(cs);
-//   }
-// }
-
 static void drawDependEdges(task_t *task, unsigned int current_step){
-  #ifdef GRAPH_MACRO
-    printf("Drawing depending edges: ");
-    for(TreeNode* previous_task_node : task->depending_task_nodes){
-      if(previous_task_node != nullptr){
-          printf("%d ", previous_task_node->children_list_tail->corresponding_id);
-          vertex_t join_parent = (unsigned int) previous_task_node->children_list_tail->corresponding_id;
-          edge_t e; bool b;
-          boost::tie(e,b) = boost::edge(join_parent,current_step,g);
-          if(!b){
-            boost::tie(e,b) = boost::add_edge(join_parent,current_step,g);
-            g[e].type = ejoinedge;
-          }
-      }
+  // printf("Drawing depending edges: ");
+  for(TreeNode* previous_task_node : task->depending_task_nodes){
+    if(previous_task_node != nullptr){
+        // printf("%d ", previous_task_node->children_list_tail->corresponding_id);
+        vertex_t join_parent = (unsigned int) previous_task_node->children_list_tail->corresponding_id;
+        edge_t e; bool b;
+        boost::tie(e,b) = boost::edge(join_parent,current_step,g);
+        if(!b){
+          boost::tie(e,b) = boost::add_edge(join_parent,current_step,g);
+          g[e].type = ejoinedge;
+        }
     }
-    printf("\n");
-  #endif
+  }
+  // printf("\n");
 }
 
-static void AcquireAndReleaseDependencies(task_t *task, DependencyData* dp, ompt_dependence_type_t type) {
-  bool has_out = (dp->out != nullptr);
-  bool has_inoutset = (dp->inoutset != nullptr);
-  std::vector<TreeNode*> &depending_nodes = task->depending_task_nodes;
+static void AcquireAndReleaseDependencies(task_t *task, DependencyData* dd, ompt_dependence_type_t type) {
+  bool has_out = (dd->out != nullptr);
+  bool has_inoutset = (dd->inoutset != nullptr);
+  std::vector<TreeNode*> &task_depending_nodes = task->depending_task_nodes;
 
   if (type == ompt_dependence_type_out || type == ompt_dependence_type_inout || type == ompt_dependence_type_mutexinoutset) {
     //acquire
-    for(TreeNode* node: dp->in){
-      depending_nodes.push_back(node);
+    for(TreeNode* node: dd->in){
+      task_depending_nodes.push_back(node);
     }
 
-    if(has_out) depending_nodes.push_back(dp->out);
-    if(has_inoutset) depending_nodes.push_back(dp->inoutset);
+    if(has_out) task_depending_nodes.push_back(dd->out);
+    if(has_inoutset) task_depending_nodes.push_back(dd->inoutset);
 
     //release
-    dp->out = task->node_in_dpst;
-    dp->in.clear();
+    dd->out = task->node_in_dpst;
+    dd->in.clear();
   } 
   else if (type == ompt_dependence_type_in) {
     //acquire
-    if(has_out) depending_nodes.push_back(dp->out);
-    if(has_inoutset) depending_nodes.push_back(dp->inoutset);
+    if(has_out) task_depending_nodes.push_back(dd->out);
+    if(has_inoutset) task_depending_nodes.push_back(dd->inoutset);
 
     //release
-    dp->in.push_back(task->node_in_dpst);
+    dd->in.push_back(task->node_in_dpst);
   } 
   else if (type == ompt_dependence_type_inoutset) {
     //acquire
-    for(TreeNode* node: dp->in){
-      depending_nodes.push_back(node);
+    for(TreeNode* node: dd->in){
+      task_depending_nodes.push_back(node);
     }
-    if(has_out) depending_nodes.push_back(dp->out);
+    if(has_out) task_depending_nodes.push_back(dd->out);
 
     //release
-    dp->inoutset = task->node_in_dpst;
-    dp->in.clear();
+    dd->inoutset = task->node_in_dpst;
+    dd->in.clear();
   }
 }
 
@@ -525,7 +266,6 @@ ompt_set_callback_t ompt_set_callback;
 ompt_get_thread_data_t ompt_get_thread_data;
 ompt_get_task_memory_t ompt_get_task_memory;
 
-void boost_test();
 static std::atomic<int> task_id_counter(1);
 static std::atomic<int> sync_id_counter(1);
 static std::atomic<int> thread_id_counter(0);
@@ -949,52 +689,38 @@ static void ompt_ta_dependences(ompt_data_t *task_data,
                                 const ompt_dependence_t *deps,
                                 int ndeps)
 {
-  task_t* ct = (task_t*) task_data->ptr;
-  int step_id = ct->current_step_id;
-  printf("[DEPENDENCES] ndeps = %d, current step id %d \n", ndeps, step_id);
-
-  // for(int i=0; i < ndeps; i++){
-  //   ompt_dependence_t d = deps[i];
-  //   printf("  dependence variable address %p, type %d \n", d.variable.ptr, d.dependence_type);
-  // }
-
-  // typedef enum ompt_dependence_type_t
-  // ompt_dependence_type_in              = 1,
-  // ompt_dependence_type_out             = 2,
-  // ompt_dependence_type_inout           = 3,
-  // ompt_dependence_type_mutexinoutset   = 4,
-
-  if (ndeps > 0) {
-    task_t *Data = (task_t*) task_data->ptr;
-    if (!Data->parent_task) {
-      return;
-    }
-
-    if (!Data->parent_task->DependencyMap)
-      Data->parent_task->DependencyMap = new std::unordered_map<void *, DependencyData *>();
-
-    Data->depending_task_nodes = std::vector<TreeNode*>();
-    Data->depending_task_nodes.reserve(ndeps);
-    // Data->Dependencies = (TaskDependency *) malloc(sizeof(TaskDependency) * ndeps);
-    Data->DependencyCount = ndeps;
-
-    for (int i = 0; i < ndeps; i++) {
-      auto ret = Data->parent_task->DependencyMap->insert(std::make_pair(deps[i].variable.ptr, nullptr));
-
-      if (ret.second) {
-        ret.first->second = DependencyData::New();
-        ret.first->second->in.reserve(5);
-      }
-
-      DependencyData* depend_data = ret.first->second;
-      AcquireAndReleaseDependencies(Data, depend_data, deps[i].dependence_type);
-
-      // new ((void *)(Data->Dependencies + i)) TaskDependency(ret.first->second, deps[i].dependence_type);
-
-      // printf("[DEPENDENCES] variable address: %p, in %p, out %p, inout %p \n", ret.first->first, 
-      //   Data->Dependencies[i].inPtr, Data->Dependencies[i].outPtr, Data->Dependencies[i].inoutsetPtr);
-    }
+  if (ndeps <= 0){
+    return;
   }
+
+  task_t *current_task = (task_t*) task_data->ptr;
+  if (!current_task->parent_task) {
+    return;
+  }
+
+  if (!current_task->parent_task->DependencyMap)
+    current_task->parent_task->DependencyMap = new std::unordered_map<void *, DependencyData *>();
+
+  current_task->depending_task_nodes = std::vector<TreeNode*>();
+  current_task->depending_task_nodes.reserve(ndeps);
+  // Data->Dependencies = (TaskDependency *) malloc(sizeof(TaskDependency) * ndeps);
+  current_task->DependencyCount += ndeps;
+
+  for (int i = 0; i < ndeps; i++) {
+    auto ret = current_task->parent_task->DependencyMap->insert(std::make_pair(deps[i].variable.ptr, nullptr));
+
+    if (ret.second == true) {
+      // this means no previous pair exists and we successfully insert a new pair into parent_task->DependencyMap
+      ret.first->second = DependencyData::New();
+      ret.first->second->in.reserve(5);
+    }
+
+    DependencyData* depend_data = ret.first->second;
+    AcquireAndReleaseDependencies(current_task, depend_data, deps[i].dependence_type);
+
+    // new ((void *)(Data->Dependencies + i)) TaskDependency(ret.first->second, deps[i].dependence_type);
+  }
+  
 }
 
 
@@ -1003,20 +729,10 @@ static void ompt_ta_task_schedule(
   ompt_task_status_t prior_task_status,
   ompt_data_t *next_task_data
 ){
-  // printf("OMPT! task_schedule, put task node in current thread \n");
-  // printf("task %d, %p scheduled\n", next_task_node->corresponding_task_id, next_task_node);
-  // printf("thread %lu, task %lu\n", ompt_get_thread_data()->value, (uintptr_t)next_task_node & 0xFFFFUL);
-  // char *stack = static_cast<char *>(__builtin_frame_address(0));
-  // TreeNode *prior_task_node = ((task_t *)prior_task_data->ptr)->node_in_dpst;
-  //printf("task %lu, stack range [%p, %p]\n", (uintptr_t)next_task_node & 0xFFFFUL, stack - kDefaultStackSize, stack);
-  // printf("tid = %lu, prior task %lu, next task %lu, %u\n",
-  //        ompt_get_thread_data()->value, (uintptr_t)prior_task_node & 0xFFFFUL,
-  //        (uintptr_t)next_task_node & 0xFFFFUL, prior_task_status);
   TsanNewMemory(static_cast<char *>(__builtin_frame_address(0)) -
                     kDefaultStackSize,
                 kDefaultStackSize);
-  if (prior_task_status == ompt_task_complete ||
-      prior_task_status == ompt_task_late_fulfill) {
+  if (prior_task_status == ompt_task_complete || prior_task_status == ompt_task_late_fulfill) {
     if (ompt_get_task_memory) {
       void *addr;
       size_t size;
@@ -1055,26 +771,12 @@ static void ompt_ta_task_schedule(
   __tsan_set_step_in_tls(next_task->current_step_id);
   if (next_task->execution == 0 && next_task->DependencyCount > 0) {
     unsigned int current_step = next_task->current_step_id;
-    drawDependEdges(next_task, current_step);
+    #ifdef GRAPH_MACRO
+      drawDependEdges(next_task, current_step);
+    #endif
   }
   next_task->execution++;
 
-  // TreeNode* next_task_node = next_task->node_in_dpst;
-  // if (!next_task->initialized) {
-  //   insert_leaf(next_task_node, next_task);
-  //   next_task->initialized = true;
-  // } else {
-  // __tsan_set_step_in_tls(next_task->current_step_id);
-  // }
-
-  // TODO: check if next_task has dependency. If it has, add join edge from finished tasks to a new step node.
-  // if(next_task->depending_task_nodes.size() > 0){
-    // for(TreeNode* join_task : next_task->depending_task_nodes){
-    //   vertex_t join_parent = (unsigned int) join_task->children_list_tail->corresponding_id;
-    //   edge_t e; bool b;
-    //   boost::tie(e,b) = boost::add_edge(join_parent,next_task->current_step_id,g);
-    //   g[e].type = ejoinedge;
-    // }
 }
 
 static void ompt_ta_work(
@@ -1106,18 +808,7 @@ static void ompt_ta_thread_end(ompt_data_t *thread_data){
 
 static int ompt_tsan_initialize(ompt_function_lookup_t lookup, int device_num,
                                 ompt_data_t *tool_data) {
-  // __tsan_print();
-  // ompt_set_callback = (ompt_set_callback_t) lookup("ompt_set_callback");
-  // if (ompt_set_callback == NULL) {
-  //   std::cerr << "Could not set callback, exiting..." << std::endl;
-  //   std::exit(1);
-  // }
-
-  // ompt_get_task_info = (ompt_get_task_info_t) lookup("ompt_get_task_info");
-  // if(ompt_get_task_info == NULL){
-  //   std::cerr << "Could not get task info, exiting..." << std::endl;
-  //   std::exit(1);
-  // }
+  __tsan_print();
   GET_ENTRY_POINT(set_callback);
   GET_ENTRY_POINT(get_task_info);
   GET_ENTRY_POINT(get_thread_data);
@@ -1158,80 +849,25 @@ ompt_start_tool(unsigned int omp_version, const char *runtime_version) {
 
   std::cout << "Computation Graph recording enabled" << std::endl;
 
-  // auto vertex_id_map = boost::get(&Vertex::id, g);
-  // auto edge_type_map = boost::get(&Edge::type, g);
-  // dp.property("vertex_id", vertex_id_map);
-  // dp.property("edge_type", edge_type_map);
-
-  // Create two vertices in that graph
-  // vertex_t u = boost::add_vertex(g);
-  // vertex_t v = boost::add_vertex(g);
-
-  // // Create an edge conecting those two vertices
-  // edge_t e; bool b;
-  // boost::tie(e,b) = boost::add_edge(u,v,g);
-
-  // // Set the properties of a vertex and the edge
-  // g[u].id = 666;
-  // g[v].id = 888;
-  // g[e].info = "Hello world";
-  // g[e].type = "cont";
-
-  // // how to use vertex_t and edge_t
-  // std::cout << "u is " << u << std::endl;
-  // std::cout << "v is " << v << std::endl;
-  // std::cout << "e source: " << e.m_source << ", vertex id is: " << g[e.m_source].id << std::endl;
-  // std::cout << "e target: " << e.m_target << ", vertex id is: " << g[e.m_target].id << std::endl;
-
-  // property_map<Graph, vertex_index_t>::type index_map = get(vertex_index, g);
-  // auto vertex_id_map = boost::get(&Vertex::id, g);
-  // auto edge_type_map = boost::get(&Edge::type, g);
-
-  // dynamic_properties dp;
-  // dp.property("vertex_id", vertex_id_map);
-  // dp.property("edge_type", edge_type_map);
-
-  // write_graphml(std::cout, g, dp, true);
-  // boost_test();
-
   pagesize = getpagesize();
 
   return &ompt_start_tool_result;
 }
 
 void print_graph(){
-  // typedef property_map<Graph, vertex_index_t>::type IndexMap;
-  // IndexMap index = get(vertex_index, g);
-
-  // printf("vertices(g) = ");
-
-  // graph_traits<Graph>::vertex_iterator vi, vi_end, next;
-  // boost::tie(vi, vi_end) = boost::vertices(g);
-  // for (next = vi; vi != vi_end; vi = next) {
-  //   ++next;
-  //   if(g[*vi].id != 0){
-  //     std::cout << g[*vi].id << " ";
-  //   }
-  // }
-
-  // printf("\n");
-
-  // printf("edges(g) = ");
-
-  // graph_traits<Graph>::edge_iterator ei, ei_end;
-  // for (tie(ei, ei_end) = edges(g); ei != ei_end; ++ei){
-  //     std::cout << "(" 
-  //               << index[source(*ei, g)] 
-  //               << "->" << index[target(*ei, g)]
-  //               << ","  << g[*ei].type  
-  //               << ") ";
-      
-  // }
-
-  // printf("\n");
-
   const char* env_p = std::getenv("PRINT_GRAPHML");
   if(env_p && (strcmp(env_p, "TRUE") == 0)){
+    // TODO: try to delete empty vertex
+    // boost::graph_traits<Graph>::vertex_iterator vi, vi_end, next;
+    // boost::tie(vi, vi_end) = vertices(g);
+    // for (next = vi; vi != vi_end; vi = next) {
+    //     ++next;
+    //     if(g[*vi].id == 0){
+    //       boost::clear_vertex(*vi,g);
+    //       boost::remove_vertex(*vi,g);
+    //     }
+    // }
+
     auto vertex_id_map = boost::get(&Vertex::id, g);
     auto edge_type_map = boost::get(&Edge::type, g);
     auto vertex_event_map = boost::get(&Vertex::end_event, g);
@@ -1250,57 +886,3 @@ void print_graph(){
   }
   
 }
-
-/* Test code
-
-void boost_test(){
-  // Initialize boost graph
-  // create a typedef for the Graph type
-  typedef adjacency_list<vecS, vecS, bidirectionalS> Graph;
-
-  // Make convenient labels for the vertices
-  enum { A, B, C, D, E, N };
-  const int num_vertices = N;
-  const char* name = "ABCDE";
-
-  // writing out the edges in the graph
-  typedef std::pair<int, int> Edge;
-  Edge edge_array[] = 
-  { Edge(A,B), Edge(A,D), Edge(C,A), Edge(D,C),
-    Edge(C,E), Edge(B,D), Edge(D,E) };
-  const int num_edges = sizeof(edge_array)/sizeof(edge_array[0]);
-
-  // declare a graph object
-  Graph g(num_vertices);
-
-  // add the edges to the graph object
-  for (int i = 0; i < num_edges; ++i){
-    add_edge(edge_array[i].first, edge_array[i].second, g);
-  }
-
-  // get the property map for vertex indices
-  typedef property_map<Graph, vertex_index_t>::type IndexMap;
-  IndexMap index = get(vertex_index, g);
-
-  printf("vertices(g) = ");
-
-  typedef graph_traits<Graph>::vertex_iterator vertex_iter;
-  std::pair<vertex_iter, vertex_iter> vp;
-  for (vp = vertices(g); vp.first != vp.second; ++vp.first){
-    std::cout << index[*vp.first] <<  " ";
-  }
-    
-  printf("\n");
-
-  // get the edge list
-  printf("edges(g) = ");
-
-  graph_traits<Graph>::edge_iterator ei, ei_end;
-  for (tie(ei, ei_end) = edges(g); ei != ei_end; ++ei)
-      std::cout << "(" << index[source(*ei, g)] 
-                << "," << index[target(*ei, g)] << ") ";
-
-  printf("\n");
-}
-
-*/
