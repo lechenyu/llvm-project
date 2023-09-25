@@ -261,6 +261,15 @@ void OnUserAlloc(ThreadState *thr, uptr pc, uptr p, uptr sz, bool write) {
     MemoryResetRange(thr, pc, (uptr)p, sz);
 }
 
+void OnAnnAlloc(ThreadState *thr, uptr pc, uptr p, uptr sz, bool write) {
+  DPrintf("#%d: ann_alloc(%zu) = 0x%zx\n", thr->tid, sz, p);
+  if (write && thr->ignore_reads_and_writes == 0 &&
+      atomic_load_relaxed(&thr->trace_pos))
+    MemoryRangeImitateWrite(thr, pc, (uptr)p, sz);
+  else
+    MemoryResetRange(thr, pc, (uptr)p, sz);
+}
+
 void OnUserFree(ThreadState *thr, uptr pc, uptr p, bool write) {
   CHECK_NE(p, (void*)0);
   if (!thr->slot) {

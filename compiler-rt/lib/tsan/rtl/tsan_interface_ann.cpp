@@ -209,8 +209,10 @@ void INTERFACE_ATTRIBUTE AnnotateTraceMemory(char *f, int l, uptr mem) {
 void INTERFACE_ATTRIBUTE AnnotateFlushState(char *f, int l) {
 }
 
-void INTERFACE_ATTRIBUTE AnnotateNewMemory(char *f, int l, uptr mem,
+void INTERFACE_ATTRIBUTE AnnotateNewMemory(const char *f, int l, uptr mem,
                                            uptr size) {
+  SCOPED_ANNOTATION(AnnotateNewMemory);
+  OnAnnAlloc(thr, pc, mem, size, false);
 }
 
 void INTERFACE_ATTRIBUTE AnnotateNoOp(char *f, int l, uptr mem) {
@@ -434,5 +436,10 @@ void __tsan_mutex_post_divert(void *addr, unsigned flagz) {
   SCOPED_ANNOTATION(__tsan_mutex_post_divert);
   ThreadIgnoreBegin(thr, 0);
   ThreadIgnoreSyncBegin(thr, 0);
+}
+
+INTERFACE_ATTRIBUTE
+void __tsan_print() {
+  Printf("Example of tsan interface (__tsan_print) \n");
 }
 }  // extern "C"

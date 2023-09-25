@@ -432,10 +432,18 @@ ompt_try_start_tool(unsigned int omp_version, const char *runtime_version) {
   }
 
 #if KMP_OS_UNIX
-  { // Non-standard: load archer tool if application is built with TSan
-    const char *fname = "libarcher.so";
+  { // Non-standard: load default ompt tool in openmp runtime if application is built with TSan
+    char *default_ompt_lib = getenv("DEFAULT_OMPT_LIB");
+    constexpr const size_t buf_size = 100;
+    char lib_full_name[buf_size];
+    size_t lib_name_len = default_ompt_lib ? strlen(default_ompt_lib) : 0;
+    const char *lib_name = (lib_name_len && lib_name_len + strlen("lib.so") < buf_size) ? default_ompt_lib : "taskracer";
+
+    const char *fname = lib_full_name;
+    sprintf(lib_full_name, "lib%s.so", lib_name);
+
     OMPT_VERBOSE_INIT_PRINT(
-        "...searching tool libraries failed. Using archer tool.\n");
+        "...searching tool libraries failed. Using %s tool.\n", lib_name);
     OMPT_VERBOSE_INIT_PRINT("Opening %s... ", fname);
     void *h = dlopen(fname, RTLD_LAZY);
     if (h) {

@@ -823,6 +823,19 @@ void ReportRace(ThreadState *thr, RawShadow *shadow_mem, Shadow cur, Shadow old,
   OutputReport(thr, rep);
 }
 
+// void PrintPC(uptr pc) {
+//   if (pc) {
+//     SymbolizedStack *ent = SymbolizeCode(pc);
+//     if (ent->info.file) {
+//       Printf("Racy access at %s:%d\n", ent->info.file, ent->info.line);
+//     } else {
+//       Printf("Failed to recover source information (symbolizer failed)\n");
+//     }
+//   } else {
+//     Printf("Failed to recover source information (pc == null)\n");
+//   }
+// }
+
 void PrintCurrentStack(ThreadState *thr, uptr pc) {
   VarSizeStackTrace trace;
   ObtainCurrentStack(thr, pc, &trace);

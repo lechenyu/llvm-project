@@ -43,6 +43,7 @@ set(TSAN_SOURCES
   tsan_symbolize.cpp
   tsan_sync.cpp
   tsan_vector_clock.cpp
+  dpst.cpp
   )
 
 set(TSAN_CXX_SOURCES

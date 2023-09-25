@@ -47,6 +47,7 @@
 #include "tsan_sync.h"
 #include "tsan_trace.h"
 #include "tsan_vector_clock.h"
+#include "data_structure.h"
 
 #if SANITIZER_WORDSIZE != 64
 # error "ThreadSanitizer is supported only on 64-bit platforms"
@@ -231,6 +232,8 @@ struct ThreadState {
 
   const ReportDesc *current_report;
 
+  int step_id;
+  
   explicit ThreadState(Tid tid);
 } ALIGNED(SANITIZER_CACHE_LINE_SIZE);
 
@@ -496,6 +499,8 @@ bool OutputReport(ThreadState *thr, const ScopedReport &srep);
 bool IsFiredSuppression(Context *ctx, ReportType type, StackTrace trace);
 bool IsExpectedReport(uptr addr, uptr size);
 
+void PrintPC(uptr pc);
+
 #if defined(TSAN_DEBUG_OUTPUT) && TSAN_DEBUG_OUTPUT >= 1
 # define DPrintf Printf
 #else
@@ -520,6 +525,8 @@ int Finalize(ThreadState *thr);
 
 void OnUserAlloc(ThreadState *thr, uptr pc, uptr p, uptr sz, bool write);
 void OnUserFree(ThreadState *thr, uptr pc, uptr p, bool write);
+
+void OnAnnAlloc(ThreadState *thr, uptr pc, uptr p, uptr sz, bool write);
 
 void MemoryAccess(ThreadState *thr, uptr pc, uptr addr, uptr size,
                   AccessType typ);

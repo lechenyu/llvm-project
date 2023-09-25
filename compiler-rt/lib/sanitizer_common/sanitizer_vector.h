@@ -88,6 +88,12 @@ class Vector {
     }
   }
 
+  T *begin() {return begin_;};
+  T *end() {return end_;};
+
+  void Clear() {
+    end_ = begin_;
+  }
  private:
   T *begin_;
   T *end_;

@@ -1,122 +1,114 @@
-# The LLVM Compiler Infrastructure
+# TSan-spd3 Data Race Detector
+TSan-spd3 is a dynamic race detector for OpenMP programs. It is implemented on top of the ThreadSanitizer (TSan), 
+reusing the majority of TSan's infrastructure, e.g., shadow memory and bug report. TSan-spd3 leverages the 
+[Scalable Precise Dynamic Datarace Detection (SPD3)](https://dl.acm.org/doi/pdf/10.1145/2345156.2254127) algorithm, 
+which was proposed by Raghavan Raman et al. in PLDI'12. Although initially designed for async-finish task parallelism,
+SPD3 can be applied to OpenMP programs. TSan-spd3 can precisely identify all potential data races under the given input 
+if these programs only use the subset of supported OpenMP constructs; otherwise, TSan-spd3 may report false positives 
+due to its incapability of encoding happens-before relations related to those unsupported constructs. In the following 
+section, we list the details of OpenMP constructs handling by TSan-spd3.
 
-This directory and its sub-directories contain the source code for LLVM,
-a toolkit for the construction of highly optimized compilers,
-optimizers, and run-time environments.
+| **Constructs** | **Supported?** |
+|---|---|
+| `parallel` | :heavy_check_mark: |
+| `for` | :heavy_check_mark: |
+| `single` | :heavy_check_mark: |
+| `master/masked` | :heavy_check_mark: |
+| `atomic` | :heavy_check_mark: |
+| `task` | :heavy_check_mark: |
+| `taskgroup` | :heavy_check_mark: |
+| `taskwait` | :heavy_check_mark: |
+| `taskloop` | :heavy_check_mark: |
+| `barrier` | :heavy_check_mark: |
+| `critical` | :heavy_multiplication_x: |
+| `simd` | :heavy_multiplication_x: |
+| `target` | :heavy_multiplication_x: |
 
-The README briefly describes how to get started with building LLVM.
-For more information on how to contribute to the LLVM project, please
-take a look at the
-[Contributing to LLVM](https://llvm.org/docs/Contributing.html) guide.
+| **Unsupported clauses for `parallel for`** |
+|---|
+| `ordered` |
+| `reduction` |
+| `schedule` |
 
-## Getting Started with the LLVM System
+| **Unsupported clauses for `task`** |
+|---|
+| `depend` |
 
-Taken from [here](https://llvm.org/docs/GettingStarted.html).
+## Install TSan-spd3
+### Prerequisite: install the bootstrapping llvm compiler
+1. Retrieve a `clang+llvm*` binary package from the [official website](https://releases.llvm.org/download.html) according to your OS's architecture.
+    * For x86_64 architecture, we have tested the installation using [`clang+llvm-14.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz`](https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.0/clang+llvm-14.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz).
+2. Unfold the package and set the following environment variables.
 
-### Overview
 
-Welcome to the LLVM project!
+    `export PATH="<UNFOLDED_LLVM_DIR>/bin:$PATH"`
+    
+    `export LD_LIBRARY_PATH="<UNFOLDED_LLVM_DIR>/lib:$LD_LIBRARY_PATH"`
 
-The LLVM project has multiple components. The core of the project is
-itself called "LLVM". This contains all of the tools, libraries, and header
-files needed to process intermediate representations and convert them into
-object files. Tools include an assembler, disassembler, bitcode analyzer, and
-bitcode optimizer. It also contains basic regression tests.
+### Retrieve TSan-spd3's repository and configure CMake
+Replace `<BUILD_DIR>`, `<INSTALL_DIR>`, and `<TSAN_SPD3_REPO_DIR>` with the desired paths on your platform. The CMake setting in the following command lines turns
+off [OpenMP device offloading](https://www.olcf.ornl.gov/wp-content/uploads/2021/08/ITOpenMP_Day1.pdf) support for Nvidia and AMD GPUs since TSan-spd3 cannot tackle memory accesses on non-host devices.
 
-C-like languages use the [Clang](http://clang.llvm.org/) frontend. This
-component compiles C, C++, Objective-C, and Objective-C++ code into LLVM bitcode
--- and from there into object files, using LLVM.
+    git clone https://github.com/lechenyu/TSan-spd3.git <TSAN_SPD3_REPO_DIR>
+    mkdir <BUILD_DIR> && cd <BUILD_DIR>
+    cmake -GNinja -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_C_COMPILER=clang \
+      -DCMAKE_CXX_COMPILER=clang++ \
+      -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR> \
+      -DLLVM_ENABLE_LIBCXX=ON \
+      -DLLVM_LIT_ARGS="-sv -j12" \
+      -DCLANG_DEFAULT_CXX_STDLIB=libc++ \
+      -DLIBOMPTARGET_ENABLE_DEBUG=ON \
+      -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra" \
+      -DLLVM_ENABLE_RUNTIMES="libunwind;libcxxabi;libcxx;compiler-rt;openmp" \
+      -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
+      -DLLVM_INSTALL_UTILS=ON \
+      -DLIBOMPTARGET_BUILD_CUDA_PLUGIN=False \
+      -DLIBOMPTARGET_BUILD_AMDGPU_PLUGIN=False \
+      -DLIBOMPTARGET_AMDGCN_GFXLIST="" \
+      <TSAN_SPD3_REPO_DIR>/llvm
 
-Other components include:
-the [libc++ C++ standard library](https://libcxx.llvm.org),
-the [LLD linker](https://lld.llvm.org), and more.
+### Build with Ninja and install
+    cd <BUILD_DIR> && ninja -j 10 install
+    export PATH="<INSTALL_DIR>/bin:$PATH"
+    export LD_LIBRARY_PATH="<INSTALL_DIR>/lib:$LD_LIBRARY_PATH"
 
-### Getting the Source Code and Building LLVM
+## Use TSan-spd3
+The usage of TSan-spd3 is similar to TSan/[Archer](https://github.com/llvm/llvm-project/tree/main/openmp/tools/archer).
+To compile an OpenMP program with TSan-spd3 enabled, the extra flag`-fsanitize=thread` should be set on the command line.
 
-The LLVM Getting Started documentation may be out of date. The [Clang
-Getting Started](http://clang.llvm.org/get_started.html) page might have more
-accurate information.
+    clang -O3 -g -fopenmp -fsanitize=thread app.c
+    clang++ -O3 -g -fopenmp -fsanitize=thread app.cpp
 
-This is an example work-flow and configuration to get and build the LLVM source:
+To avoid false alerts due to the OpenMP runtime implementation, set the TSan option `ignore_noninstrumented_modules` to `1`.
 
-1. Checkout LLVM (including related sub-projects like Clang):
+    export TSAN_OPTIONS="ignore_noninstrumented_modules=1"
 
-     * ``git clone https://github.com/llvm/llvm-project.git``
+## Evaluation Results on [DataRaceBench](https://github.com/LLNL/dataracebench)
+This is the evaluation results of the latest TSan-spd3. These results may change in the future since we are actively updating 
+TSan-spd3 to tackle more OpenMP constructs.
 
-     * Or, on windows, ``git clone --config core.autocrlf=false
-    https://github.com/llvm/llvm-project.git``
-
-2. Configure and build LLVM and Clang:
-
-     * ``cd llvm-project``
-
-     * ``cmake -S llvm -B build -G <generator> [options]``
-
-        Some common build system generators are:
-
-        * ``Ninja`` --- for generating [Ninja](https://ninja-build.org)
-          build files. Most llvm developers use Ninja.
-        * ``Unix Makefiles`` --- for generating make-compatible parallel makefiles.
-        * ``Visual Studio`` --- for generating Visual Studio projects and
-          solutions.
-        * ``Xcode`` --- for generating Xcode projects.
-
-        Some common options:
-
-        * ``-DLLVM_ENABLE_PROJECTS='...'`` and ``-DLLVM_ENABLE_RUNTIMES='...'`` ---
-          semicolon-separated list of the LLVM sub-projects and runtimes you'd like to
-          additionally build. ``LLVM_ENABLE_PROJECTS`` can include any of: clang,
-          clang-tools-extra, cross-project-tests, flang, libc, libclc, lld, lldb,
-          mlir, openmp, polly, or pstl. ``LLVM_ENABLE_RUNTIMES`` can include any of
-          libcxx, libcxxabi, libunwind, compiler-rt, libc or openmp. Some runtime
-          projects can be specified either in ``LLVM_ENABLE_PROJECTS`` or in
-          ``LLVM_ENABLE_RUNTIMES``.
-
-          For example, to build LLVM, Clang, libcxx, and libcxxabi, use
-          ``-DLLVM_ENABLE_PROJECTS="clang" -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi"``.
-
-        * ``-DCMAKE_INSTALL_PREFIX=directory`` --- Specify for *directory* the full
-          path name of where you want the LLVM tools and libraries to be installed
-          (default ``/usr/local``). Be careful if you install runtime libraries: if
-          your system uses those provided by LLVM (like libc++ or libc++abi), you
-          must not overwrite your system's copy of those libraries, since that
-          could render your system unusable. In general, using something like
-          ``/usr`` is not advised, but ``/usr/local`` is fine.
-
-        * ``-DCMAKE_BUILD_TYPE=type`` --- Valid options for *type* are Debug,
-          Release, RelWithDebInfo, and MinSizeRel. Default is Debug.
-
-        * ``-DLLVM_ENABLE_ASSERTIONS=On`` --- Compile with assertion checks enabled
-          (default is Yes for Debug builds, No for all other build types).
-
-      * ``cmake --build build [-- [options] <target>]`` or your build system specified above
-        directly.
-
-        * The default target (i.e. ``ninja`` or ``make``) will build all of LLVM.
-
-        * The ``check-all`` target (i.e. ``ninja check-all``) will run the
-          regression tests to ensure everything is in working order.
-
-        * CMake will generate targets for each tool and library, and most
-          LLVM sub-projects generate their own ``check-<project>`` target.
-
-        * Running a serial build will be **slow**. To improve speed, try running a
-          parallel build. That's done by default in Ninja; for ``make``, use the option
-          ``-j NNN``, where ``NNN`` is the number of parallel jobs to run.
-          In most cases, you get the best performance if you specify the number of CPU threads you have.
-          On some Unix systems, you can specify this with ``-j$(nproc)``.
-
-      * For more information see [CMake](https://llvm.org/docs/CMake.html).
-
-Consult the
-[Getting Started with LLVM](https://llvm.org/docs/GettingStarted.html#getting-started-with-llvm)
-page for detailed information on configuring and compiling LLVM. You can visit
-[Directory Layout](https://llvm.org/docs/GettingStarted.html#directory-layout)
-to learn about the layout of the source code tree.
-
-## Getting in touch
-
-Join [LLVM Discourse forums](https://discourse.llvm.org/), [discord chat](https://discord.gg/xS7Z362) or #llvm IRC channel on [OFTC](https://oftc.net/).
-
-The LLVM project has adopted a [code of conduct](https://llvm.org/docs/CodeOfConduct.html) for
-participants to all modes of communication within the project.
+<table cellspacing="0" cellpadding="6">
+<tbody>
+<tr>
+<td class="org-left">False Positive</td>
+<td class="org-right">30</td>
+</tr>
+<tr>
+<td class="org-left">False Negative</td>
+<td class="org-right">18</td>
+</tr>
+<tr>
+<td class="org-left">True Positive</td>
+<td class="org-right">72</td>
+</tr>
+<tr>
+<td class="org-left">True Negative</td>
+<td class="org-right">59</td>
+</tr>
+<tr>
+<td class="org-left">Timeout</td>
+<td class="org-right">2</td>
+</tr>
+</tbody>
+</table>
