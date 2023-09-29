@@ -12,10 +12,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "tsan_rtl.h"
-#include "concurrency_vector.h"
 namespace __tsan {
-constexpr u32 vector_fix_size = 200000000;
-ConcurrencyVector step_nodes(vector_fix_size);
+ConcurrencyVector* step_nodes;
 
 // For DPST purpose, we assume shadow_mem[0] stores the last writer
 // shadow_mem[1] stores the leftmost reader, shadow_mem[2] stores the rightmost reader
@@ -564,8 +562,8 @@ NOINLINE void DoReportRaceDPST(ThreadState *thr, RawShadow* shadow_mem, Shadow c
 
   u32 curr_step_id = cur.step_id();
   u32 prev_step_id = prev.step_id();
-  const TreeNode &curr_step = step_nodes[curr_step_id];
-  const TreeNode &prev_step = step_nodes[prev_step_id];
+  const TreeNode &curr_step = (*step_nodes)[curr_step_id];
+  const TreeNode &prev_step = (*step_nodes)[prev_step_id];
   u8 rt_val = static_cast<u8>(race_type);
   
   //u8 access, Sid sid, u16 epoch, bool is_read, bool is_atomic
@@ -597,9 +595,9 @@ bool CheckWrite(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
     return false;
   }
   
-  TreeNode *curr_step = &step_nodes[curr_step_id];
+  TreeNode *curr_step = &( (*step_nodes)[curr_step_id] );
   if (w.raw() != Shadow::kEmpty &&
-      !precede_dpst_new(&step_nodes[w.step_id()],
+      !precede_dpst_new(& ((*step_nodes)[w.step_id()]),
                         curr_step, nullptr, nullptr)) {
     DoReportRaceDPST(thr, shadow_mem, cur, w, WriteWriteRace, typ, addr, pc);
     return true;
@@ -609,14 +607,14 @@ bool CheckWrite(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
   Shadow r1(static_cast<RawShadow>(static_cast<u32>(prev_reads >> 32)));
   Shadow r2(static_cast<RawShadow>(static_cast<u32>(prev_reads)));
   if (r1.raw() != Shadow::kEmpty &&
-      !precede_dpst_new(&step_nodes[r1.step_id()],
+      !precede_dpst_new(& ((*step_nodes)[r1.step_id()]),
                         curr_step, nullptr, nullptr)) {
     DoReportRaceDPST(thr, shadow_mem, cur, r1, ReadWriteRace, typ, addr, pc);
     return true;
   }
 
   if (r2.raw() != Shadow::kEmpty &&
-      !precede_dpst_new(&step_nodes[r2.step_id()],
+      !precede_dpst_new(&((*step_nodes)[r2.step_id()]),
                         curr_step, nullptr, nullptr)) {
     DoReportRaceDPST(thr, shadow_mem, cur, r2, ReadWriteRace, typ, addr, pc);
     return true;
@@ -649,10 +647,10 @@ bool CheckRead(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
     return false;
   }
 
-  TreeNode *curr_step = &step_nodes[curr_step_id];
+  TreeNode *curr_step = &((*step_nodes)[curr_step_id]);
 
   if (w.raw() != Shadow::kEmpty &&
-      !precede_dpst_new(&step_nodes[w.step_id()],
+      !precede_dpst_new(&((*step_nodes)[w.step_id()]),
                         curr_step, nullptr, nullptr)) {
     DoReportRaceDPST(thr, shadow_mem, cur, w, WriteReadRace, typ, addr, pc);
     return true;
@@ -664,15 +662,15 @@ bool CheckRead(ThreadState* thr, RawShadow* shadow_mem, Shadow cur,
     if (not_empty_reads == 0) {
       StoreReadShadow(shadow_mem, cur.raw(), Shadow::kEmpty);
     } else if (not_empty_reads == 1) {
-      if (precede_dpst_new(&step_nodes[r1.step_id()], curr_step, nullptr,
+      if (precede_dpst_new(&((*step_nodes)[r1.step_id()]), curr_step, nullptr,
                            nullptr)) {
         StoreReadShadow(shadow_mem, cur.raw(), Shadow::kEmpty);
       } else {
         StoreReadShadow(shadow_mem, r1.raw(), cur.raw());
       }
     } else {
-      TreeNode* r1_step = &step_nodes[r1.step_id()];
-      TreeNode* r2_step = &step_nodes[r2.step_id()];
+      TreeNode* r1_step = &((*step_nodes)[r1.step_id()]);
+      TreeNode* r2_step = &((*step_nodes)[r2.step_id()]);
       TreeNode *lca1, *lca2, *left1, *left2;
       bool hb1 = precede_dpst_new(r1_step, curr_step, &lca1, &left1);
       bool hb2 = precede_dpst_new(r2_step, curr_step, &lca2, &left2);

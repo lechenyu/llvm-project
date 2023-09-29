@@ -432,6 +432,59 @@ static void ompt_ta_thread_begin(ompt_thread_t thread_type, ompt_data_t *thread_
   thread_data->value = thread_id_counter.fetch_add(1, std::memory_order_relaxed);
 }
 
+
+static void ompt_ta_target(ompt_target_t kind, ompt_scope_endpoint_t endpoint,
+                             int device_num, ompt_data_t *task_data,
+                             ompt_id_t target_id, const void *codeptr_ra) 
+{
+  printf("[ompt_ta_target] callback: ");
+  if (endpoint == ompt_scope_begin)
+  {
+    printf("scope begin \n");
+  }
+  else if(endpoint == ompt_scope_end){
+    printf("scope end \n");
+  }
+  else{
+    printf("\n");
+  }
+  
+
+}
+
+
+
+
+static void ompt_ta_device_mem(ompt_data_t *target_task_data,
+                                ompt_data_t *target_data,
+                                unsigned int device_mem_flag,
+                                void *orig_base_addr, void *orig_addr,
+                                int orig_device_num, void *dest_addr,
+                                int dest_device_num, size_t bytes,
+                                const void *codeptr_ra)
+{
+  printf("[ompt_ta_device_mem] callback: original addr %p ", orig_addr);
+  if (device_mem_flag & ompt_device_mem_flag_to){
+    printf("to \n");
+  }
+  else if (device_mem_flag & ompt_device_mem_flag_from){
+    printf("from \n");
+  }
+  else if (device_mem_flag & ompt_device_mem_flag_alloc){
+    printf("alloc \n");
+  }
+  else if (device_mem_flag & ompt_device_mem_flag_release){
+    printf("release \n");
+  }
+  else if (device_mem_flag & ompt_device_mem_flag_associate){
+    printf("associate \n");
+  }
+  else if (device_mem_flag & ompt_device_mem_flag_disassociate){
+    printf("associate \n");
+  }
+  
+} 
+
 static int ompt_tsan_initialize(ompt_function_lookup_t lookup, int device_num,
                                 ompt_data_t *tool_data) {
   // __tsan_print();
@@ -458,6 +511,9 @@ static int ompt_tsan_initialize(ompt_function_lookup_t lookup, int device_num,
   SET_CALLBACK(parallel_end);
   SET_CALLBACK(task_schedule);
   SET_CALLBACK(thread_begin);
+  
+  SET_CALLBACK(target);
+  SET_CALLBACK(device_mem);
 
   return 1; // success
 }

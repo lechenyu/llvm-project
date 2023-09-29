@@ -10,6 +10,7 @@ namespace __tsan {
 class ConcurrencyVector {
  public:
   ConcurrencyVector(int capacity) : begin_(), cap_(capacity), size_({1}) {
+    Printf("ConcurrencyVector constructor, capacity is %d \n", capacity);
     if (cap_) {
       begin_ = (TreeNode *)InternalAlloc(cap_ * sizeof(TreeNode));
       internal_memset(begin_, 0, cap_ * sizeof(TreeNode));
@@ -30,7 +31,7 @@ class ConcurrencyVector {
   TreeNode &EmplaceBack(NodeType type, int preceeding_taskwait, Sid sid, Epoch ev, TreeNode *parent) {
     int step_index = atomic_fetch_add(&size_, 1, memory_order_relaxed);
     if (UNLIKELY (step_index >= cap_)) {
-      Printf("Concurrency vector reaches its capacity\n");
+      Printf("Concurrency vector reaches its capacity, capacitiy is %d\n", cap_);
       internal__exit(1);
     }
     // new (begin_ + step_index) TreeNode(task_id, step_index, type, depth,

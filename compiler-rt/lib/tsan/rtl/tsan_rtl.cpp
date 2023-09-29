@@ -745,6 +745,9 @@ void Initialize(ThreadState *thr) {
   }
 
   OnInitialize();
+  void *step_nodes_mem = InternalAlloc(sizeof(ConcurrencyVector));
+  step_nodes = new(step_nodes_mem) ConcurrencyVector(vector_fix_size);
+  
 }
 
 void MaybeSpawnBackgroundThread() {

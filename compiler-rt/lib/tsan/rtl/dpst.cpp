@@ -2,11 +2,10 @@
 #include "sanitizer_common/sanitizer_allocator_internal.h"
 #include "sanitizer_common/sanitizer_vector.h"
 #include "tsan_rtl.h"
-#include "concurrency_vector.h"
+
 
 namespace __tsan{
 
-extern ConcurrencyVector step_nodes;
 
 // dpst root
 TreeNode dpst_root;
@@ -113,7 +112,7 @@ TreeNode *__tsan_alloc_insert_internal_node(int internal_node_id, NodeType node_
 INTERFACE_ATTRIBUTE
 TreeNode *__tsan_insert_leaf(TreeNode *parent, int preceeding_taskwait) {
   ThreadState *thr = cur_thread();
-  TreeNode &n = step_nodes.EmplaceBack(
+  TreeNode &n = step_nodes->EmplaceBack(
       STEP, preceeding_taskwait,
       thr->fast_state.sid(), thr->fast_state.epoch(), parent);
   TreeNode *new_step = &n;

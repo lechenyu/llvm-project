@@ -48,12 +48,15 @@
 #include "tsan_trace.h"
 #include "tsan_vector_clock.h"
 #include "data_structure.h"
+#include "concurrency_vector.h"
 
 #if SANITIZER_WORDSIZE != 64
 # error "ThreadSanitizer is supported only on 64-bit platforms"
 #endif
 
 namespace __tsan {
+constexpr u32 vector_fix_size = 200000000;
+extern ConcurrencyVector* step_nodes;
 
 #if !SANITIZER_GO
 struct MapUnmapCallback;
