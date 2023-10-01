@@ -38,3 +38,7 @@ __tsan_insert_internal_node
 __tsan_alloc_insert_internal_node
 __tsan_insert_leaf
 __tsan_print_DPST_info
+__tsan_get_step_in_tls
+__tsan_set_ompt_print_function
+__tsan_set_report_race_steps_function
+__tsan_set_report_race_stack_function

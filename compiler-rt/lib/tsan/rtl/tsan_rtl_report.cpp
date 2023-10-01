@@ -629,7 +629,7 @@ static bool HandleRacyStacks(ThreadState *thr, VarSizeStackTrace traces[2]) {
   return false;
 }
 
-bool OutputReport(ThreadState *thr, const ScopedReport &srep) {
+bool OutputReport(ThreadState *thr, const ScopedReport &srep, u32 current_step, u32 prev_step) {
   // These should have been checked in ShouldReport.
   // It's too late to check them here, we have already taken locks.
   CHECK(flags()->report_bugs);
@@ -660,7 +660,7 @@ bool OutputReport(ThreadState *thr, const ScopedReport &srep) {
       return false;
     }
   }
-  PrintReport(rep);
+  PrintReport(rep, current_step, prev_step);
   __tsan_on_report(rep);
   ctx->nreported++;
   if (flags()->halt_on_error)
@@ -707,7 +707,7 @@ static bool SpuriousRace(Shadow old) {
 }
 
 void ReportRace(ThreadState *thr, RawShadow *shadow_mem, Shadow cur, Shadow old,
-                AccessType typ0) {
+                AccessType typ0, u32 current_step, u32 prev_step) {
   CheckedMutex::CheckNoLocks();
 
   // Symbolizer makes lots of intercepted calls. If we try to process them,
@@ -820,7 +820,7 @@ void ReportRace(ThreadState *thr, RawShadow *shadow_mem, Shadow cur, Shadow old,
       s[1].epoch() <= thr->last_sleep_clock.Get(s[1].sid()))
     rep.AddSleep(thr->last_sleep_stack_id);
 #endif
-  OutputReport(thr, rep);
+  OutputReport(thr, rep, current_step, prev_step);
 }
 
 // void PrintPC(uptr pc) {
