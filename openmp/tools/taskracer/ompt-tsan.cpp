@@ -131,10 +131,10 @@ static void drawDependEdges(task_t *task, unsigned int current_step){
     // printf("%d ", previous_task_node->children_list_tail->corresponding_id);
     vertex_t join_parent = (unsigned int) previous_task_node->children_list_tail->corresponding_id;
     edge_t e; bool b;
-    boost::tie(e,b) = boost::edge(join_parent,current_step,g);
+    boost::tie(e,b) = boost::edge(join_parent,current_step,(*g));
     if(!b){
-      boost::tie(e,b) = boost::add_edge(join_parent,current_step,g);
-      g[e].type = ejoinedge;
+      boost::tie(e,b) = boost::add_edge(join_parent,current_step,(*g));
+      (*g)[e].type = ejoinedge;
     }
     
   }
@@ -297,8 +297,8 @@ void ompt_print_func(){
 void ompt_report_race_steps_func(int cur, int prev){
 #ifdef GRAPH_MACRO
   // printf("race between current step %d and previous step %d \n", cur, prev);
-  g[cur].has_race = 1;
-  g[prev].has_race = 1;
+  (*g)[cur].has_race = 1;
+  (*g)[prev].has_race = 1;
 #endif
 }
 
@@ -307,10 +307,10 @@ void ompt_report_race_stack_func(char* s, bool first, unsigned int current_step,
   printf("race stack: %s \n", s);
   printf("first? %d, current_step %d, previous_step %d \n", first, current_step, prev_step);
   if(first){
-    g[current_step].race_stack = s;
+    (*g)[current_step].race_stack = s;
   }
   else{
-    g[prev_step].race_stack = s;
+    (*g)[prev_step].race_stack = s;
   }
 #endif
 }
@@ -371,7 +371,7 @@ static void ompt_ta_parallel_begin
 
 #ifdef GRAPH_MACRO
   vertex_t cg_parent = current_task->current_step_id;
-  g[cg_parent].end_event = event_parallel_begin;
+  (*g)[cg_parent].end_event = event_parallel_begin;
 #endif
 
   // 2. Set current task's current_finish to this finish
@@ -384,11 +384,11 @@ static void ompt_ta_parallel_begin
   int step_id = insert_leaf(new_finish_node, current_task);
 
   // FJ: insert a node in G as continuation node, and a continuation edge
-  g[step_id].id = step_id;
+  (*g)[step_id].id = step_id;
 
   edge_t e; bool b;
-  boost::tie(e,b) = boost::add_edge(cg_parent,step_id,g);
-  g[e].type = contedge;
+  boost::tie(e,b) = boost::add_edge(cg_parent,step_id,(*g));
+  (*g)[e].type = contedge;
 #else
   parallel_data->ptr = new parallel_t(requested_parallelism, current_task);
   insert_leaf(new_finish_node, current_task);
@@ -422,16 +422,16 @@ static void ompt_ta_parallel_end
 
 #ifdef GRAPH_MACRO
   vertex_t cg_parent = current_task->current_step_id;
-  g[cg_parent].end_event = event_parallel_end;
+  (*g)[cg_parent].end_event = event_parallel_end;
 
   int step_id = insert_leaf(parent, current_task);
   
   // 1. insert a node in G as continuation node, and a continuation edge
-  g[step_id].id = step_id;
+  (*g)[step_id].id = step_id;
 
   edge_t e; bool b;
-  boost::tie(e,b) = boost::add_edge(cg_parent,step_id,g);
-  g[e].type = contedge;
+  boost::tie(e,b) = boost::add_edge(cg_parent,step_id,(*g));
+  (*g)[e].type = contedge;
 
   // 2. insert join edges from last step nodes in implicit tasks to the continuation node
   printf("[parallel_end] current node is %lu, requested parallelsim is %lu, joining: ", cg_parent, parallel->end_nodes_to_join.size());
@@ -442,8 +442,8 @@ static void ompt_ta_parallel_end
     }
     
     edge_t ee; bool bb;
-    boost::tie(ee,bb) = boost::add_edge(joining_node,step_id,g);
-    g[ee].type = joinedge;
+    boost::tie(ee,bb) = boost::add_edge(joining_node,step_id,(*g));
+    (*g)[ee].type = joinedge;
     printf("%d ", joining_node);
   }
   printf("\n");
@@ -453,11 +453,6 @@ static void ompt_ta_parallel_end
   
   if(! parallel->isTeams){
     printf("this is parallel \n");
-  }
-
-  // TODO: remove this, find a correct place to output the graph
-  if(current_task->node_in_dpst->corresponding_id == 0){
-    print_graph();
   }
 #else
   insert_leaf(parent, current_task);
@@ -510,13 +505,13 @@ static void ompt_ta_implicit_task(
 
         #ifdef GRAPH_MACRO
           int step_id = insert_leaf(new_task_node, ti);
-          g[step_id].id = step_id;
+          (*g)[step_id].id = step_id;
           vertex_t cg_parent = parent_task->current_step_id;
 
           edge_t e; bool b;
-          boost::tie(e,b) = boost::add_edge(cg_parent, step_id, g);
+          boost::tie(e,b) = boost::add_edge(cg_parent, step_id, (*g));
           // TODO: may also be an initial task for a team on target, need more details for the edge type
-          g[e].type = ti->IsOnTarget ? targetedge : iforkedge;
+          (*g)[e].type = ti->IsOnTarget ? targetedge : iforkedge;
         #else
           insert_leaf(new_task_node, ti);
         #endif
@@ -541,7 +536,7 @@ static void ompt_ta_implicit_task(
       #ifdef GRAPH_MACRO
         int step_id = insert_leaf(initial, main_ti);
         // FJ: this should be the first node in G, with step_id = 1
-        g[step_id].id = step_id;
+        (*g)[step_id].id = step_id;
       #else
         insert_leaf(initial, main_ti);
       #endif
@@ -583,13 +578,13 @@ static void ompt_ta_implicit_task(
       
     #ifdef GRAPH_MACRO
       vertex_t step_id = insert_leaf(new_task_node, ti);
-      g[step_id].id = step_id;
+      (*g)[step_id].id = step_id;
       vertex_t cg_parent = parallel->start_cg_node;
 
       EdgeFull edge = {iforkedge, cg_parent, step_id};
       // Here we are using a concurrent vector savedEdges
       // because many implicit tasks for the same parallel region can be created simultanesouly
-      savedEdges.push_back(edge);
+      savedEdges->push_back(edge);
     #else
       insert_leaf(new_task_node, ti);
     #endif
@@ -707,7 +702,7 @@ static void ompt_ta_sync_region(
       task_data->ptr = ti;
       
     #ifdef GRAPH_MACRO
-      g[current_task->current_step_id].end_event = event_sync_region_begin;
+      (*g)[current_task->current_step_id].end_event = event_sync_region_begin;
       #ifdef DEBUG_INFO
         printf("[sync_region_begin] current step id %d \n", current_task->current_step_id);
       #endif
@@ -726,12 +721,12 @@ static void ompt_ta_sync_region(
       }
 
       // FJ: continuation edge and continuation node
-      g[step_id].id = step_id;
-      g[step_id].end_event = event_sync_region_end;
+      (*g)[step_id].id = step_id;
+      (*g)[step_id].end_event = event_sync_region_end;
       edge_t e;
       bool b;
-      boost::tie(e,b) = boost::add_edge(current_task->current_step_id, step_id, g);
-      g[e].type = contedge;
+      boost::tie(e,b) = boost::add_edge(current_task->current_step_id, step_id, (*g));
+      (*g)[e].type = contedge;
     #else
       insert_leaf(new_task_node, ti);
     #endif
@@ -769,8 +764,8 @@ static void ompt_ta_sync_region(
 
           edge_t e;
           bool b;
-          boost::tie(e,b) = boost::add_edge(node, current_task->current_step_id, g);
-          g[e].type = joinedge;
+          boost::tie(e,b) = boost::add_edge(node, current_task->current_step_id, (*g));
+          (*g)[e].type = joinedge;
         }
 
         parallel->end_nodes_to_join.resize(parallel->parallelism);
@@ -804,23 +799,23 @@ static void ompt_ta_task_create(ompt_data_t *encountering_task_data,
 #ifdef GRAPH_MACRO
   // 1. add a new node for new task and a fork edge
   vertex_t cg_parent = current_task->current_step_id;
-  g[cg_parent].end_event = event_task_create;
+  (*g)[cg_parent].end_event = event_task_create;
 
   int fork_node = insert_leaf(new_task_node,ti);
 
-  g[fork_node].id = fork_node;
+  (*g)[fork_node].id = fork_node;
   edge_t e; bool b;
-  boost::tie(e,b) = boost::add_edge(cg_parent,fork_node,g);
-  g[e].type = eforkedge;
+  boost::tie(e,b) = boost::add_edge(cg_parent,fork_node,(*g));
+  (*g)[e].type = eforkedge;
 
   int continuation_node = insert_leaf(parent, current_task);
 
   // 2. add a continuation node and continuation edge, notice insert_leaf will set the current_step_id of current_task to be the continuation node
-  g[continuation_node].id = continuation_node;
+  (*g)[continuation_node].id = continuation_node;
 
   edge_t ee; bool bb;
-  boost::tie(ee,bb) = boost::add_edge(cg_parent,continuation_node,g);
-  g[ee].type = contedge;
+  boost::tie(ee,bb) = boost::add_edge(cg_parent,continuation_node,(*g));
+  (*g)[ee].type = contedge;
 #else
   insert_leaf(new_task_node,ti);
   insert_leaf(parent, current_task);
@@ -1015,11 +1010,17 @@ static int ompt_tsan_initialize(ompt_function_lookup_t lookup, int device_num,
 
   SET_CALLBACK(target);
   SET_CALLBACK(device_mem);
+
+  savedEdges = new ConcurrentVector<EdgeFull>(10);
+  g = new Graph(vertex_size);
   return 1; // success
 }
 
 static void ompt_tsan_finalize(ompt_data_t *tool_data) {
   //__tsan_print_DPST_info(true);
+  print_graph();
+  delete savedEdges;
+  delete g;
 }
 
 static bool scan_tsan_runtime() {
@@ -1052,20 +1053,20 @@ void print_graph(){
     return;
   }
 
-  for(int i=0; i < savedEdges.size(); i++){
-    EdgeFull edge = savedEdges[i];
+  for(int i=0; i < savedEdges->size(); i++){
+    EdgeFull edge = (*savedEdges)[i];
     edge_t e; bool b;
-    boost::tie(e,b) = boost::add_edge(edge.source, edge.target, g);
+    boost::tie(e,b) = boost::add_edge(edge.source, edge.target, *g);
     if(b){
-      g[e].type = edge.type;
+      (*g)[e].type = edge.type;
     }
   }
   
-  auto vertex_id_map = boost::get(&Vertex::id, g);
-  auto edge_type_map = boost::get(&Edge::type, g);
-  auto vertex_event_map = boost::get(&Vertex::end_event, g);
-  auto vertex_has_race_map = boost::get(&Vertex::has_race, g);
-  auto vertex_race_stack_map = boost::get(&Vertex::race_stack,g);
+  auto vertex_id_map = boost::get(&Vertex::id, *g);
+  auto edge_type_map = boost::get(&Edge::type, *g);
+  auto vertex_event_map = boost::get(&Vertex::end_event, *g);
+  auto vertex_has_race_map = boost::get(&Vertex::has_race, *g);
+  auto vertex_race_stack_map = boost::get(&Vertex::race_stack,*g);
 
   dynamic_properties dp;
   dp.property("vertex_id", vertex_id_map);
@@ -1075,6 +1076,6 @@ void print_graph(){
   dp.property("race_stack", vertex_race_stack_map);
 
   std::ofstream output("data/rawgraphml.txt");
-  write_graphml(output, g, dp, true);
+  write_graphml(output, *g, dp, true);
   
 }

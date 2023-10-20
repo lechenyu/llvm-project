@@ -44,7 +44,8 @@ typedef graph_traits<Graph>::edge_descriptor edge_t;
 
 //Instanciate a graph
 unsigned int vertex_size = 100;
-Graph g(vertex_size);
+// Graph g(vertex_size);
+Graph *g;
 
 struct EdgeFull{
   std::string type;
@@ -145,67 +146,6 @@ private:
 };
 
 // Vector that saves all edges to be add to g, before output the graph
-ConcurrentVector<EdgeFull> savedEdges(10);
-
-#endif
-
-    // Clear the vector
-    void clear() {
-        std::lock_guard<std::mutex> lock(mutex_);
-        data_.clear();
-    }
-
-    void reserve(size_t capacity){
-        std::lock_guard<std::mutex> lock(mutex_);
-        data_.reserve(capacity);
-    }
-
-    size_t size() {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return data_.size();
-    }
-
-    // Getter: Get element at a specific index
-    bool get(size_t index, T& value) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (index < data_.size()) {
-            value = data_[index];
-            return true;
-        }
-        return false;
-    }
-
-    // Setter: Set element at a specific index
-    bool set(size_t index, const T& value) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (index < data_.size()) {
-            data_[index] = value;
-            return true;
-        }
-        return false;
-    }
-
-    // Accessor: Get element by index
-    T operator[](size_t index) {
-        // std::lock_guard<std::mutex> lock(mutex_);
-        if (index < data_.size()) {
-            return data_[index];
-        }
-        // You might want to handle out-of-bounds access differently, e.g., throw an exception.
-        // For simplicity, we return a default-constructed T in this example.
-        return T();
-    }
-
-    ~ConcurrentVector(){
-        
-    }
-
-private:
-    std::vector<T> data_;
-    std::mutex mutex_;
-};
-
-// Vector that saves all edges to be add to g, before output the graph
-ConcurrentVector<EdgeFull> savedEdges(10);
+ConcurrentVector<EdgeFull> *savedEdges;
 
 #endif
