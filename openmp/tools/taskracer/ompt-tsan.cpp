@@ -59,6 +59,8 @@ struct DependencyData final : DataPoolEntry<DependencyData> {
   TreeNode* out = nullptr;
   TreeNode* inoutset = nullptr;
 
+  std::mutex mutex_;
+
   void Reset() {}
 
   static DependencyData *New() { 
@@ -134,10 +136,12 @@ static void drawDependEdges(task_t *task, unsigned int current_step){
       boost::tie(e,b) = boost::add_edge(join_parent,current_step,g);
       g[e].type = ejoinedge;
     }
+    
   }
 }
 
 static void AcquireAndReleaseDependencies(task_t *task, DependencyData* dd, ompt_dependence_type_t type) {
+  std::lock_guard<std::mutex> lock(dd->mutex_);
   bool has_out = (dd->out != nullptr);
   bool has_inoutset = (dd->inoutset != nullptr);
   std::vector<TreeNode*> &task_depending_nodes = task->depending_task_nodes;
@@ -464,7 +468,6 @@ static void ompt_ta_parallel_end
   parallel_data->ptr = nullptr;
 
 }
-
 
 static void ompt_ta_implicit_task(
   ompt_scope_endpoint_t endpoint,
@@ -1039,6 +1042,7 @@ ompt_start_tool(unsigned int omp_version, const char *runtime_version) {
   pagesize = getpagesize();
 #endif
 
+  // return nullptr;
   return &ompt_start_tool_result;
 }
 
