@@ -9,12 +9,14 @@
 using namespace boost;
 
 void print_graph();
+void print_datamove();
 
 struct Vertex {
   unsigned int id;
   std::string end_event;
-  unsigned int has_race;
+  bool has_race = false;
   std::string race_stack;
+  bool ontarget = false;
 };
 
 struct Edge{
@@ -35,6 +37,8 @@ const std::string event_implicit_task = "implicit_task";
 const std::string event_sync_region_begin = "sync_region_begin";
 const std::string event_sync_region_end = "sync_region_end";
 const std::string event_task_create = "task_create";
+const std::string event_target_begin = "target_begin";
+const std::string event_target_end = "target_end";
 
 //Define the graph using those classes
 typedef adjacency_list<vecS, vecS, directedS, Vertex, Edge > Graph;
@@ -147,5 +151,29 @@ private:
 
 // Vector that saves all edges to be add to g, before output the graph
 ConcurrentVector<EdgeFull> *savedEdges;
+
+struct DataMove{
+    void *orig_addr;
+    void *dest_addr;
+    size_t bytes;
+    unsigned int device_mem_flag;
+
+    DataMove(void *oa, void *da, size_t bytes, unsigned int flag) :
+    orig_addr(oa), dest_addr(da), bytes(bytes), device_mem_flag(flag) {}
+};
+
+struct targetRegion{
+    unsigned int begin_node;
+    unsigned int end_node;
+    std::vector<DataMove> dmv;
+    targetRegion(){
+        begin_node = 0;
+        end_node = 0;
+        dmv = std::vector<DataMove>();
+        dmv.reserve(10);
+    }
+};
+
+
 
 #endif

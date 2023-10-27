@@ -6,7 +6,7 @@
 #include "taskdep_predefined.h"
 
 #define GRAPH_MACRO
-#define DEBUG_INFO
+// #define DEBUG_INFO
 
 #ifdef GRAPH_MACRO
   #include "graph-predefined.h"
@@ -48,6 +48,9 @@ static constexpr int kNullStepId = -1;
 static constexpr size_t kDefaultStackSize = 1024;
 static TreeNode *root = nullptr;
 static TreeNode kNullTaskWait = {kNullStepId, TASKWAIT};
+static unsigned int target_begin_node = 0;
+static unsigned int target_end_node = 0;
+std::unordered_map<unsigned int, targetRegion> *trm;
 
 // Data structure to store additional information for task dependency.
 // each variable has a dependencyData
@@ -123,6 +126,7 @@ public:
 };
 
 static void drawDependEdges(task_t *task, unsigned int current_step){
+#ifdef GRAPH_MACRO
   for(TreeNode* previous_task_node : task->depending_task_nodes){
     if(previous_task_node == nullptr){
       continue;
@@ -138,6 +142,7 @@ static void drawDependEdges(task_t *task, unsigned int current_step){
     }
     
   }
+#endif
 }
 
 static void AcquireAndReleaseDependencies(task_t *task, DependencyData* dd, ompt_dependence_type_t type) {
@@ -297,8 +302,8 @@ void ompt_print_func(){
 void ompt_report_race_steps_func(int cur, int prev){
 #ifdef GRAPH_MACRO
   // printf("race between current step %d and previous step %d \n", cur, prev);
-  (*g)[cur].has_race = 1;
-  (*g)[prev].has_race = 1;
+  (*g)[cur].has_race = true;
+  (*g)[prev].has_race = true;
 #endif
 }
 
@@ -385,6 +390,9 @@ static void ompt_ta_parallel_begin
 
   // FJ: insert a node in G as continuation node, and a continuation edge
   (*g)[step_id].id = step_id;
+  if (current_task->IsOnTarget){
+    (*g)[step_id].ontarget = true;
+  }
 
   edge_t e; bool b;
   boost::tie(e,b) = boost::add_edge(cg_parent,step_id,(*g));
@@ -428,6 +436,9 @@ static void ompt_ta_parallel_end
   
   // 1. insert a node in G as continuation node, and a continuation edge
   (*g)[step_id].id = step_id;
+  if(parallel->IsOnTarget){
+    (*g)[step_id].ontarget = true;
+  }
 
   edge_t e; bool b;
   boost::tie(e,b) = boost::add_edge(cg_parent,step_id,(*g));
@@ -448,11 +459,11 @@ static void ompt_ta_parallel_end
   }
   printf("\n");
   if(parallel->isTeams){
-    printf("this is teams \n");
+    printf("[parallen_end] this is teams \n");
   }
   
   if(! parallel->isTeams){
-    printf("this is parallel \n");
+    printf("[parallel_end] this is parallel \n");
   }
 #else
   insert_leaf(parent, current_task);
@@ -506,12 +517,15 @@ static void ompt_ta_implicit_task(
         #ifdef GRAPH_MACRO
           int step_id = insert_leaf(new_task_node, ti);
           (*g)[step_id].id = step_id;
+          if(ti->IsOnTarget){
+            (*g)[step_id].ontarget = true;
+          }
           vertex_t cg_parent = parent_task->current_step_id;
 
           edge_t e; bool b;
           boost::tie(e,b) = boost::add_edge(cg_parent, step_id, (*g));
           // TODO: may also be an initial task for a team on target, need more details for the edge type
-          (*g)[e].type = ti->IsOnTarget ? targetedge : iforkedge;
+          (*g)[e].type = iforkedge;
         #else
           insert_leaf(new_task_node, ti);
         #endif
@@ -579,6 +593,9 @@ static void ompt_ta_implicit_task(
     #ifdef GRAPH_MACRO
       vertex_t step_id = insert_leaf(new_task_node, ti);
       (*g)[step_id].id = step_id;
+      if(ti->IsOnTarget){
+        (*g)[step_id].ontarget = true;
+      }
       vertex_t cg_parent = parallel->start_cg_node;
 
       EdgeFull edge = {iforkedge, cg_parent, step_id};
@@ -723,6 +740,10 @@ static void ompt_ta_sync_region(
       // FJ: continuation edge and continuation node
       (*g)[step_id].id = step_id;
       (*g)[step_id].end_event = event_sync_region_end;
+      if(ti->IsOnTarget){
+        (*g)[step_id].ontarget = true;
+      }
+
       edge_t e;
       bool b;
       boost::tie(e,b) = boost::add_edge(current_task->current_step_id, step_id, (*g));
@@ -804,6 +825,10 @@ static void ompt_ta_task_create(ompt_data_t *encountering_task_data,
   int fork_node = insert_leaf(new_task_node,ti);
 
   (*g)[fork_node].id = fork_node;
+  if(ti->IsOnTarget){
+    (*g)[fork_node].ontarget = true;
+  }
+
   edge_t e; bool b;
   boost::tie(e,b) = boost::add_edge(cg_parent,fork_node,(*g));
   (*g)[e].type = eforkedge;
@@ -812,6 +837,9 @@ static void ompt_ta_task_create(ompt_data_t *encountering_task_data,
 
   // 2. add a continuation node and continuation edge, notice insert_leaf will set the current_step_id of current_task to be the continuation node
   (*g)[continuation_node].id = continuation_node;
+  if(current_task->IsOnTarget){
+    (*g)[continuation_node].ontarget = true;
+  }
 
   edge_t ee; bool bb;
   boost::tie(ee,bb) = boost::add_edge(cg_parent,continuation_node,(*g));
@@ -938,17 +966,64 @@ static void ompt_ta_target(ompt_target_t kind, ompt_scope_endpoint_t endpoint,
                              int device_num, ompt_data_t *task_data,
                              ompt_id_t target_id, const void *codeptr_ra) 
 {
-  printf("[target] ");
+  if(kind != ompt_target){
+    return;
+  }
+
+  printf("[target] %p ", codeptr_ra);
 
   task_t* current_task = (task_t*) task_data->ptr;
+
   if (endpoint == ompt_scope_begin)
   {
     printf("scope begin \n");
     current_task->IsOnTarget = true;
+
+    #ifdef GRAPH_MACRO
+      int s = current_task->current_step_id;
+      (*g)[s].end_event = event_target_begin;
+
+      TreeNode *parent = find_parent(current_task);
+      int step_id = insert_leaf(parent, current_task);
+      (*g)[step_id].id = step_id;
+      (*g)[step_id].ontarget = true;
+
+      edge_t e; bool b;
+      boost::tie(e,b) = boost::add_edge(s,step_id,(*g));
+      (*g)[e].type = targetedge;
+
+      targetRegion tr = targetRegion();
+      tr.begin_node = s;
+      trm->insert(std::pair<unsigned int, targetRegion>(s, tr));
+
+      target_begin_node = s;
+    #endif
   }
   else if(endpoint == ompt_scope_end){
     printf("scope end \n");
     current_task->IsOnTarget = false;
+
+    #ifdef GRAPH_MACRO
+      int s = current_task->current_step_id;
+      (*g)[s].end_event = event_target_end;
+
+      TreeNode *parent = find_parent(current_task);
+      int step_id = insert_leaf(parent, current_task);
+      (*g)[step_id].id = step_id;
+      (*g)[step_id].ontarget = false;
+
+      edge_t e; bool b;
+      boost::tie(e,b) = boost::add_edge(s,step_id,(*g));
+      (*g)[e].type = contedge;
+
+      if(trm->find(target_begin_node) != trm->end()){
+        targetRegion &tr = trm->at(target_begin_node);
+        tr.end_node = s;
+      }
+
+      target_begin_node = 0;
+      target_end_node = s;
+    #endif
   }
   else{
     printf("\n");
@@ -964,25 +1039,37 @@ static void ompt_ta_device_mem(ompt_data_t *target_task_data,
                                 int dest_device_num, size_t bytes,
                                 const void *codeptr_ra)
 {
-  // printf("[ompt_ta_device_mem] original addr %p ", orig_addr);
-  // if (device_mem_flag & ompt_device_mem_flag_to){
-  //   printf("to \n");
-  // }
-  // else if (device_mem_flag & ompt_device_mem_flag_from){
-  //   printf("from \n");
-  // }
-  // else if (device_mem_flag & ompt_device_mem_flag_alloc){
-  //   printf("alloc \n");
-  // }
-  // else if (device_mem_flag & ompt_device_mem_flag_release){
-  //   printf("release \n");
-  // }
-  // else if (device_mem_flag & ompt_device_mem_flag_associate){
-  //   printf("associate \n");
-  // }
-  // else if (device_mem_flag & ompt_device_mem_flag_disassociate){
-  //   printf("associate \n");
-  // }
+  printf("[device_mem] original addr %p, destination address %p, size %lu, ", orig_addr, dest_addr, bytes);
+
+  if(target_begin_node != 0){
+    DataMove dm(orig_addr, dest_addr, bytes, device_mem_flag);
+    if(trm->find(target_begin_node) != trm->end()){
+      targetRegion &tr = trm->at(target_begin_node);
+      tr.dmv.push_back(dm);
+    }
+  }
+
+  std::string kind = "";
+  if (device_mem_flag & ompt_device_mem_flag_to){
+    kind = kind + "to | ";
+  }
+  if (device_mem_flag & ompt_device_mem_flag_from){
+    kind = kind + "from | ";
+  }
+  if (device_mem_flag & ompt_device_mem_flag_alloc){
+    kind = kind + "alloc | ";
+  }
+  if (device_mem_flag & ompt_device_mem_flag_release){
+    kind = kind + "release | ";
+  }
+  if (device_mem_flag & ompt_device_mem_flag_associate){
+    kind = kind + "associate | ";
+  }
+  if (device_mem_flag & ompt_device_mem_flag_disassociate){
+    kind = kind + "disassociate | ";
+  }
+
+  std::cout << kind << std::endl;
   
 } 
 
@@ -1011,16 +1098,27 @@ static int ompt_tsan_initialize(ompt_function_lookup_t lookup, int device_num,
   SET_CALLBACK(target);
   SET_CALLBACK(device_mem);
 
-  savedEdges = new ConcurrentVector<EdgeFull>(10);
-  g = new Graph(vertex_size);
+  #ifdef GRAPH_MACRO
+    savedEdges = new ConcurrentVector<EdgeFull>(10);
+    g = new Graph(vertex_size);
+
+    trm = new std::unordered_map<unsigned int, targetRegion>();
+    trm->reserve(5);
+  #endif
   return 1; // success
 }
 
 static void ompt_tsan_finalize(ompt_data_t *tool_data) {
   //__tsan_print_DPST_info(true);
-  print_graph();
-  delete savedEdges;
-  delete g;
+
+  #ifdef GRAPH_MACRO
+    print_graph();
+    delete savedEdges;
+    delete g;
+
+    print_datamove();
+    delete trm;
+  #endif
 }
 
 static bool scan_tsan_runtime() {
@@ -1048,6 +1146,7 @@ ompt_start_tool(unsigned int omp_version, const char *runtime_version) {
 }
 
 void print_graph(){
+#ifdef GRAPH_MACRO
   const char* env_p = std::getenv("PRINT_GRAPHML");
   if(!env_p || (strcmp(env_p, "TRUE") != 0)){
     return;
@@ -1067,6 +1166,7 @@ void print_graph(){
   auto vertex_event_map = boost::get(&Vertex::end_event, *g);
   auto vertex_has_race_map = boost::get(&Vertex::has_race, *g);
   auto vertex_race_stack_map = boost::get(&Vertex::race_stack,*g);
+  auto vertex_ontarget_map = boost::get(&Vertex::ontarget, *g);
 
   dynamic_properties dp;
   dp.property("vertex_id", vertex_id_map);
@@ -1074,8 +1174,29 @@ void print_graph(){
   dp.property("end_event", vertex_event_map);
   dp.property("has_race", vertex_has_race_map);
   dp.property("race_stack", vertex_race_stack_map);
+  dp.property("ontarget", vertex_ontarget_map);
 
   std::ofstream output("data/rawgraphml.txt");
   write_graphml(output, *g, dp, true);
+#endif 
+}
+
+void print_datamove(){
+  std::ofstream output("data/movement.txt");
+  output << "orig_addr,dest_addr,bytes,flag" << std::endl;
+
+  for (auto it = trm->begin(); it != trm->end(); ++it) {
+    targetRegion &tr = it->second;
+    std::vector<DataMove> dmv = tr.dmv;
   
+    output << "begin_node," << tr.begin_node << ",";
+    output << "end_node," << tr.end_node << std::endl;
+    for(DataMove dm : dmv){
+      output << dm.orig_addr << ",";
+      output << dm.dest_addr << ",";
+      output << dm.bytes << ",";
+      output << dm.device_mem_flag << std::endl;
+    }
+
+  }
 }
