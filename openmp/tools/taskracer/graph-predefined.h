@@ -15,7 +15,7 @@ struct Vertex {
   unsigned int id;
   std::string end_event;
   bool has_race = false;
-  std::string race_stack;
+  std::string stack;
   bool ontarget = false;
 };
 
@@ -174,6 +174,13 @@ struct targetRegion{
     }
 };
 
+bool addedge(vertex_t source, vertex_t target, std::string type){
+    edge_t e;
+    bool b;
+    boost::tie(e,b) = boost::add_edge(source, target, (*g));
+    (*g)[e].type = type;
+    return b;
+}
 
 
 #endif

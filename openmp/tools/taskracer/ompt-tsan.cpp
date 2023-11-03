@@ -62,7 +62,7 @@ struct DependencyData final : DataPoolEntry<DependencyData> {
   TreeNode* out = nullptr;
   TreeNode* inoutset = nullptr;
 
-  std::mutex mutex_;
+  // std::mutex mutex_;
 
   void Reset() {}
 
@@ -146,7 +146,7 @@ static void drawDependEdges(task_t *task, unsigned int current_step){
 }
 
 static void AcquireAndReleaseDependencies(task_t *task, DependencyData* dd, ompt_dependence_type_t type) {
-  std::lock_guard<std::mutex> lock(dd->mutex_);
+  // std::lock_guard<std::mutex> lock(dd->mutex_);
   bool has_out = (dd->out != nullptr);
   bool has_inoutset = (dd->inoutset != nullptr);
   std::vector<TreeNode*> &task_depending_nodes = task->depending_task_nodes;
@@ -190,7 +190,6 @@ public:
   unsigned int parallelism;
   std::atomic<int> remaining_task;
   task_t *encounter_task;
-  task_t *current_join_master;
   bool IsOnTarget{false};
   bool isTeams{false};
 
@@ -206,7 +205,7 @@ public:
 #ifdef GRAPH_MACRO
   parallel_t(int parallelism, task_t *task, vertex_t node)
     : parallelism(parallelism), remaining_task(parallelism),
-      encounter_task(task), current_join_master(nullptr), start_cg_node(node) {
+      encounter_task(task), start_cg_node(node) {
         this->end_nodes_to_join = std::vector<vertex_t>(parallelism, 0);
         this->IsOnTarget = task->IsOnTarget;
       }
@@ -252,6 +251,8 @@ void __attribute__((weak)) __tsan_set_ompt_print_function(void (*f)());
 void __attribute__((weak)) __tsan_set_report_race_steps_function(void (*f)(int,int));
 
 void __attribute__((weak)) __tsan_set_report_race_stack_function(void (*f)(char*, bool, unsigned int, unsigned int));
+
+char* __attribute__((weak)) __tsan_symbolize_pc(void* codeptr_ra, unsigned int &line, unsigned int &col);
 } // extern "C"
 
 
@@ -309,13 +310,15 @@ void ompt_report_race_steps_func(int cur, int prev){
 
 void ompt_report_race_stack_func(char* s, bool first, unsigned int current_step, unsigned int prev_step){
 #ifdef GRAPH_MACRO
-  printf("race stack: %s \n", s);
-  printf("first? %d, current_step %d, previous_step %d \n", first, current_step, prev_step);
+  #ifdef DEBUG_INFO
+    printf("race stack: %s \n", s);
+    printf("first? %d, current_step %d, previous_step %d \n", first, current_step, prev_step);
+  #endif
   if(first){
-    (*g)[current_step].race_stack = s;
+    (*g)[current_step].stack = s;
   }
   else{
-    (*g)[prev_step].race_stack = s;
+    (*g)[prev_step].stack = s;
   }
 #endif
 }
@@ -397,6 +400,18 @@ static void ompt_ta_parallel_begin
   edge_t e; bool b;
   boost::tie(e,b) = boost::add_edge(cg_parent,step_id,(*g));
   (*g)[e].type = contedge;
+
+  if (codeptr_ra != nullptr)
+  {
+    unsigned int line;
+    unsigned int col;
+    char* pc = (char*) codeptr_ra;
+    pc = pc - 1;
+
+    char* file = __tsan_symbolize_pc( (void*) pc, line, col);
+
+    printf("[parallel_begin] file: %s, line: %d, col: %d \n", file, line, col);
+  }
 #else
   parallel_data->ptr = new parallel_t(requested_parallelism, current_task);
   insert_leaf(new_finish_node, current_task);
@@ -454,16 +469,26 @@ static void ompt_ta_parallel_end
     
     edge_t ee; bool bb;
     boost::tie(ee,bb) = boost::add_edge(joining_node,step_id,(*g));
-    (*g)[ee].type = joinedge;
+    (*g)[ee].type = barrieredge;
     printf("%d ", joining_node);
   }
   printf("\n");
   if(parallel->isTeams){
-    printf("[parallen_end] this is teams \n");
+    printf(" @@ this is teams \n");
   }
   
   if(! parallel->isTeams){
-    printf("[parallel_end] this is parallel \n");
+    printf(" @@ this is parallel \n");
+  }
+
+  if (codeptr_ra != nullptr)
+  {
+    unsigned int line;
+    unsigned int col;
+    char* pc = (char*) codeptr_ra;
+    char* file = __tsan_symbolize_pc( (void*) pc, line, col);
+
+    printf("[parallel_end] file: %s, line: %d, col: %d \n", file, line, col);
   }
 #else
   insert_leaf(parent, current_task);
@@ -652,17 +677,44 @@ static void ompt_ta_sync_region(
       finish_t *new_finish =
           new finish_t{new_finish_node, current_task->current_finish, current_task};
       current_task->current_finish = new_finish;
-      insert_leaf(new_finish_node, current_task);
+      int current_step = current_task->current_step_id;
+      int next_step = insert_leaf(new_finish_node, current_task);
 
-      // TODO: taskgroup step node in computation graph
+      #ifdef GRAPH_MACRO
+        parallel_t *pr = new parallel_t(0, current_task, current_step);
+        new_finish->corresponding_pr = pr;
+        pr->end_nodes_to_join.reserve(5);
+
+        (*g)[next_step].id = next_step;
+        (*g)[current_step].end_event = "taskgroup_begin";
+        addedge(current_step, next_step, contedge);
+      #else
+        parallel_t *pr = new parallel_t(0, current_task);
+        new_finish->corresponding_pr = pr;
+      #endif
     } else if (endpoint == ompt_scope_end) {
       finish_t *finish = current_task->current_finish;
       TreeNode *parent = find_parent(finish);
       current_task->current_finish = finish->parent;
-      delete finish;
-      insert_leaf(parent, current_task);
+      parallel_t *pr = (parallel_t*) finish->corresponding_pr;
 
-      // TODO: taskgroup end 
+      #ifdef GRAPH_MACRO
+        vertex_t current_step = current_task->current_step_id;
+        vertex_t next_step = insert_leaf(parent, current_task);
+
+        (*g)[next_step].id = next_step;
+        (*g)[current_step].end_event = "taskgroup_end";
+        addedge(current_step, next_step, contedge);
+
+        for(vertex_t join_node : pr->end_nodes_to_join){
+          addedge(join_node, next_step, barrieredge);
+        }
+      #else
+        insert_leaf(parent, current_task);
+      #endif
+
+      delete pr;
+      delete finish;
     }
   } else if(kind == ompt_sync_region_taskwait){
     assert(task_data->ptr != nullptr);
@@ -768,6 +820,8 @@ static void ompt_ta_sync_region(
         task_t *current_task = (task_t *)task_data->ptr;
         unsigned int team_index = current_task->index;
         int current_step = current_task->current_step_id;
+
+        current_task->added_to_others_join = false;
         if(team_index != 0){
           return;
         }
@@ -786,7 +840,7 @@ static void ompt_ta_sync_region(
           edge_t e;
           bool b;
           boost::tie(e,b) = boost::add_edge(node, current_task->current_step_id, (*g));
-          (*g)[e].type = joinedge;
+          (*g)[e].type = barrieredge;
         }
 
         parallel->end_nodes_to_join.resize(parallel->parallelism);
@@ -812,9 +866,9 @@ static void ompt_ta_task_create(ompt_data_t *encountering_task_data,
                                   ? current_task->current_finish
                                   : current_task->enclosed_finish;
                                   
-  parallel_t* parallel = (parallel_t*) current_task->parallel_region;
-  unsigned int parallelism = parallel->parallelism;
-  task_t *ti = new task_t{new_task_node, enclosed_finish, true, parallelism+1, current_task->parallel_region, current_task};
+  parallel_t* pr = (parallel_t*) enclosed_finish->corresponding_pr;
+  unsigned int parallelism = pr->parallelism;
+  task_t *ti = new task_t{new_task_node, enclosed_finish, true, parallelism+1, pr, current_task};
   new_task_data->ptr = ti;
 
 #ifdef GRAPH_MACRO
@@ -844,6 +898,16 @@ static void ompt_ta_task_create(ompt_data_t *encountering_task_data,
   edge_t ee; bool bb;
   boost::tie(ee,bb) = boost::add_edge(cg_parent,continuation_node,(*g));
   (*g)[ee].type = contedge;
+
+  if (codeptr_ra != nullptr)
+  {
+    unsigned int line;
+    unsigned int col;
+    char* pc = (char*) codeptr_ra;
+    char* file = __tsan_symbolize_pc( (void*) pc, line, col);
+
+    printf("[task_create] file: %s, line: %d, col: %d \n", file, line, col);
+  }
 #else
   insert_leaf(new_task_node,ti);
   insert_leaf(parent, current_task);
@@ -914,6 +978,7 @@ static void ompt_ta_task_schedule(
         block++;
       }
     }
+    
     if (prior_task_status == ompt_task_complete && prior_task_data) {
       task_t *prior_ti = (task_t *)prior_task_data->ptr;
 
@@ -921,16 +986,18 @@ static void ompt_ta_task_schedule(
       if(prior_ti->added_to_others_join == false){
         parallel_t* previous_task_parallel_region = (parallel_t*) prior_ti->parallel_region;
         int team_index = prior_ti->index;
+        vertex_t prior_ti_end_node = prior_ti->node_in_dpst->children_list_tail->corresponding_id;
 
         if(team_index > previous_task_parallel_region->parallelism){
-          previous_task_parallel_region->end_nodes_to_join.push_back(prior_ti->node_in_dpst->children_list_tail->corresponding_id);
+          previous_task_parallel_region->end_nodes_to_join.push_back(prior_ti_end_node);
         }
         else{
-          previous_task_parallel_region->end_nodes_to_join[team_index] = prior_ti->node_in_dpst->children_list_tail->corresponding_id;
+          previous_task_parallel_region->end_nodes_to_join[team_index] = prior_ti_end_node;
         }
+
+        (*g)[prior_ti_end_node].end_event = "task_schedule";
                 
-        prior_ti->added_to_others_join = true;
-        // printf("[TASK SCHEDULE] step id %d \n", prior_ti->node_in_dpst->children_list_tail->corresponding_id);
+        printf("[task_schedule] previous task end node %lu @@@ ", prior_ti_end_node);
       }
     #endif
       delete prior_ti;
@@ -939,13 +1006,12 @@ static void ompt_ta_task_schedule(
   
   assert(next_task_data->ptr);
   task_t* next_task = (task_t*) next_task_data->ptr;
+  printf("[task_schedule] next task starting node %d \n", next_task->current_step_id);
 
   __tsan_set_step_in_tls(next_task->current_step_id);
   if (next_task->execution == 0 && next_task->DependencyCount > 0) {
     unsigned int current_step = next_task->current_step_id;
-    #ifdef GRAPH_MACRO
-      drawDependEdges(next_task, current_step);
-    #endif
+    drawDependEdges(next_task, current_step);
   }
   next_task->execution++;
 
@@ -968,6 +1034,17 @@ static void ompt_ta_target(ompt_target_t kind, ompt_scope_endpoint_t endpoint,
 {
   if(kind != ompt_target){
     return;
+  }
+
+  if (codeptr_ra != nullptr)
+  {
+    unsigned int line;
+    unsigned int col;
+    char* pc = (char*) codeptr_ra;
+    pc = pc - 1;
+    char* file = __tsan_symbolize_pc( (void*) pc, line, col);
+
+    printf("[target] file: %s, line: %d, col: %d \n", file, line, col);
   }
 
   printf("[target] %p ", codeptr_ra);
@@ -1165,7 +1242,7 @@ void print_graph(){
   auto edge_type_map = boost::get(&Edge::type, *g);
   auto vertex_event_map = boost::get(&Vertex::end_event, *g);
   auto vertex_has_race_map = boost::get(&Vertex::has_race, *g);
-  auto vertex_race_stack_map = boost::get(&Vertex::race_stack,*g);
+  auto vertex_stack_map = boost::get(&Vertex::stack,*g);
   auto vertex_ontarget_map = boost::get(&Vertex::ontarget, *g);
 
   dynamic_properties dp;
@@ -1173,7 +1250,7 @@ void print_graph(){
   dp.property("edge_type", edge_type_map);
   dp.property("end_event", vertex_event_map);
   dp.property("has_race", vertex_has_race_map);
-  dp.property("race_stack", vertex_race_stack_map);
+  dp.property("race_stack", vertex_stack_map);
   dp.property("ontarget", vertex_ontarget_map);
 
   std::ofstream output("data/rawgraphml.txt");

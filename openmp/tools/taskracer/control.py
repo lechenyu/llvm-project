@@ -94,7 +94,7 @@ def run_exe(args) -> returnCode:
         logger.error(stderr)
         return returnCode.ERROR
     
-    write_to_file(runlogfile, stdout)
+    write_to_file(runlogfile, stdout + f"\n \n" + stderr)
     
     return returnCode.SUCCESS
 
@@ -134,13 +134,13 @@ def main(args):
     global inputfile
     global runlogfile
     
+    if check_path_exists(args) != returnCode.SUCCESS:
+        return
+
     if args.exe is not None:
         flag = run_exe(args)
         if flag != returnCode.SUCCESS:
             return
-
-    if check_path_exists(args) != returnCode.SUCCESS:
-        return
     
     G = nx.read_graphml(inputfile)
 

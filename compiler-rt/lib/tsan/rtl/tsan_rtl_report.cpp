@@ -27,6 +27,19 @@
 
 namespace __tsan {
 
+extern "C" {
+  INTERFACE_ATTRIBUTE
+  char* __tsan_symbolize_pc(void* codeptr_ra, unsigned int &line, unsigned int &col){
+    uptr pc = (uptr) codeptr_ra;
+    SymbolizedStack *ent = SymbolizeCode((uptr)pc);
+
+    line = ent->info.line;
+    col = ent->info.column;
+
+    return ent->info.file;
+  }
+}
+
 using namespace __sanitizer;
 
 static ReportStack *SymbolizeStack(StackTrace trace);
