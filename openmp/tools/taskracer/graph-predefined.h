@@ -39,6 +39,9 @@ const std::string event_sync_region_end = "sync_region_end";
 const std::string event_task_create = "task_create";
 const std::string event_target_begin = "target_begin";
 const std::string event_target_end = "target_end";
+const std::string event_taskwait_end = "taskwait_end";
+const std::string event_taskgroup_begin = "taskgroup_begin";
+const std::string event_taskgroup_end = "taskgroup_end";
 
 //Define the graph using those classes
 typedef adjacency_list<vecS, vecS, directedS, Vertex, Edge > Graph;

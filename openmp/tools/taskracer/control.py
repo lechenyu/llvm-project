@@ -88,13 +88,13 @@ def run_exe(args) -> returnCode:
 
     dir = os.getcwd()
     cmd = f"./{args.exe}"
-    stdout, stderr, flag = run_cmd(cmd, dir)
-    if flag != 0:
-        logger.error(f"error while running {args.exe}")
-        logger.error(stderr)
-        return returnCode.ERROR
-    
+    stdout, stderr, flag = run_cmd(cmd, dir)    
     write_to_file(runlogfile, stdout + f"\n \n" + stderr)
+
+    if flag != 0:
+        if "ThreadSanitizer: data race" not in stderr:
+            logger.error(f"error while running {args.exe}, we will not continue execution")
+            return returnCode.ERROR
     
     return returnCode.SUCCESS
 
