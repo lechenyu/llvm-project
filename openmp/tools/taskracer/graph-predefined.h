@@ -13,10 +13,10 @@ void print_datamove();
 
 struct Vertex {
   unsigned int id;
-  std::string end_event;
   bool has_race = false;
-  std::string stack;
   bool ontarget = false;
+  std::string end_event;
+  std::string stack;
 };
 
 struct Edge{

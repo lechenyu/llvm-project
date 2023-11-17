@@ -60,12 +60,11 @@ static TreeNode kNullTaskWait = {kNullStepId, TASKWAIT};
 // For example, depend(out:i) depend(in:j)
 // We will have one DependencyData for i, one for j
 struct DependencyData final : DataPoolEntry<DependencyData> {
-  // TODO: need a thread safe concurrent vector
   std::vector<TreeNode*> in = std::vector<TreeNode*>();
   TreeNode* out = nullptr;
   TreeNode* inoutset = nullptr;
 
-  // std::mutex mutex_;
+  std::mutex mutex_;
 
   void Reset() {}
 
@@ -150,7 +149,7 @@ static void drawDependEdges(task_t *task, unsigned int current_step){
 }
 
 static void AcquireAndReleaseDependencies(task_t *task, DependencyData* dd, ompt_dependence_type_t type) {
-  // std::lock_guard<std::mutex> lock(dd->mutex_);
+  std::lock_guard<std::mutex> lock(dd->mutex_);
   bool has_out = (dd->out != nullptr);
   bool has_inoutset = (dd->inoutset != nullptr);
   std::vector<TreeNode*> &task_depending_nodes = task->depending_task_nodes;
