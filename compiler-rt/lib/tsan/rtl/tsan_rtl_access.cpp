@@ -701,6 +701,14 @@ void MemoryAccessRangeT(ThreadState* thr, uptr pc, uptr addr, uptr size) {
   if (*shadow_mem == Shadow::kRodata)
     return;
 
+  if (arbalest_enabled && !thr->is_in_runtime) {
+    if (is_read) {
+      CheckVsmForMemoryRange(thr, pc, addr, size);
+    } else {
+      UpdateVsmForMemoryRange(thr, addr, size);
+    }
+  }
+
   FastState fast_state = thr->fast_state;
   if (UNLIKELY(fast_state.GetIgnoreBit()))
     return;

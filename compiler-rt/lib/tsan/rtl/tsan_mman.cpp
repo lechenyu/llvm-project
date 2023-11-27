@@ -228,8 +228,12 @@ void *user_calloc(ThreadState *thr, uptr pc, uptr size, uptr n) {
     ReportCallocOverflow(n, size, &stack);
   }
   void *p = user_alloc_internal(thr, pc, n * size);
-  if (p)
+  if (p) {
     internal_memset(p, 0, n * size);
+    if (ctx->initialized) {
+      MemoryAccessRange(thr, pc, (uptr)p, n * size, true);
+    }
+  }
   return SetErrnoOnNull(p);
 }
 
@@ -255,10 +259,13 @@ void OnUserAlloc(ThreadState *thr, uptr pc, uptr p, uptr sz, bool write) {
   // In such case just reset the shadow range, it is fine since
   // it affects only a small fraction of special objects.
   if (write && thr->ignore_reads_and_writes == 0 &&
-      atomic_load_relaxed(&thr->trace_pos))
+      atomic_load_relaxed(&thr->trace_pos)) {
+    //Printf("Imitite Write %p, %lu\n", reinterpret_cast<char *>(p), sz);
     MemoryRangeImitateWrite(thr, pc, (uptr)p, sz);
-  else
+  } else {
+    //Printf("MemoryResetRange %p, %lu, %d, %d\n", reinterpret_cast<char *>(p), sz, write, thr->ignore_reads_and_writes);
     MemoryResetRange(thr, pc, (uptr)p, sz);
+  }
 }
 
 void OnUserFree(ThreadState *thr, uptr pc, uptr p, bool write) {

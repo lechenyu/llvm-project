@@ -20,7 +20,10 @@
 
 using namespace __tsan;
 
-void __tsan_init() { Initialize(cur_thread_init()); }
+void __tsan_init(u8 enable_arbalest) {
+  arbalest_enabled = enable_arbalest;
+  Initialize(cur_thread_init()); 
+}
 
 void __tsan_flush_memory() {
   FlushShadowMemory();
@@ -54,14 +57,6 @@ void __tsan_unaligned_write16(void *addr) {
   ThreadState *thr = cur_thread();
   UnalignedMemoryAccess(thr, pc, (uptr)addr, 8, kAccessWrite);
   UnalignedMemoryAccess(thr, pc, (uptr)addr + 8, 8, kAccessWrite);
-}
-
-void __arbalest_unaligned_read16(const void *addr) {
-
-}
-
-void __arbalest_unaligned_write16(void *addr) {
-  
 }
 
 extern "C" {

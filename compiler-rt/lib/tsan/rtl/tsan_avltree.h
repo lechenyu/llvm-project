@@ -13,25 +13,6 @@
   } while (0)
 
 namespace __tsan {
-
-// typedef enum ompt_mapping_op_t {
-//     ompt_mapping_alloc                   = 1,
-//     ompt_mapping_transfer_to_device      = 2,
-//     ompt_mapping_transfer_from_device    = 3,
-//     ompt_mapping_delete                  = 4,
-//     ompt_mapping_associate               = 5,
-//     ompt_mapping_disassociate            = 6
-// } ompt_mapping_op_t;
-
-typedef enum ompt_device_mem_flag_t {
-  ompt_device_mem_flag_to = 0x01,
-  ompt_device_mem_flag_from = 0x02,
-  ompt_device_mem_flag_alloc = 0x04,
-  ompt_device_mem_flag_release = 0x08,
-  ompt_device_mem_flag_associate = 0x10,
-  ompt_device_mem_flag_disassociate = 0x20
-} ompt_device_mem_flag_t;
-
 struct Interval {
   uptr left_end;   // included
   uptr right_end;  // excluded
@@ -98,14 +79,6 @@ struct Node {
         parent(nullptr),
         height(1),
         index(-1) {}
-
-  // bool insert(Node *n);
-
-  // Node* find(const Interval &i);
-
-  // Node* removeCurrentNode(const Interval &i, bool left_child_for_parent);
-
-  // Node* remove(const Interval &i, bool left_child_for_parent);
 };
 
 class IntervalTree {
@@ -131,14 +104,18 @@ class IntervalTree {
     ~Iterator();
 
     Iterator &operator++() {
-      next_node = stack[idx++];
+      if (idx < size) {
+        next_node = stack[idx++];
+      } else {
+        next_node = nullptr;
+      }
       return *this;
     }
 
     Node *operator*() const { return next_node; }
 
     bool operator==(const Iterator &i) const {
-      return this->next_node == i.next_node;
+      return this->idx == i.idx;
     }
 
     bool operator!=(const Iterator &i) const { return !(*this == i); }
@@ -168,13 +145,9 @@ class IntervalTree {
 
   ~IntervalTree();
 
-  Iterator begin() { return Iterator(root->parent, size + 1); }
+  Iterator begin() { return Iterator(root, size); }
 
-  Iterator end() {
-    Iterator i{};
-    i.next_node = root->parent;
-    return i;
-  }
+  Iterator end() { return Iterator(nullptr, size); }
 
   Node *find(uptr begin, uptr size) { return find({begin, begin + size}); }
 

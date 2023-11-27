@@ -389,6 +389,7 @@ struct Context {
 #endif
   IntervalTree t_to_h;
   IntervalTree h_to_t;
+  //TODO: use verbose to control output? maybe we don't need this variable
   bool arbalest_verbose;
 };
 
@@ -687,6 +688,7 @@ ALWAYS_INLINE void ProcessPendingSignals(ThreadState *thr) {
 }
 
 extern bool is_initialized;
+extern bool arbalest_enabled;
 
 ALWAYS_INLINE
 void LazyInitialize(ThreadState *thr) {
@@ -814,6 +816,22 @@ void FuncExit(ThreadState *thr) {
 #endif
   thr->shadow_stack_pos--;
 }
+
+void VsmSet(RawVsm* p, RawVsm* end, RawVsm val);
+void VsmUpdateMapTo(RawVsm* p, RawVsm* end);
+void VsmUpdateMapFrom(RawVsm* p, RawVsm* end);
+void VsmSetZero(uptr addr, uptr size);
+void VsmRangeSet(uptr addr, uptr size, RawVsm val);
+void VsmRangeUpdateMapTo(uptr addr, uptr size);
+void VsmRangeUpdateMapFrom(uptr addr, uptr size);
+bool CheckVsm(ThreadState *thr, uptr pc, uptr addr, uptr size);
+void UnalignedCheckVsm(ThreadState *thr, uptr pc, uptr addr, uptr size);
+void UnalignedCheckVsm16(ThreadState *thr, uptr pc, uptr addr);
+void CheckVsmForMemoryRange(ThreadState *thr, uptr pc, uptr addr, uptr size);
+void UpdateVsm(ThreadState *thr, uptr addr, uptr size);
+void UnalignedUpdateVsm(ThreadState *thr, uptr addr, uptr size);
+void UnalignedUpdateVsm16(ThreadState *thr, uptr addr);
+void UpdateVsmForMemoryRange(ThreadState *thr, uptr addr, uptr size);
 
 #if !SANITIZER_GO
 extern void (*on_initialize)(void);

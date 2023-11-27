@@ -1836,6 +1836,13 @@ defm sanitize_stats : BoolOption<"f", "sanitize-stats",
   PosFlag<SetTrue, [], "Enable">, NegFlag<SetFalse, [CoreOption, NoXarchOption], "Disable">,
   BothFlags<[], " sanitizer statistics gathering.">>,
   Group<f_clang_Group>;
+def farbalest : Flag<["-"], "farbalest">,
+                                     Group<f_clang_Group>,
+                                     HelpText<"Enable Arbalest data inconsistency detector as TSan's extension">;
+def fno_arbalest : Flag<["-"], "fno-arbalest">,
+                                        Group<f_clang_Group>,
+                                        Flags<[CoreOption, NoXarchOption]>,
+                                        HelpText<"Disable Arbalest data inconsistency detector as TSan's extension (default)">;
 def fsanitize_thread_memory_access : Flag<["-"], "fsanitize-thread-memory-access">,
                                      Group<f_clang_Group>,
                                      HelpText<"Enable memory access instrumentation in ThreadSanitizer (default)">;

@@ -9,6 +9,7 @@ set(TSAN_UNIT_TEST_SOURCES
   tsan_trace_test.cpp
   tsan_unit_test_main.cpp
   tsan_vector_clock_test.cpp
+  tsan_arbalest_test.cpp
   )
 
 add_tsan_unittest(TsanUnitTest

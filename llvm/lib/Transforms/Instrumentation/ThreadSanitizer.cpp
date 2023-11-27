@@ -83,6 +83,9 @@ static cl::opt<bool> ClCompoundReadBeforeWrite(
     "tsan-compound-read-before-write", cl::init(false),
     cl::desc("Emit special compound instrumentation for reads-before-writes"),
     cl::Hidden);
+static cl::opt<bool> ClEnableArbalest(
+    "tsan-arbalest", cl::init(false),
+    cl::desc("Run Arbalest data inconsistency detector with TSan"), cl::Hidden);
 
 STATISTIC(NumInstrumentedReads, "Number of instrumented reads");
 STATISTIC(NumInstrumentedWrites, "Number of instrumented writes");
@@ -98,7 +101,6 @@ STATISTIC(NumOmittedNonCaptured, "Number of accesses ignored due to capturing");
 
 const char kTsanModuleCtorName[] = "tsan.module_ctor";
 const char kTsanInitName[] = "__tsan_init";
-bool ArbalestEnabled = true;
 
 namespace {
 
@@ -188,9 +190,15 @@ private:
 };
 
 void insertModuleCtor(Module &M) {
+  if (ClEnableArbalest) {
+    errs() << "Turn on Arbalest-related instrumentation\n";
+  } else {
+    errs() << "Turn off Arbalest-related instrumentation\n";
+  }
+  IntegerType *U8 = Type::getInt8Ty(M.getContext());
   getOrCreateSanitizerCtorAndInitFunctions(
-      M, kTsanModuleCtorName, kTsanInitName, /*InitArgTypes=*/{},
-      /*InitArgs=*/{},
+      M, kTsanModuleCtorName, kTsanInitName, /*InitArgTypes=*/{U8},
+      /*InitArgs=*/{ConstantInt::get(U8, ClEnableArbalest ? 1 : 0, false)},
       // This callback is invoked when the functions are created the first
       // time. Hook them into the global ctors list in that case:
       [&](Function *Ctor, FunctionCallee) { appendToGlobalCtors(M, Ctor, 0); });
@@ -364,7 +372,7 @@ void ThreadSanitizer::initialize(Module &M) {
       M.getOrInsertFunction("memset", Attr, IRB.getInt8PtrTy(),
                             IRB.getInt8PtrTy(), IRB.getInt32Ty(), IntptrTy);
   
-  if (ArbalestEnabled) {
+  if (ClEnableArbalest) {
     Arb.initialize(M);
   }
 }
@@ -564,14 +572,14 @@ bool ThreadSanitizer::sanitizeFunction(Function &F,
         if (isa<MemIntrinsic>(Inst))
           MemIntrinCalls.push_back(&Inst);
         HasCalls = true;
-        if (ArbalestEnabled) {
+        if (ClEnableArbalest) {
           Arb.chooseInstructionsToInstrument(LocalLoadsAndStores, AllLoadsAndStoresForArbalest);
         }
         chooseInstructionsToInstrument(LocalLoadsAndStores, AllLoadsAndStores,
                                        DL);
       }
     }
-    if (ArbalestEnabled) {
+    if (ClEnableArbalest) {
       Arb.chooseInstructionsToInstrument(LocalLoadsAndStores, AllLoadsAndStoresForArbalest);
     }
     chooseInstructionsToInstrument(LocalLoadsAndStores, AllLoadsAndStores, DL);
@@ -605,7 +613,7 @@ bool ThreadSanitizer::sanitizeFunction(Function &F,
       InsertRuntimeIgnores(F);
   }
 
-  if (ArbalestEnabled) {
+  if (ClEnableArbalest) {
     for (auto Inst : AllLoadsAndStoresForArbalest) {
       Arb.instrumentLoadOrStore(Inst, DL);
     }

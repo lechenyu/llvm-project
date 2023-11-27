@@ -196,7 +196,10 @@ void __attribute__((weak)) AnnotatePrintf(const char *str) {
 void __attribute__((weak)) AnnotateArbalestVerboseMode(bool is_verbose) {
   assert(false && "Fail to invoke AnnotateArbalestVerboseMode in tsan");
 }
-
+bool __attribute__((weak)) ArbalestEnabled() {
+  assert(false && "Fail to invoke ArbalestEnabled in tsan");
+  return false;
+}
 int __attribute__((weak)) RunningOnValgrind() {
   runOnTsan = 0;
   return 0;
@@ -670,6 +673,7 @@ static void ompt_tsan_thread_end(ompt_data_t *thread_data) {
   TsanIgnoreWritesEnd();
 }
 
+static const char *parallel_region_desc_str[] = {"teams", "parallel", "other par"};
 /// OMPT event callbacks for handling parallel regions.
 
 static void ompt_tsan_parallel_begin(ompt_data_t *parent_task_data,
@@ -690,13 +694,13 @@ static void ompt_tsan_parallel_begin(ompt_data_t *parent_task_data,
   //   // assert(ret == 2 && "parent task must exist");
   //   Task = ToTaskData(parent_task);
   // }
-  char *Par;
+  const char *Par;
   if (flag & ompt_parallel_league) {
-    Par = "teams";
+    Par = parallel_region_desc_str[0];
   } else if (flag & ompt_parallel_team) {
-    Par = "parallel";
+    Par = parallel_region_desc_str[1];
   } else {
-    Par = "other par";
+    Par = parallel_region_desc_str[2];
   }
   VPrintf("%s begin on %s %p, task %p, team size %u\n", Par,
           (Task->IsOnTarget ? "target" : "host"), parallel_data->ptr,
@@ -721,13 +725,13 @@ static void ompt_tsan_parallel_end(ompt_data_t *parallel_data,
   TsanHappensAfter(Data->GetBarrierPtr(0));
   TsanHappensAfter(Data->GetBarrierPtr(1));
   
-  char *Par;
+  const char *Par;
   if (flag & ompt_parallel_league) {
-    Par = "teams";
+    Par = parallel_region_desc_str[0];
   } else if (flag & ompt_parallel_team) {
-    Par = "parallel";
+    Par = parallel_region_desc_str[1];
   } else {
-    Par = "other par";
+    Par = parallel_region_desc_str[2];
   }
   VPrintf("%s end on %s %p, task %p\n", Par,
           (ToTaskData(task_data)->IsOnTarget ? "target" : "host"),
@@ -1178,7 +1182,7 @@ static void ompt_tsan_mutex_released(ompt_mutex_t kind, ompt_wait_id_t wait_id,
   Lock.unlock();
 }
 
-static char *device_mem_flag_str[] = {"to",      "from",      "alloc",
+static const char *device_mem_flag_str[] = {"to",      "from",      "alloc",
                                "release", "associate", "disassociate"};
 
 static void ompt_tsan_device_mem(ompt_data_t *target_task_data,
@@ -1209,7 +1213,7 @@ static void ompt_tsan_device_mem(ompt_data_t *target_task_data,
   AnnotateMapping(orig_addr, dest_addr, bytes, device_mem_flag);
 }
 
-static char *target_kind_str[] = {nullptr,
+static const char *target_kind_str[] = {nullptr,
                                   "target",
                                   "target enter data",
                                   "target exit data",
@@ -1331,8 +1335,10 @@ static int ompt_tsan_initialize(ompt_function_lookup_t lookup, int device_num,
   SET_CALLBACK(task_schedule);
   SET_CALLBACK(dependences);
 
-  SET_CALLBACK(device_mem);
-  SET_CALLBACK(target);
+  if (ArbalestEnabled()) {
+    SET_CALLBACK(device_mem);
+    SET_CALLBACK(target);
+  }
   
   SET_CALLBACK_T(mutex_acquired, mutex);
   SET_CALLBACK_T(mutex_released, mutex);
@@ -1349,10 +1355,12 @@ static int ompt_tsan_initialize(ompt_function_lookup_t lookup, int device_num,
 
   InitialDevice = device_num;
   
-  AnnotateArbalestVerboseMode(archer_flags->verbose);
-  fprintf(stderr, "\n\n*****************************" \
-                  "\nArbalest successfully starts"  \
-                  "\n*****************************\n\n");
+  if (ArbalestEnabled()) {
+    AnnotateArbalestVerboseMode(archer_flags->verbose);
+    fprintf(stderr, "\n\n*****************************"      \
+                    "\nArbalest successfully starts"         \
+                    "\n*****************************\n\n");
+  }
   return 1; // success
 }
 

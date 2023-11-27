@@ -27,6 +27,15 @@ using namespace __tsan;
 
 namespace __tsan {
 
+typedef enum ompt_device_mem_flag_t {
+  ompt_device_mem_flag_to = 0x01,
+  ompt_device_mem_flag_from = 0x02,
+  ompt_device_mem_flag_alloc = 0x04,
+  ompt_device_mem_flag_release = 0x08,
+  ompt_device_mem_flag_associate = 0x10,
+  ompt_device_mem_flag_disassociate = 0x20
+} ompt_device_mem_flag_t;
+
 class ScopedAnnotation {
  public:
   ScopedAnnotation(ThreadState *thr, const char *aname, uptr pc)
@@ -348,6 +357,132 @@ AnnotateMemoryIsUninitialized(char *f, int l, uptr mem, uptr sz) {}
 void INTERFACE_ATTRIBUTE
 AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 optype) {
   SCOPED_ANNOTATION(AnnotateMapping);
+
+  // FIXME: Shall we always assume src is host?
+  const Interval host = {reinterpret_cast<uptr>(src_addr), reinterpret_cast<uptr>(src_addr) + bytes};
+  const Interval target = {reinterpret_cast<uptr>(dest_addr), reinterpret_cast<uptr>(dest_addr) + bytes};
+  const MapInfo mh = {reinterpret_cast<uptr>(src_addr), bytes};
+  const MapInfo mt = {reinterpret_cast<uptr>(dest_addr), bytes};
+  ASSERT(IsAppMem(host.left_end) && IsAppMem(host.right_end - 1),
+         "[%p, %p] does not fall into app mem section \n",
+         reinterpret_cast<char *>(host.left_end),
+         reinterpret_cast<char *>(host.right_end));
+  if (optype & ompt_device_mem_flag_alloc) {
+  
+  }
+
+  if (optype & ompt_device_mem_flag_associate) {
+    bool a = ctx->h_to_t.insert(host, mt);
+    bool b = ctx->t_to_h.insert(target, mh);
+
+    // check if already exists, if exists, delete all nodes 
+    // within range and add new nodes.
+    if (!a) {
+      ctx->h_to_t.removeAllNodesWithinRange(host);
+      ctx->h_to_t.insert(host, mt);
+    }
+
+    // Abovementioned case should not happen in t_to_h since we always keep
+    // the mapping info update-to-date
+    ASSERT(b, "[associate] Device address %p is already involved in a mapping \n",
+           dest_addr);
+    if (!(optype & ompt_device_mem_flag_to)) {
+      VsmRangeSet(host.left_end, bytes, VariableStateMachine::kEmpty);
+    }
+  }
+
+  if (optype & ompt_device_mem_flag_to) {
+    Node *n = ctx->t_to_h.find(target);
+    ASSERT(n,
+           "[to] Device address [%p, %p] does not involve in any "
+           "mapping \n",
+           reinterpret_cast<char *>(target.left_end),
+           reinterpret_cast<char *>(target.right_end));
+    VsmRangeUpdateMapTo(host.left_end, bytes);
+  }
+
+  if (optype & ompt_device_mem_flag_from) {
+    Node *n = ctx->t_to_h.find(target);
+    ASSERT(n,
+           "[from] Device address [%p, %p] does not involve in any "
+           "mapping \n",
+           reinterpret_cast<char *>(target.left_end),
+           reinterpret_cast<char *>(target.right_end));
+    VsmRangeUpdateMapFrom(host.left_end, bytes);
+  }
+
+  if (optype & ompt_device_mem_flag_disassociate) {
+    Node *n = ctx->t_to_h.find(target);
+    ASSERT(n,
+           "[disassociate] Device address [%p, %p] does not involve in any "
+           "mapping \n",
+           reinterpret_cast<char *>(target.left_end),
+           reinterpret_cast<char *>(target.right_end));
+    ctx->t_to_h.remove(target);
+  }
+
+  if (optype & ompt_device_mem_flag_release) {
+    //   // Node *n = ctx->t2h.find((uptr)src_addr, 1);
+    //   Node *n = ctx->t2h.find((uptr)dest_addr, 1);
+    //   ASSERT(n, "[delete] Missing data mapping for delete, target: %p\n",
+    //   src_addr); uptr host_start_addr = n->info.start; uptr size =
+    //   n->info.size; ctx->t2h.remove({(uptr)dest_addr, (uptr)dest_addr +
+    //   size});
+    //   // ctx->t2h.remove({(uptr)src_addr, (uptr)src_addr + size});
+    //   // TODO: we temporatorily comment the following line, We need a third
+    //   tree to record which host memory has been mapped
+    //   // ctx->h2t.remove({host_start_addr, host_start_addr + size});
+    //   size = ((size - 1) / kShadowCell + 1) * kShadowCell;
+    //   for (uptr offset = 0; offset < size; offset += kShadowCell) {
+    //     uptr host_addr = host_start_addr + offset;
+    //     if (UNLIKELY(!IsAppMem(host_addr))) {
+    //       Printf("[delete] target addr %zx has a corresponding host addr %zx,
+    //       but the host addr is not in application memory\n",
+    //           (uptr)src_addr + offset, host_addr);
+    //       break;
+    //     }
+
+    //     RawShadow *shadow_mem = MemToShadow(host_addr);
+
+    //     // target initialized to 0, target valid to 0
+    //     const m128 shadow =
+    //     _mm_load_si128(reinterpret_cast<m128*>(shadow_mem)); u32 shadow_0 =
+    //     _mm_extract_epi32(shadow, 0); u32 shadow_1 =
+    //     _mm_extract_epi32(shadow, 1); u32 shadow_2 =
+    //     _mm_extract_epi32(shadow, 2); u32 shadow_3 =
+    //     _mm_extract_epi32(shadow, 3);
+
+    //     // Printf("  isOV %d, isCV %d, isOVinit %d, isCVinit %d, host_addr is
+    //     %p, shadow_mem is %lu \n", (bool)(shadow_0 & GetStateBitMask),
+    //     (bool)(shadow_1 & GetStateBitMask),
+    //     //       (bool)(shadow_2 & GetStateBitMask), (bool)(shadow_3 &
+    //     GetStateBitMask), host_addr, shadow_mem); shadow_1 = shadow_1 &
+    //     kClearStateBitMask; shadow_3 = shadow_3 & kClearStateBitMask;
+
+    //     const m128 new_shadow =
+    //     _mm_setr_epi32(shadow_0,shadow_1,shadow_2,shadow_3);
+
+    //     _mm_store_si128(reinterpret_cast<m128*>(shadow_mem), new_shadow);
+
+    //     // if (offset == 0) { //##debug
+    //     //   const m128 mask_state = _mm_set1_epi32(kGetStateBitMask);
+    //     //   m128 state = _mm_and_si128(new_shadow, mask_state);
+    //     //   Printf("Release %d, %d, %d, %d\n", _mm_extract_epi32(state, 0),
+    //     _mm_extract_epi32(state, 1), _mm_extract_epi32(state, 2),
+    //     _mm_extract_epi32(state, 3));
+    //     // }
+    //   }
+    //   // Printf("insert map release %p, %p, %lu\n", src_addr, dest_addr,
+    //   bytes);
+  }
+}
+bool INTERFACE_ATTRIBUTE ArbalestEnabled() {
+  return arbalest_enabled;
+}
+
+void INTERFACE_ATTRIBUTE
+AnnotateArbalestVerboseMode(bool is_verbose) {
+  ctx->arbalest_verbose = is_verbose;
 }
 
 void INTERFACE_ATTRIBUTE

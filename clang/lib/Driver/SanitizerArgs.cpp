@@ -693,6 +693,18 @@ SanitizerArgs::SanitizerArgs(const ToolChain &TC,
     TsanAtomics =
         Args.hasFlag(options::OPT_fsanitize_thread_atomics,
                      options::OPT_fno_sanitize_thread_atomics, TsanAtomics);
+    TsanArbalest = 
+        Args.hasFlag(options::OPT_farbalest,
+                     options::OPT_fno_arbalest, TsanArbalest);
+    if (TsanArbalest &&
+        !Args.hasFlag(options::OPT_fopenmp, options::OPT_fopenmp_EQ,
+                      options::OPT_fno_openmp, false)) {
+      TsanArbalest = false;
+      if (DiagnoseErrors) {
+        D.Diag(clang::diag::err_drv_argument_only_allowed_with) << "-fopenmp"
+                                                                << "-farbalest";
+      }
+    }
   }
 
   if (AllAddedKinds & SanitizerKind::CFI) {
@@ -1151,6 +1163,10 @@ void SanitizerArgs::addArgs(const ToolChain &TC, const llvm::opt::ArgList &Args,
   if (!TsanAtomics) {
     CmdArgs.push_back("-mllvm");
     CmdArgs.push_back("-tsan-instrument-atomics=0");
+  }
+  if (TsanArbalest) {
+    CmdArgs.push_back("-mllvm");
+    CmdArgs.push_back("-tsan-arbalest=1");
   }
 
   if (HwasanUseAliases) {

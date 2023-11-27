@@ -32,3 +32,4 @@ ValgrindSlowdown
 __arbalest_read*
 __arbalest_write*
 __arbalest_unaligned*
+ArbalestEnabled

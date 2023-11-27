@@ -894,6 +894,7 @@ void ReportDMI(ThreadState *thr, uptr addr, uptr size, AccessType typ, DMIType d
   uptr tag = kExternalTagNone;
 
   ObtainCurrentStack(thr, thr->trace_prev_pc, &trace, &tag);
+  ThreadRegistryLock l(&ctx->thread_registry);
   if (IsFiredSuppression(ctx, rep_typ, trace))
     return;
 

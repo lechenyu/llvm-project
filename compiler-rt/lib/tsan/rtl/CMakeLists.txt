@@ -44,6 +44,7 @@ set(TSAN_SOURCES
   tsan_sync.cpp
   tsan_vector_clock.cpp
   tsan_avltree.cpp
+  tsan_arbalest_rtl.cpp
   )
 
 set(TSAN_CXX_SOURCES
@@ -103,6 +104,7 @@ set(TSAN_HEADERS
   tsan_trace.h
   tsan_vector_clock.h
   tsan_avltree.h
+  tsan_arbalest_interface.inc
   )
 
 set(TSAN_RUNTIME_LIBRARIES)

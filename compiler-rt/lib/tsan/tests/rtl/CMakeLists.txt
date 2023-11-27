@@ -6,7 +6,6 @@ set(TSAN_RTL_TEST_SOURCES
   tsan_string.cpp
   tsan_test.cpp
   tsan_thread.cpp
-  arbalest_avl.cpp
   )
 
 if(UNIX)

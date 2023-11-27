@@ -177,7 +177,14 @@ class Shadow {
 };
 
 class VariableStateMachine {
+ public:
   static constexpr RawVsm kEmpty = static_cast<RawVsm>(0);
+  static constexpr RawVsm kHostMask = static_cast<RawVsm>(0x5);
+  static constexpr u32 kHostMask4 = 0x05050505;
+  static constexpr u64 kHostMask8 = 0x0505050505050505;
+  static constexpr RawVsm kDeviceMask = static_cast<RawVsm>(0xa);
+  static constexpr u32 kDeviceMask4 = 0x0a0a0a0a;
+  static constexpr u64 kDeviceMask8 = 0x0a0a0a0a0a0a0a0a;
 
  public:
   explicit VariableStateMachine(RawVsm x = VariableStateMachine::kEmpty) {

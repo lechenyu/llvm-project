@@ -77,7 +77,7 @@ void OnInitialize() {
     Printf("%s:\n", desc[i]);
     Printf("range: [%p, %p] \n", reinterpret_cast<char *>(begins[i]), reinterpret_cast<char *>(ends[i]));
     Printf("shadow range: [%p, %p]\n", MemToShadow(begins[i]), MemToShadow(ends[i]));
-    Printf("vsm range: [%p, %p]\n", MemToVsm(begins[i]), MemToVsm(ends[i]));
+    Printf("vsm range (for Arbalest): [%p, %p]\n", MemToVsm(begins[i]), MemToVsm(ends[i]));
     Printf("\n");
   }
 
@@ -690,6 +690,8 @@ void CheckUnwind() {
 }
 
 bool is_initialized;
+
+bool arbalest_enabled;
 
 void Initialize(ThreadState *thr) {
   // Thread safe because done before all threads exist.

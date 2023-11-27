@@ -71,14 +71,14 @@ void InitializeShadowMemory() {
   DPrintf("meta shadow: %zx-%zx (%zuGB)\n",
       meta, meta + meta_size, meta_size >> 30);
 
-  // TODO: shadow mapping memory
+  Printf("Reserve additional space for Arbalest\n");
   if (!MmapFixedSuperNoReserve(VsmBeg(), VsmEnd() - VsmBeg(), "variable state machine")) {
     Printf("FATAL: ThreadSanitizer can not mmap the variable state machine \n");
     Printf("FATAL: Make sure to compile with -fPIE and to link with -pie.\n");
     Die();
   }
   DontDumpShadow(VsmBeg(), VsmEnd() - VsmBeg());
-
+  
   InitializeShadowMemoryPlatform();
 
   on_initialize = reinterpret_cast<void (*)(void)>(

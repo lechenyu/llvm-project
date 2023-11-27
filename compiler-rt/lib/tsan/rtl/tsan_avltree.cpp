@@ -325,14 +325,21 @@ void IntervalTree::removeAllNodesWithinRange(const Interval &range) {
 
 IntervalTree::Iterator::Iterator(Node *root, u32 size)
     : idx(0), size(size), next_node(nullptr), stack(nullptr) {
-  stack = reinterpret_cast<Node **>(InternalAlloc(sizeof(Node *) * size));
-  sortHelper(root, stack, 0);
-  next_node = stack[idx++];
+  if (size) {
+    if (root) {
+      stack = reinterpret_cast<Node **>(InternalAlloc(sizeof(Node *) * size));
+      sortHelper(root, stack, 0);
+      next_node = stack[idx++];
+    } else {
+      // end of the iterator
+      idx = size;
+    }
+  }
 }
 
 IntervalTree::Iterator::Iterator(const Iterator &i)
     : idx(i.idx), size(i.size), next_node(nullptr), stack(nullptr) {
-  if (i.stack) {
+  if (i.next_node) {
     stack = reinterpret_cast<Node **>(InternalAlloc(sizeof(Node *) * size));
     internal_memcpy(stack, i.stack, sizeof(Node *) * size);
     next_node = stack[idx - 1];

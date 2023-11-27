@@ -95,8 +95,15 @@ const uptr kVsmCell = 8; // That many user bytes are mapped onto a single VSM ce
 
 const uptr kVsmSize = sizeof(RawVsm); // Single VSM value size.
 
+const uptr kMemToVsmRatio = kVsmCnt / kVsmCell;
+
+const uptr kMemToVsmRatioInBit = kMemToVsmRatio * kVsmSize * 8;
+
 const uptr kVsmMultiplier = kVsmSize * kVsmCnt / kVsmCell;
 
+const int kVsmCellBitMap = (1 << kVsmCell) - 1;
+
+const u64 kVsmCellValueBitMap = 0xFFFFFFFFFFFFFFFF;
 
 // That many user bytes are mapped onto a single meta shadow cell.
 // Must be less or equal to minimal memory allocator alignment.
