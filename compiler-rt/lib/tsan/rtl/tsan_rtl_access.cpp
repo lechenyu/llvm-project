@@ -589,7 +589,10 @@ NOINLINE void DoReportRaceDPST(ThreadState *thr, RawShadow* shadow_mem, Shadow c
   Shadow cur_tsan(cur.ConvertMaskToAccess(), curr_step.sid, curr_step.ev, typ & kAccessRead, typ & kAccessAtomic);
   //Printf("Error type: %s at %016lx, Prev step: %u, Curr step: %u\n", kRaceTypeName[race_type], addr, prev_step_id, curr_step_id);
   ReportRace(thr, shadow_mem, cur_tsan, prev_tsan, typ, curr_step_id, prev_step_id);
-  // PrintPC(pc);
+
+  // TODO: if we use lock in ompt-tsan.cpp, PrintPC still works for the current access
+  // The problem is that we cannot restore stack for the previous access
+  PrintPC(pc);
 }
 
 // #  define LOAD_CURRENT_SHADOW(cur, shadow_mem)                         \

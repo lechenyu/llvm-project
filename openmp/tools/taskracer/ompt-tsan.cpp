@@ -149,7 +149,9 @@ static void drawDependEdges(task_t *task, unsigned int current_step){
 }
 
 static void AcquireAndReleaseDependencies(task_t *task, DependencyData* dd, ompt_dependence_type_t type) {
-  std::lock_guard<std::mutex> lock(dd->mutex_);
+  // TODO: this lock will suppress race report
+  // std::lock_guard<std::mutex> lock(dd->mutex_);
+
   bool has_out = (dd->out != nullptr);
   bool has_inoutset = (dd->inoutset != nullptr);
   std::vector<TreeNode*> &task_depending_nodes = task->depending_task_nodes;

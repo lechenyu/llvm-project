@@ -782,6 +782,9 @@ void ReportRace(ThreadState *thr, RawShadow *shadow_mem, Shadow cur, Shadow old,
   Lock slots_lock(&ctx->slot_mtx);
   if (SpuriousRace(old))
     return;
+
+  // TODO: if we use lock in ompt-tsan.cpp, the following if condition
+  // will be executed
   if (!RestoreStack(EventType::kAccessExt, s[1].sid(), s[1].epoch(), addr1,
                     size1, typ1, &tids[1], &traces[1], mset[1], &tags[1])) {
     StoreShadow(&ctx->last_spurious_race, old.raw());
@@ -836,18 +839,18 @@ void ReportRace(ThreadState *thr, RawShadow *shadow_mem, Shadow cur, Shadow old,
   OutputReport(thr, rep, current_step, prev_step);
 }
 
-// void PrintPC(uptr pc) {
-//   if (pc) {
-//     SymbolizedStack *ent = SymbolizeCode(pc);
-//     if (ent->info.file) {
-//       Printf("Racy access at %s:%d\n", ent->info.file, ent->info.line);
-//     } else {
-//       Printf("Failed to recover source information (symbolizer failed)\n");
-//     }
-//   } else {
-//     Printf("Failed to recover source information (pc == null)\n");
-//   }
-// }
+void PrintPC(uptr pc) {
+  if (pc) {
+    SymbolizedStack *ent = SymbolizeCode(pc);
+    if (ent->info.file) {
+      Printf("Racy access at %s:%d\n", ent->info.file, ent->info.line);
+    } else {
+      Printf("Failed to recover source information (symbolizer failed)\n");
+    }
+  } else {
+    Printf("Failed to recover source information (pc == null)\n");
+  }
+}
 
 void PrintCurrentStack(ThreadState *thr, uptr pc) {
   VarSizeStackTrace trace;
