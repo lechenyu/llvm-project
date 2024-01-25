@@ -144,11 +144,15 @@ def run_dir(args) -> returnCode:
             continue
 
         # create json file in output_dir
-        jsonData = create_json()
-        if jsonData == "":
-            continue
+        # jsonData = create_json()
+        # if jsonData == "":
+        #     continue
+        # outputjson_path = os.path.join(output_dir, f'{filename}.json')
+        # write_to_file(outputjson_path, jsonData)
+
         outputjson_path = os.path.join(output_dir, f'{filename}.json')
-        write_to_file(outputjson_path, jsonData)
+        cmd = f'cp {rawgraphFile} {outputjson_path}'
+        run_cmd(cmd, current_dir)
 
         # only for debug purpose
         cmd = f"cp {outputjson_path} {alljson_dir}"
@@ -233,14 +237,17 @@ def main(args):
         logger.info(f'Finished. Only a test, no JSON file created')
         return
 
-    jsonData = create_json()
+    # jsonData = create_json()
 
     outputname = f'output{time}.json'
     if args.exe is not None:
         binaryname = (args).exe.split("/")[-1]
         outputname = f'{binaryname}-{time}.json'
     outputpath = os.path.join(dataDir, outputname)
-    write_to_file(outputpath, jsonData)
+    cmd = f'cp {rawgraphFile} {outputpath}'
+    run_cmd(cmd, os.getcwd())
+
+    # write_to_file(outputpath, jsonData)
     logger.info(f'Conversion completed. JSON file saved as {outputpath}')
         
 
@@ -248,7 +255,7 @@ def main(args):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="OpenMP run&vis program")
-    parser.add_argument("--rawgraphFile", help="input file that contains the raw graphml data", type=str, default="rawgraphml.txt")
+    parser.add_argument("--rawgraphFile", help="input file that contains the raw graphml data", type=str, default="rawgraphml.json")
     parser.add_argument("--exe", help="the OpenMP program to run", type=str)
     parser.add_argument("--dir", help="the directory which we will execute all OpenMP programs in it", type=str)
 

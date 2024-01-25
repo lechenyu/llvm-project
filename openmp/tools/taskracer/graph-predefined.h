@@ -1,61 +1,74 @@
 #ifndef GRAPH_DEF_H
 #define GRAPH_DEF_H
 
-#include <boost/graph/graph_traits.hpp>
-#include <boost/graph/adjacency_list.hpp>
-#include <boost/graph/graphml.hpp>
+#include <unistd.h>
 #include <mutex>
 
-using namespace boost;
 
 void print_graph();
-void print_datamove();
+std::string get_datamove_string();
 
-struct Vertex {
-  unsigned int id;
-  bool has_race = false;
-  bool ontarget = false;
-  std::string end_event;
-  std::string stack;
+typedef unsigned int vertex_t;
+
+enum event_type{
+    parallel_begin,
+    parallel_end,
+    implicit_task,
+    sync_region_begin,
+    sync_region_end,
+    task_create,
+    target_begin,
+    target_end,
+    taskwait_end,
+    taskgroup_begin,
+    taskgroup_end,
+    task_schedule
 };
 
-struct Edge{
-  std::string type;
+enum edge_type{
+    CONT,
+    FORK_I,
+    FORK_E,
+    JOIN,
+    JOIN_E,
+    BARRIER,
+    TARGET
 };
 
-const std::string contedge = "CONT";
-const std::string iforkedge = "FORK_I";
-const std::string eforkedge = "FORK_E";
-const std::string joinedge = "JOIN";
-const std::string ejoinedge = "JOIN_E";
-const std::string barrieredge = "BARRIER";
-const std::string targetedge = "TARGET";
+struct Edge_new{
+    vertex_t target;
+    edge_type type;
 
-const std::string event_parallel_begin = "parallel_begin";
-const std::string event_parallel_end = "parallel_end";
-const std::string event_implicit_task = "implicit_task";
-const std::string event_sync_region_begin = "sync_region_begin";
-const std::string event_sync_region_end = "sync_region_end";
-const std::string event_task_create = "task_create";
-const std::string event_target_begin = "target_begin";
-const std::string event_target_end = "target_end";
-const std::string event_taskwait_end = "taskwait_end";
-const std::string event_taskgroup_begin = "taskgroup_begin";
-const std::string event_taskgroup_end = "taskgroup_end";
+    Edge_new()
+    : target(0), type(CONT)
+    {}
 
-//Define the graph using those classes
-typedef adjacency_list<vecS, vecS, directedS, Vertex, Edge > Graph;
-//Some typedefs for simplicity
-typedef graph_traits<Graph>::vertex_descriptor vertex_t; // vertex_descriptor, in this case, is an index for the listS used to save all vertex. 
-typedef graph_traits<Graph>::edge_descriptor edge_t;
+    Edge_new(vertex_t t, edge_type et)
+    : target(t), type(et)
+    {}
+};
+
+struct Vertex_new{
+    vertex_t id;
+    bool has_race;
+    bool ontarget;
+    event_type end_event;
+    std::string stack;
+    std::vector<Edge_new> out_edges;
+
+    Vertex_new()
+    : id(0), has_race(false),ontarget(false), end_event(implicit_task), stack("")
+    {
+        out_edges = std::vector<Edge_new>();
+        out_edges.reserve(5);
+    }
+};
 
 //Instanciate a graph
-unsigned int vertex_size = 100;
-// Graph g(vertex_size);
-Graph *g;
+unsigned int vertex_size = 1000;
 
 struct EdgeFull{
-  std::string type;
+  edge_type type;
   vertex_t source;
   vertex_t target;
 };
@@ -154,6 +167,7 @@ private:
 
 // Vector that saves all edges to be add to g, before output the graph
 ConcurrentVector<EdgeFull> *savedEdges;
+std::vector<Vertex_new> *savedVertex;
 
 struct DataMove{
     void *orig_addr;
@@ -177,13 +191,37 @@ struct targetRegion{
     }
 };
 
-bool addedge(vertex_t source, vertex_t target, std::string type){
-    edge_t e;
-    bool b;
-    boost::tie(e,b) = boost::add_edge(source, target, (*g));
-    (*g)[e].type = type;
-    return b;
+void addVertex(vertex_t id){
+    (*savedVertex)[id].id = id;
 }
 
+void setRace(vertex_t id){
+    (*savedVertex)[id].has_race = true;
+}
+
+bool hasRace(vertex_t id){
+    return (*savedVertex)[id].has_race;
+}
+
+void setOnTarget(vertex_t id){
+    (*savedVertex)[id].ontarget = true;
+}
+
+void unsetOnTarget(vertex_t id){
+    (*savedVertex)[id].ontarget = false;
+}
+
+void addEvent(vertex_t id, event_type event){
+    (*savedVertex)[id].end_event = event;  
+}
+
+void addStack(vertex_t id, std::string stack){
+    (*savedVertex)[id].stack = stack;
+}
+
+void addEdge(vertex_t source, vertex_t target, edge_type type){
+    Edge_new e = {target, type};
+    (*savedVertex)[source].out_edges.push_back(e);
+}
 
 #endif

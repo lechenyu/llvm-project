@@ -17,7 +17,7 @@ ConcurrencyVector* step_nodes;
 
 extern "C" {
   void (*ompt_print)();
-  void (*ompt_report_race_steps)(int,int);
+  void (*ompt_report_race_steps)(unsigned int, unsigned int);
 
   INTERFACE_ATTRIBUTE
   void __tsan_set_ompt_print_function(void (*f)()){
@@ -25,7 +25,7 @@ extern "C" {
   }
 
   INTERFACE_ATTRIBUTE
-  void __tsan_set_report_race_steps_function(void (*f)(int,int)){
+  void __tsan_set_report_race_steps_function(void (*f)(unsigned int, unsigned int)){
     ompt_report_race_steps = f;
   }
 }
