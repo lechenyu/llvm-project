@@ -4,9 +4,12 @@
 
 #include "gtest/gtest.h"
 #include "tsan_avltree.h"
+#include "tsan_shadow.h"
 using namespace std;
 
 namespace __tsan {
+
+void StoreVsm4(RawVsm *vp, RawVsm val);
 
 void init(IntervalTree &tree, vector<Interval> &iv) {
   for (auto &i : iv) {
@@ -170,6 +173,14 @@ TEST(Arbalest, AvlIterator) {
   for (Node *n : tree) {
     EXPECT_EQ(n->interval, iv2[idx++]);
   }
+}
+
+TEST(Arbalest, ShadowSet) {
+  
+}
+
+TEST(Arbalest, ShadowGet) {
+  
 }
 
 }  // namespace __tsan

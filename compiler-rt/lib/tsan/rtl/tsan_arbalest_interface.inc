@@ -1,5 +1,4 @@
 #include "tsan_interface.h"
-#include "tsan_interface.h"
 
 #define CALLERPC ((uptr)__builtin_return_address(0))
 
