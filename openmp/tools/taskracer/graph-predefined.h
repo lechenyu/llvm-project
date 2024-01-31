@@ -5,8 +5,14 @@
 #include <mutex>
 
 
-void print_graph();
-std::string get_datamove_string();
+// void print_graph();
+// std::string get_datamove_string();
+// std::string get_race_string();
+
+void print_graph_json();
+char* extractInfo(char* input, unsigned int& lineNumber);
+std::string extractInfo(const std::string& input, unsigned int& lineNumber);
+std::string get_file_string(std::string filePath);
 
 typedef unsigned int vertex_t;
 
@@ -62,6 +68,12 @@ struct Vertex_new{
         out_edges = std::vector<Edge_new>();
         out_edges.reserve(5);
     }
+};
+
+struct race_info{
+    vertex_t prev_step;
+    vertex_t current_step;
+    vertex_t lca;
 };
 
 //Instanciate a graph

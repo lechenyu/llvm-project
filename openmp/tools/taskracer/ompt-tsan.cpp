@@ -2,7 +2,13 @@
 #include <fstream>
 #include <sstream>
 #include <cstdint>
+#include <cstring>
 #include <cassert>
+#include <regex>
+#include <set>
+#include <sys/stat.h>
+
+#include <nlohmann/json.hpp>
 #include "omp-tools.h"
 #include "dlfcn.h"
 #include "taskdep_predefined.h"
@@ -13,6 +19,10 @@
 #ifdef GRAPH_MACRO
   #include "graph-predefined.h"
 #endif
+
+using json = nlohmann::json;
+
+json get_datamove_json();
 
 enum NodeType {
   ROOT,
@@ -54,7 +64,9 @@ static TreeNode kNullTaskWait = {kNullStepId, TASKWAIT};
 #ifdef GRAPH_MACRO
   static unsigned int target_begin_node = 0;
   static unsigned int target_end_node = 0;
-  std::unordered_map<unsigned int, targetRegion> *trm;
+  std::vector<targetRegion> *trm;
+  std::vector<DataMove> *temp_dmv;
+  std::vector<race_info> *races_vector;
 #endif
 
 // Data structure to store additional information for task dependency.
@@ -308,6 +320,8 @@ void ompt_report_race_steps_func(unsigned int cur, unsigned int prev){
   // printf("race between current step %d and previous step %d \n", cur, prev);
   setRace(cur);
   setRace(prev);
+  race_info ri = {prev, cur, 0};
+  races_vector->push_back(ri);
 #endif
 }
 
@@ -1081,8 +1095,15 @@ static void ompt_ta_target(ompt_target_t kind, ompt_scope_endpoint_t endpoint,
 
       targetRegion tr = targetRegion();
       tr.begin_node = cg_parent;
-      trm->insert(std::pair<unsigned int, targetRegion>(cg_parent, tr));
+      
+      if(temp_dmv->size() > 0){
+        for(auto dm : *temp_dmv){
+          tr.dmv.push_back(dm);
+        }
+        temp_dmv->clear();
+      }
 
+      trm->push_back(tr);
       target_begin_node = cg_parent;
     #endif
   }
@@ -1103,10 +1124,8 @@ static void ompt_ta_target(ompt_target_t kind, ompt_scope_endpoint_t endpoint,
 
       addEdge(cg_parent,step_id,edge_type::CONT);
 
-      if(trm->find(target_begin_node) != trm->end()){
-        targetRegion &tr = trm->at(target_begin_node);
-        tr.end_node = cg_parent;
-      }
+      targetRegion &tr = trm->back();
+      tr.end_node = cg_parent;
 
       target_begin_node = 0;
       target_end_node = cg_parent;
@@ -1129,12 +1148,12 @@ static void ompt_ta_device_mem(ompt_data_t *target_task_data,
   printf("[device_mem] original addr %p, destination address %p, size %lu, ", orig_addr, dest_addr, bytes);
 
   #ifdef GRAPH_MACRO
-    if(target_begin_node != 0){
-      DataMove dm(orig_addr, dest_addr, bytes, device_mem_flag);
-      if(trm->find(target_begin_node) != trm->end()){
-        targetRegion &tr = trm->at(target_begin_node);
-        tr.dmv.push_back(dm);
-      }
+    DataMove dm(orig_addr, dest_addr, bytes, device_mem_flag);
+    if(trm->size() == 0){
+      temp_dmv->push_back(dm);
+    }
+    else{
+      trm->back().dmv.push_back(dm);
     }
   #endif
 
@@ -1191,8 +1210,14 @@ static int ompt_tsan_initialize(ompt_function_lookup_t lookup, int device_num,
     savedEdges = new ConcurrentVector<EdgeFull>(10);
     savedVertex = new std::vector<Vertex_new>(vertex_size);
 
-    trm = new std::unordered_map<unsigned int, targetRegion>();
+    trm = new std::vector<targetRegion>();
     trm->reserve(5);
+
+    temp_dmv = new std::vector<DataMove>();
+    temp_dmv->reserve(5);
+
+    races_vector = new std::vector<race_info>();
+    races_vector->reserve(5);
   #endif
   return 1; // success
 }
@@ -1201,11 +1226,13 @@ static void ompt_tsan_finalize(ompt_data_t *tool_data) {
   //__tsan_print_DPST_info(true);
 
   #ifdef GRAPH_MACRO
-    print_graph();
+    print_graph_json();
     delete savedEdges;
     delete savedVertex;
 
     delete trm;
+    delete temp_dmv;
+    delete races_vector;
   #endif
 }
 
@@ -1233,7 +1260,8 @@ ompt_start_tool(unsigned int omp_version, const char *runtime_version) {
   return &ompt_start_tool_result;
 }
 
-void print_graph(){
+
+void print_graph_json(){
 #ifdef GRAPH_MACRO
   const char* env_p = std::getenv("PRINT_GRAPHML");
   if(!env_p || (strcmp(env_p, "TRUE") != 0)){
@@ -1245,64 +1273,74 @@ void print_graph(){
     addEdge(edge.source, edge.target, edge.type);
   }
 
-  std::string jsonOutput = "{\n";
-  std::string nodeJson = "\"nodes\": [\n";
-  std::string edgeJson = "\"edges\": [\n";
+  json j;
+  json nodes = {};
+  json edges = {};
+  json files = {};
+  std::set<std::string> fileSet;
 
   for (int i = 1; i < savedVertex->size(); i++)
   {
     Vertex_new v = (*savedVertex)[i];
     if (v.id == 0)
       break;
-    
-    nodeJson += "{\n";
 
-    nodeJson += "\"id\": " + std::to_string(v.id) + ",\n";
-    nodeJson += "\"end_event\": " + std::to_string(v.end_event) + ",\n";
-    nodeJson += "\"has_race\": " + std::to_string(v.has_race) + ",\n";
-    nodeJson += "\"ontarget\": " + std::to_string(v.ontarget) + ",\n";
-    nodeJson += "\"stack\": \"" + v.stack + "\",\n";
-    nodeJson += "\"active\": " + std::to_string(1) + ",\n";
-    nodeJson += "\"hidden\": " + std::to_string(0) + "\n";
+    if(v.has_race == true && v.stack != ""){
+      unsigned int lineNumber = 0;
+      std::string filePath = extractInfo(v.stack, lineNumber);
+      
+      if(fileSet.find(filePath) == fileSet.end()){
+        fileSet.insert(filePath);
+        std::string fileString = get_file_string(filePath);
+        files[filePath] = fileString;
+      }
+    }
 
-    nodeJson += "         },\n";
+    json node;
+    node["id"] = v.id;
+    node["end_event"] = v.end_event;
+    node["has_race"] = v.has_race;
+    node["ontarget"] = v.ontarget;
+    node["stack"] = v.stack;
+    node["active"] = 1;
+    node["hidden"] = 0;
+    nodes.push_back(node);
 
-    // printf("vertex %u, outgoing edges: ", v.id);
     vertex_t source = v.id;
     for (int j = 0; j < v.out_edges.size(); j++)
     {
       Edge_new e = v.out_edges[j];
-      edgeJson += "{\n";
-
-      edgeJson += "\"source\": " + std::to_string(source) + ",\n";
-      edgeJson += "\"target\": " + std::to_string(e.target) + ",\n";
-      edgeJson += "\"edge_type\": " + std::to_string(e.type) + ",\n";
-      edgeJson += "\"hidden\": " + std::to_string(0) + "\n";
-
-      edgeJson += "         },\n";
+      json edge;
+      edge["source"] = source;
+      edge["target"] = e.target;
+      edge["edge_type"] = e.type;
+      edge["hidden"] = 0;
+      edges.push_back(edge);
     }
   }
 
-  nodeJson.pop_back(); 
-  nodeJson.pop_back(); // Remove the trailing comma for the last object
-  nodeJson += "\n";
-  jsonOutput += nodeJson;
-  jsonOutput += "    ],\n";
-  
-  edgeJson.pop_back();
-  edgeJson.pop_back();
-  edgeJson += "\n";
-  jsonOutput += edgeJson;
-  jsonOutput += "    ],\n";
+  j["nodes"] = nodes;
+  j["edges"] = edges;
+  j["files"] = files;
 
-  std::string targetJson = get_datamove_string();
-  jsonOutput += targetJson;
-  jsonOutput += "}\n";
+  json races;
+  for(int i=0; i < races_vector->size(); i++){
+    race_info ri = (*races_vector)[i];
+    json race;
+    race["prev"] = ri.prev_step;
+    race["current"] = ri.current_step;
+    race["lca"] = ri.lca;
+    races.push_back(race);
+  }
 
+  json targets = get_datamove_json();
+
+  j["races"] = races;
+  j["targets"] = targets;
 
   std::ofstream outputFile("data/rawgraphml.json");
   if (outputFile.is_open()) {
-    outputFile << jsonOutput;
+    outputFile << std::setw(4) << j;
     outputFile.close();
     std::cout << "JSON data written to 'data/rawgraphml.json'" << std::endl;
   } 
@@ -1310,19 +1348,40 @@ void print_graph(){
   {
     std::cerr << "Unable to open file for writing" << std::endl;
   }
-#endif 
+#endif
 }
 
-std::string get_datamove_string(){
-  std::string targetJson = "\"target\": [\n";
 
+inline bool exists_test3 (const std::string& name) {
+  struct stat buffer;   
+  return (stat (name.c_str(), &buffer) == 0); 
+}
+
+std::string get_file_string(std::string filePath){
+  if(!exists_test3(filePath)){
+    return "";
+  }
+
+  std::ifstream file(filePath);
+  std::string str;
+  std::string file_contents;
+  while (std::getline(file, str))
+  {
+    file_contents += str;
+    file_contents += "\n";
+  }
+
+  return file_contents;
+}
+
+
+json get_datamove_json(){
+  json target;
   for (auto it = trm->begin(); it != trm->end(); ++it) {
-    targetRegion &tr = it->second;
+    targetRegion &tr = *it;
     std::vector<DataMove> dmv = tr.dmv;
-    targetJson += "{\n";
-    targetJson += "\"begin_node\": " + std::to_string(tr.begin_node) + ",\n";
-    targetJson += "\"end_node\": " + std::to_string(tr.end_node) + ",\n";
-    targetJson += "\"datamove\": [\n";
+    json t;    
+    json datamove;
 
     for(DataMove dm : dmv){
       std::stringstream ss;
@@ -1335,23 +1394,267 @@ std::string get_datamove_string(){
       ss << std::hex << dm.dest_addr;
       std::string dest_address = ss.str();
 
-      targetJson += "{\n";
-      targetJson += "\"orig_address\": \"" + orig_address + "\",\n";
-      targetJson += "\"dest_address\": \"" + dest_address + "\",\n";
-      targetJson += "\"bytes\": " + std::to_string(dm.bytes) + ",\n";
-      targetJson += "\"flag\": " + std::to_string(dm.device_mem_flag) + "\n";
-      targetJson += "},\n";
+      datamove.push_back({
+        {"orig_address", orig_address},
+        {"dest_address", dest_address},
+        {"bytes", dm.bytes},
+        {"flag", dm.device_mem_flag}
+      });
     }
-    targetJson.pop_back();
-    targetJson.pop_back();
-    targetJson += "\n";
-    targetJson += "]\n";
-    targetJson += "},\n";
-  }
-  targetJson.pop_back();
-  targetJson.pop_back();
-  targetJson += "\n";
-  targetJson += "]\n";
 
-  return targetJson;
+    t["begin_node"] = tr.begin_node;
+    t["end_node"] = tr.end_node;
+    t["datamove"] = datamove;
+    target.push_back(t);
+  }
+  return target;
 }
+
+
+std::string extractInfo(const std::string& input, unsigned int& lineNumber) {
+  // Define the regular expression pattern
+  std::regex pattern(R"(/(.+):(\d+):\d+ \(.*\))");
+
+  // Match the input against the pattern
+  std::smatch match;
+  std::string result;
+
+  if (std::regex_search(input, match, pattern)) {
+      // Extract the file path and line number from the matched groups
+      result = "/" + match[1].str();
+      lineNumber = std::stoi(match[2].str());
+  } else {
+      // If no match is found, set default values or handle the error accordingly
+      result = "Unknown";
+      lineNumber = 0;
+  }
+
+  return result;
+}
+
+// char* extractInfo(char* input, unsigned int& lineNumber){
+//   std::string line_string = "";
+
+//   const char* ptr;
+//   unsigned int index = 0;
+
+//   for (ptr = input; *ptr != '\0'; ++ptr) {
+//     if(*ptr == '/'){
+//       break;
+//     }
+//     index++;
+//   }
+//   unsigned int start_index = index;
+
+//   while (*ptr != ':' && *ptr != '\0')
+//   {
+//     ptr++;
+//     index++;
+//   }
+//   ptr++;
+//   unsigned int end_index = index;
+
+//   unsigned int size = end_index - start_index;
+//   char* result = new char[size+1];
+//   index = 0;
+//   while(index < end_index){
+//     if(index >= start_index){
+//       result[index - start_index] = input[index];
+//     }
+//     index++;
+//   }
+//   result[index] = '\0';
+
+//   while(*ptr != ':' && *ptr != '\0'){
+//     line_string += *ptr;
+//     ptr++;
+//   }
+
+//   // std::cout << result << "     " << line_string << std::endl;
+
+//   lineNumber = std::stoi(line_string);
+//   return result;
+// }
+
+
+// std::string get_race_string(){
+//   std::string raceJson = "\"races\": [\n";
+//   for(int i=0; i < races_vector->size(); i++){
+//     race_info ri = (*races_vector)[i];
+
+//     raceJson += "{\n";
+//     raceJson += "\"prev\": " + std::to_string(ri.prev_step) + ",\n";
+//     raceJson += "\"current\": " + std::to_string(ri.current_step) + ",\n";
+//     raceJson += "\"lca\": " + std::to_string(ri.lca) + "\n";
+
+//     raceJson += "         },\n";
+//   }
+
+//   if(races_vector->size() > 0){
+//     raceJson.pop_back();
+//     raceJson.pop_back();
+//   }
+
+//   raceJson += "\n";
+//   raceJson += "]\n";
+
+//   return raceJson;
+// }
+
+// std::string get_datamove_string(){
+//   std::string targetJson = "\"target\": [\n";
+
+//   for (auto it = trm->begin(); it != trm->end(); ++it) {
+//     targetRegion &tr = *it;
+//     std::vector<DataMove> dmv = tr.dmv;
+//     targetJson += "{\n";
+//     targetJson += "\"begin_node\": " + std::to_string(tr.begin_node) + ",\n";
+//     targetJson += "\"end_node\": " + std::to_string(tr.end_node) + ",\n";
+//     targetJson += "\"datamove\": [\n";
+
+//     for(DataMove dm : dmv){
+//       std::stringstream ss;
+//       ss << std::hex << dm.orig_addr;
+//       std::string orig_address = ss.str();
+
+//       ss.str("");
+//       ss.clear();
+
+//       ss << std::hex << dm.dest_addr;
+//       std::string dest_address = ss.str();
+
+//       targetJson += "{\n";
+//       targetJson += "\"orig_address\": \"" + orig_address + "\",\n";
+//       targetJson += "\"dest_address\": \"" + dest_address + "\",\n";
+//       targetJson += "\"bytes\": " + std::to_string(dm.bytes) + ",\n";
+//       targetJson += "\"flag\": " + std::to_string(dm.device_mem_flag) + "\n";
+//       targetJson += "},\n";
+//     }
+
+//     if(dmv.size() > 0){
+//       targetJson.pop_back();
+//       targetJson.pop_back();
+//     }
+//     targetJson += "\n";
+//     targetJson += "]\n";
+//     targetJson += "},\n";
+//   }
+
+//   if(trm->size() > 0){
+//     targetJson.pop_back();
+//     targetJson.pop_back();
+//   }
+//   targetJson += "\n";
+//   targetJson += "]\n";
+
+//   return targetJson;
+// }
+
+
+// void print_graph(){
+// #ifdef GRAPH_MACRO
+//   const char* env_p = std::getenv("PRINT_GRAPHML");
+//   if(!env_p || (strcmp(env_p, "TRUE") != 0)){
+//     return;
+//   }
+
+//   for(int i=0; i < savedEdges->size(); i++){
+//     EdgeFull edge = (*savedEdges)[i];
+//     addEdge(edge.source, edge.target, edge.type);
+//   }
+
+//   std::string jsonOutput = "{\n";
+//   std::string nodeJson = "\"nodes\": [\n";
+//   std::string edgeJson = "\"edges\": [\n";
+//   std::string fileJson = "";
+//   std::set<std::string> fileSet;
+
+//   for (int i = 1; i < savedVertex->size(); i++)
+//   {
+//     Vertex_new v = (*savedVertex)[i];
+//     if (v.id == 0)
+//       break;
+    
+//     if(v.has_race == true && v.stack != ""){
+//       unsigned int lineNumber = 0;
+//       std::string filePath = extractInfo(v.stack, lineNumber);
+      
+//       if(fileSet.find(filePath) == fileSet.end()){
+//         fileSet.insert(filePath);
+//         std::string fileString = get_file_string(filePath);
+//         fileJson += "\"" + filePath + "\": \"" + fileString + "\",\n";
+//       }
+//     }
+
+//     nodeJson += "{\n";
+
+//     nodeJson += "\"id\": " + std::to_string(v.id) + ",\n";
+//     nodeJson += "\"end_event\": " + std::to_string(v.end_event) + ",\n";
+//     nodeJson += "\"has_race\": " + std::to_string(v.has_race) + ",\n";
+//     nodeJson += "\"ontarget\": " + std::to_string(v.ontarget) + ",\n";
+//     nodeJson += "\"stack\": \"" + v.stack + "\",\n";
+//     nodeJson += "\"active\": " + std::to_string(1) + ",\n";
+//     nodeJson += "\"hidden\": " + std::to_string(0) + "\n";
+
+//     nodeJson += "         },\n";
+
+//     // printf("vertex %u, outgoing edges: ", v.id);
+//     vertex_t source = v.id;
+//     for (int j = 0; j < v.out_edges.size(); j++)
+//     {
+//       Edge_new e = v.out_edges[j];
+//       edgeJson += "{\n";
+
+//       edgeJson += "\"source\": " + std::to_string(source) + ",\n";
+//       edgeJson += "\"target\": " + std::to_string(e.target) + ",\n";
+//       edgeJson += "\"edge_type\": " + std::to_string(e.type) + ",\n";
+//       edgeJson += "\"hidden\": " + std::to_string(0) + "\n";
+
+//       edgeJson += "         },\n";
+//     }
+//   }
+
+//   nodeJson.pop_back(); 
+//   nodeJson.pop_back(); // Remove the trailing comma for the last object
+//   nodeJson += "\n";
+//   nodeJson += "]\n";
+//   jsonOutput += nodeJson;
+//   jsonOutput += ",\n";
+  
+//   edgeJson.pop_back();
+//   edgeJson.pop_back();
+//   edgeJson += "\n";
+//   edgeJson += "]\n";
+//   jsonOutput += edgeJson;
+//   jsonOutput += ",\n";
+
+//   std::string raceJson = get_race_string();
+//   jsonOutput += raceJson;
+//   jsonOutput += ",\n";
+
+//   std::string targetJson = get_datamove_string();
+//   jsonOutput += targetJson;
+
+
+//   if(fileJson.size() > 1){
+//     fileJson.pop_back();
+//     fileJson.pop_back();
+//   }
+//   fileJson += "\n";
+//   jsonOutput += ",\n";
+//   jsonOutput += fileJson;
+//   jsonOutput += "}\n";
+
+
+//   std::ofstream outputFile("data/rawgraphml.json");
+//   if (outputFile.is_open()) {
+//     outputFile << jsonOutput;
+//     outputFile.close();
+//     std::cout << "JSON data written to 'data/rawgraphml.json'" << std::endl;
+//   } 
+//   else 
+//   {
+//     std::cerr << "Unable to open file for writing" << std::endl;
+//   }
+// #endif 
+// }

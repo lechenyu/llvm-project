@@ -8,6 +8,8 @@ if(LIBOMP_OMPT_SUPPORT)
   target_link_libraries(taskracer_static PRIVATE dl)
   target_include_directories(taskracer PRIVATE "/home/fjin/playground/boost/boost_1_81_0")
   target_include_directories(taskracer_static PRIVATE "/home/fjin/playground/boost/boost_1_81_0")
+  target_include_directories(taskracer PRIVATE "/home/fjin/playground/json/include")
+  target_include_directories(taskracer_static PRIVATE "/home/fjin/playground/json/include")
   
   install(TARGETS taskracer taskracer_static
     LIBRARY DESTINATION ${OPENMP_INSTALL_LIBDIR}
