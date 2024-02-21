@@ -42,4 +42,5 @@ __tsan_get_step_in_tls
 __tsan_set_ompt_print_function
 __tsan_set_report_race_steps_function
 __tsan_set_report_race_stack_function
+__tsan_set_report_current_racy_stack_function
 __tsan_symbolize_pc

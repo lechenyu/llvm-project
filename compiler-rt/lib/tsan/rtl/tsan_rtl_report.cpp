@@ -38,6 +38,13 @@ extern "C" {
 
     return ent->info.file;
   }
+
+  void (*ompt_report_current_racy_stack)(char*, unsigned int, unsigned int, unsigned int);
+
+  INTERFACE_ATTRIBUTE
+  void __tsan_set_report_current_racy_stack_function(void (*f)(char*, unsigned int, unsigned int, unsigned int)){
+    ompt_report_current_racy_stack = f;
+  }
 }
 
 using namespace __sanitizer;
@@ -851,6 +858,21 @@ void PrintPC(uptr pc) {
     Printf("Failed to recover source information (pc == null)\n");
   }
 }
+
+void PrintPC(uptr pc, u32 current_step, u32 prev_step) {
+  if (pc) {
+    SymbolizedStack *ent = SymbolizeCode(pc);
+    if (ent->info.file) {
+      ompt_report_current_racy_stack(ent->info.file, current_step, prev_step, ent->info.line);
+      Printf("Racy access at %s:%d\n", ent->info.file, ent->info.line);
+    } else {
+      Printf("Failed to recover source information (symbolizer failed)\n");
+    }
+  } else {
+    Printf("Failed to recover source information (pc == null)\n");
+  }
+}
+
 
 void PrintCurrentStack(ThreadState *thr, uptr pc) {
   VarSizeStackTrace trace;

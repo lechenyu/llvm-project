@@ -503,6 +503,7 @@ bool IsFiredSuppression(Context *ctx, ReportType type, StackTrace trace);
 bool IsExpectedReport(uptr addr, uptr size);
 
 void PrintPC(uptr pc);
+void PrintPC(uptr pc, u32 current_step, u32 prev_step);
 
 #if defined(TSAN_DEBUG_OUTPUT) && TSAN_DEBUG_OUTPUT >= 1
 # define DPrintf Printf

@@ -5,13 +5,8 @@
 #include <mutex>
 
 
-// void print_graph();
-// std::string get_datamove_string();
-// std::string get_race_string();
-
 void print_graph_json();
-char* extractInfo(char* input, unsigned int& lineNumber);
-std::string extractInfo(const std::string& input, unsigned int& lineNumber);
+std::string extractInfo(const std::string& input, unsigned int& lineNumber, bool has_race);
 std::string get_file_string(std::string filePath);
 
 typedef unsigned int vertex_t;
@@ -74,10 +69,12 @@ struct race_info{
     vertex_t prev_step;
     vertex_t current_step;
     vertex_t lca;
+    std::string prev_stack;
+    std::string current_stack;
 };
 
 //Instanciate a graph
-unsigned int vertex_size = 1000;
+unsigned int vertex_size = 10000;
 
 struct EdgeFull{
   edge_type type;

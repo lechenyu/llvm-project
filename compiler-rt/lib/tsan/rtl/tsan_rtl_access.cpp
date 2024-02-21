@@ -592,7 +592,7 @@ NOINLINE void DoReportRaceDPST(ThreadState *thr, RawShadow* shadow_mem, Shadow c
 
   // TODO: if we use lock in ompt-tsan.cpp, PrintPC still works for the current access
   // The problem is that we cannot restore stack for the previous access
-  PrintPC(pc);
+  PrintPC(pc, curr_step_id, prev_step_id);
 }
 
 // #  define LOAD_CURRENT_SHADOW(cur, shadow_mem)                         \

@@ -7,6 +7,7 @@
 #include <regex>
 #include <set>
 #include <sys/stat.h>
+#include <map>
 
 #include <nlohmann/json.hpp>
 #include "omp-tools.h"
@@ -18,11 +19,13 @@
 
 #ifdef GRAPH_MACRO
   #include "graph-predefined.h"
+
+  using json = nlohmann::json;
+
+  json get_datamove_json();
+
+  std::mutex race_map_mutex;
 #endif
-
-using json = nlohmann::json;
-
-json get_datamove_json();
 
 enum NodeType {
   ROOT,
@@ -66,7 +69,7 @@ static TreeNode kNullTaskWait = {kNullStepId, TASKWAIT};
   static unsigned int target_end_node = 0;
   std::vector<targetRegion> *trm;
   std::vector<DataMove> *temp_dmv;
-  std::vector<race_info> *races_vector;
+  std::map<std::pair<vertex_t, vertex_t>, race_info> *race_map;
 #endif
 
 // Data structure to store additional information for task dependency.
@@ -267,6 +270,8 @@ void __attribute__((weak)) __tsan_set_report_race_steps_function(void (*f)(unsig
 
 void __attribute__((weak)) __tsan_set_report_race_stack_function(void (*f)(char*, bool, unsigned int, unsigned int));
 
+void __attribute__((weak)) __tsan_set_report_current_racy_stack_function(void (*f)(char*, unsigned int, unsigned int, unsigned int));
+
 char* __attribute__((weak)) __tsan_symbolize_pc(void* codeptr_ra, unsigned int &line, unsigned int &col);
 } // extern "C"
 
@@ -317,11 +322,15 @@ void ompt_print_func(){
 
 void ompt_report_race_steps_func(unsigned int cur, unsigned int prev){
 #ifdef GRAPH_MACRO
-  // printf("race between current step %d and previous step %d \n", cur, prev);
   setRace(cur);
   setRace(prev);
-  race_info ri = {prev, cur, 0};
-  races_vector->push_back(ri);
+  std::pair<vertex_t, vertex_t> key = std::make_pair(prev, cur);
+  
+  std::lock_guard<std::mutex> lock(race_map_mutex);
+  if(race_map->find(key) == race_map->end()){
+    race_info ri = {prev, cur, 0, "", ""};
+    race_map->emplace(key, ri);
+  }
 #endif
 }
 
@@ -331,11 +340,29 @@ void ompt_report_race_stack_func(char* s, bool first, unsigned int current_step,
     printf("race stack: %s \n", s);
     printf("first? %d, current_step %d, previous_step %d \n", first, current_step, prev_step);
   #endif
+  std::pair<vertex_t, vertex_t> key = std::make_pair(prev_step, current_step);
+  race_info& ri = race_map->find(key)->second;
+
   if(first){
-    (*savedVertex)[current_step].stack = s;
+    ri.prev_stack = s;
   }
   else{
-    (*savedVertex)[prev_step].stack = s;
+    ri.current_stack = s;
+  }
+#endif
+}
+
+void ompt_report_current_racy_stack_func(char* s, unsigned int current_step, unsigned int prev_step, unsigned int lineNumber){
+#ifdef GRAPH_MACRO
+  std::pair<vertex_t, vertex_t> key = std::make_pair(prev_step, current_step);
+  auto it = race_map->find(key);
+  race_info ri = it->second;
+
+  if(ri.current_stack == ""){
+    race_info new_ri = {ri.prev_step, ri.current_step, ri.lca, ri.prev_stack, "hello world"};
+    new_ri.current_stack = s;
+    new_ri.current_stack += ":" + std::to_string(lineNumber) + ":";
+    it->second = new_ri;
   }
 #endif
 }
@@ -418,13 +445,11 @@ static void ompt_ta_parallel_begin
   {
     unsigned int line;
     unsigned int col;
-    char* pc = (char*) codeptr_ra;
-    pc = pc - 1;
+    const char* pc = (const char*) codeptr_ra - 1;
 
     char* file = __tsan_symbolize_pc( (void*) pc, line, col);
     std::string stack = "file: " + std::string(file) + ", line: " + std::to_string(line) + ", col: " + std::to_string(col);
-    if (!hasRace(cg_parent))
-      addStack(cg_parent, stack);
+    addStack(cg_parent, stack);
 
     printf("[parallel_begin] %s \n", stack.c_str());
   }
@@ -474,7 +499,7 @@ static void ompt_ta_parallel_end
   addEdge(cg_parent, step_id, edge_type::CONT);
 
   // 2. insert join edges from last step nodes in implicit tasks to the continuation node
-  printf("[parallel_end] current node is %lu, requested parallelsim is %lu, ", cg_parent, parallel->end_nodes_to_join.size());
+  printf("[parallel_end] current node is %u, requested parallelsim is %lu, ", cg_parent, parallel->end_nodes_to_join.size());
 
   for(int joining_node : parallel->end_nodes_to_join){
     if(joining_node == 0){
@@ -488,12 +513,11 @@ static void ompt_ta_parallel_end
   {
     unsigned int line;
     unsigned int col;
-    char* pc = (char*) codeptr_ra;
+    const char* pc = (const char*) codeptr_ra - 1;
     char* file = __tsan_symbolize_pc( (void*) pc, line, col);
 
     std::string stack = "file: " + std::string(file) + ", line: " + std::to_string(line) + ", col: " + std::to_string(col);
-    if (!hasRace(cg_parent))
-      addStack(cg_parent, stack);
+    addStack(cg_parent, stack);
 
     printf("[parallel_end] %s \n", stack.c_str());
   }
@@ -695,6 +719,17 @@ static void ompt_ta_sync_region(
         new_finish->corresponding_pr = pr;
         pr->end_nodes_to_join.reserve(5);
 
+        if (codeptr_ra != nullptr)
+        {
+          unsigned int line;
+          unsigned int col;
+          const char* pc = (const char*) codeptr_ra - 1;
+          char* file = __tsan_symbolize_pc( (void*) pc, line, col);
+
+          std::string stack = "file: " + std::string(file) + ", line: " + std::to_string(line) + ", col: " + std::to_string(col);
+          addStack(current_step, stack);
+        }
+
         addVertex(next_step);
         addEvent(current_step, event_type::taskgroup_begin);
         addEdge(current_step, next_step, edge_type::CONT);
@@ -741,6 +776,17 @@ static void ompt_ta_sync_region(
       TreeNode *parent = current_task->current_taskwait->parent;
       int current_step = current_task->current_step_id;
       int new_step = insert_leaf(parent, current_task);
+
+      if (codeptr_ra != nullptr)
+      {
+        unsigned int line;
+        unsigned int col;
+        const char* pc = (const char*) codeptr_ra - 1;
+        char* file = __tsan_symbolize_pc( (void*) pc, line, col);
+
+        std::string stack = "file: " + std::string(file) + ", line: " + std::to_string(line) + ", col: " + std::to_string(col);
+        addStack(current_step, stack);
+      }
 
       #ifdef GRAPH_MACRO
         addEvent(current_step, event_type::taskwait_end);
@@ -919,14 +965,15 @@ static void ompt_ta_task_create(ompt_data_t *encountering_task_data,
   {
     unsigned int line;
     unsigned int col;
-    char* pc = (char*) codeptr_ra;
+    const char* pc = (const char*) codeptr_ra - 1;
     char* file = __tsan_symbolize_pc( (void*) pc, line, col);
 
     std::string stack = "file: " + std::string(file) + ", line: " + std::to_string(line) + ", col: " + std::to_string(col);
-    if (!hasRace(cg_parent))
-      addStack(cg_parent, stack);
+    addStack(cg_parent, stack);
 
-    printf("[task_create] %s \n", stack.c_str());
+    #ifdef DEBUG_INFO
+      printf("[task_create] %s \n", stack.c_str());
+    #endif
   }
 #else
   insert_leaf(new_task_node,ti);
@@ -1015,8 +1062,10 @@ static void ompt_ta_task_schedule(
         }
 
         addEvent(prior_ti_end_node, event_type::task_schedule);
-                
-        printf("[task_schedule] previous task end node %lu @@@ ", prior_ti_end_node);
+        
+        #ifdef DEBUG_INFO
+          printf("[task_schedule] previous task end node %u @@@ ", prior_ti_end_node);
+        #endif
       }
     #endif
       delete prior_ti;
@@ -1029,7 +1078,9 @@ static void ompt_ta_task_schedule(
 
   assert(next_task_data->ptr);
   task_t* next_task = (task_t*) next_task_data->ptr;
-  printf("[task_schedule] next task starting node %d \n", next_task->current_step_id);
+  #ifdef DEBUG_INFO
+    printf("[task_schedule] next task starting node %d \n", next_task->current_step_id);
+  #endif
 
   __tsan_set_step_in_tls(next_task->current_step_id);
   if (next_task->execution == 0 && next_task->DependencyCount > 0) {
@@ -1064,8 +1115,7 @@ static void ompt_ta_target(ompt_target_t kind, ompt_scope_endpoint_t endpoint,
   {
     unsigned int line;
     unsigned int col;
-    char* pc = (char*) codeptr_ra;
-    pc = pc - 1;
+    const char* pc = (const char*) codeptr_ra - 1;
     char* file = __tsan_symbolize_pc( (void*) pc, line, col);
 
     stack = "file: " + std::string(file) + ", line: " + std::to_string(line) + ", col: " + std::to_string(col);
@@ -1083,8 +1133,7 @@ static void ompt_ta_target(ompt_target_t kind, ompt_scope_endpoint_t endpoint,
     #ifdef GRAPH_MACRO
       int cg_parent = current_task->current_step_id;
       addEvent(cg_parent, event_type::target_begin);
-      if (!hasRace(cg_parent))
-        addStack(cg_parent, stack);
+      addStack(cg_parent, stack);
 
       TreeNode *parent = find_parent(current_task);
       int step_id = insert_leaf(parent, current_task);
@@ -1114,8 +1163,7 @@ static void ompt_ta_target(ompt_target_t kind, ompt_scope_endpoint_t endpoint,
     #ifdef GRAPH_MACRO
       int cg_parent = current_task->current_step_id;
       addEvent(cg_parent, event_type::target_end);
-      if (!hasRace(cg_parent))
-        addStack(cg_parent, stack);
+      addStack(cg_parent, stack);
 
       TreeNode *parent = find_parent(current_task);
       int step_id = insert_leaf(parent, current_task);
@@ -1187,6 +1235,7 @@ static int ompt_tsan_initialize(ompt_function_lookup_t lookup, int device_num,
   __tsan_set_ompt_print_function(&ompt_print_func);
   __tsan_set_report_race_steps_function(&ompt_report_race_steps_func);
   __tsan_set_report_race_stack_function(&ompt_report_race_stack_func);
+  __tsan_set_report_current_racy_stack_function(&ompt_report_current_racy_stack_func);
 
   GET_ENTRY_POINT(set_callback);
   GET_ENTRY_POINT(get_task_info);
@@ -1216,8 +1265,7 @@ static int ompt_tsan_initialize(ompt_function_lookup_t lookup, int device_num,
     temp_dmv = new std::vector<DataMove>();
     temp_dmv->reserve(5);
 
-    races_vector = new std::vector<race_info>();
-    races_vector->reserve(5);
+    race_map = new std::map<std::pair<vertex_t, vertex_t>, race_info>();
   #endif
   return 1; // success
 }
@@ -1232,7 +1280,7 @@ static void ompt_tsan_finalize(ompt_data_t *tool_data) {
 
     delete trm;
     delete temp_dmv;
-    delete races_vector;
+    delete race_map;
   #endif
 }
 
@@ -1279,15 +1327,16 @@ void print_graph_json(){
   json files = {};
   std::set<std::string> fileSet;
 
+  // 1. export nodes and edges into JSON
   for (int i = 1; i < savedVertex->size(); i++)
   {
     Vertex_new v = (*savedVertex)[i];
     if (v.id == 0)
       break;
 
-    if(v.has_race == true && v.stack != ""){
+    if(v.stack != ""){
       unsigned int lineNumber = 0;
-      std::string filePath = extractInfo(v.stack, lineNumber);
+      std::string filePath = extractInfo(v.stack, lineNumber, v.has_race);
       
       if(fileSet.find(filePath) == fileSet.end()){
         fileSet.insert(filePath);
@@ -1323,21 +1372,26 @@ void print_graph_json(){
   j["edges"] = edges;
   j["files"] = files;
 
+  // 2. export races into JSON
   json races;
-  for(int i=0; i < races_vector->size(); i++){
-    race_info ri = (*races_vector)[i];
+  for(auto it = race_map->begin(); it != race_map->end(); ++it){
+    race_info ri = it->second;
     json race;
     race["prev"] = ri.prev_step;
     race["current"] = ri.current_step;
     race["lca"] = ri.lca;
+    race["prev_stack"] = ri.prev_stack;
+    race["current_stack"] = ri.current_stack;
     races.push_back(race);
   }
 
+  // 3. export data moves into JSON
   json targets = get_datamove_json();
 
   j["races"] = races;
   j["targets"] = targets;
 
+  // 4. write JSON to file
   std::ofstream outputFile("data/rawgraphml.json");
   if (outputFile.is_open()) {
     outputFile << std::setw(4) << j;
@@ -1374,7 +1428,7 @@ std::string get_file_string(std::string filePath){
   return file_contents;
 }
 
-
+#ifdef GRAPH_MACRO
 json get_datamove_json(){
   json target;
   for (auto it = trm->begin(); it != trm->end(); ++it) {
@@ -1409,252 +1463,35 @@ json get_datamove_json(){
   }
   return target;
 }
+#endif
 
 
-std::string extractInfo(const std::string& input, unsigned int& lineNumber) {
+std::string extractInfo(const std::string& input, unsigned int& lineNumber, bool has_race) {
   // Define the regular expression pattern
   std::regex pattern(R"(/(.+):(\d+):\d+ \(.*\))");
 
   // Match the input against the pattern
   std::smatch match;
-  std::string result;
+  std::string result = "Unknown";
+  lineNumber = 0;
 
-  if (std::regex_search(input, match, pattern)) {
-      // Extract the file path and line number from the matched groups
-      result = "/" + match[1].str();
-      lineNumber = std::stoi(match[2].str());
-  } else {
-      // If no match is found, set default values or handle the error accordingly
-      result = "Unknown";
-      lineNumber = 0;
-  }
+  // if(has_race){
+  //   if (std::regex_search(input, match, pattern)) {
+  //       // Extract the file path and line number from the matched groups
+  //       result = "/" + match[1].str();
+  //       lineNumber = std::stoi(match[2].str());
+  //   }
+  // }
+  // else{
+  //   // in this case, the stack starts with "file: "
+  //   std::size_t first_comma_index = input.find(",");
+  //   std::string starter = "file: ";
+  //   result = input.substr(starter.length(), first_comma_index - starter.length());
+  // }
+
+  std::size_t first_comma_index = input.find(",");
+  std::string starter = "file: ";
+  result = input.substr(starter.length(), first_comma_index - starter.length());
 
   return result;
 }
-
-// char* extractInfo(char* input, unsigned int& lineNumber){
-//   std::string line_string = "";
-
-//   const char* ptr;
-//   unsigned int index = 0;
-
-//   for (ptr = input; *ptr != '\0'; ++ptr) {
-//     if(*ptr == '/'){
-//       break;
-//     }
-//     index++;
-//   }
-//   unsigned int start_index = index;
-
-//   while (*ptr != ':' && *ptr != '\0')
-//   {
-//     ptr++;
-//     index++;
-//   }
-//   ptr++;
-//   unsigned int end_index = index;
-
-//   unsigned int size = end_index - start_index;
-//   char* result = new char[size+1];
-//   index = 0;
-//   while(index < end_index){
-//     if(index >= start_index){
-//       result[index - start_index] = input[index];
-//     }
-//     index++;
-//   }
-//   result[index] = '\0';
-
-//   while(*ptr != ':' && *ptr != '\0'){
-//     line_string += *ptr;
-//     ptr++;
-//   }
-
-//   // std::cout << result << "     " << line_string << std::endl;
-
-//   lineNumber = std::stoi(line_string);
-//   return result;
-// }
-
-
-// std::string get_race_string(){
-//   std::string raceJson = "\"races\": [\n";
-//   for(int i=0; i < races_vector->size(); i++){
-//     race_info ri = (*races_vector)[i];
-
-//     raceJson += "{\n";
-//     raceJson += "\"prev\": " + std::to_string(ri.prev_step) + ",\n";
-//     raceJson += "\"current\": " + std::to_string(ri.current_step) + ",\n";
-//     raceJson += "\"lca\": " + std::to_string(ri.lca) + "\n";
-
-//     raceJson += "         },\n";
-//   }
-
-//   if(races_vector->size() > 0){
-//     raceJson.pop_back();
-//     raceJson.pop_back();
-//   }
-
-//   raceJson += "\n";
-//   raceJson += "]\n";
-
-//   return raceJson;
-// }
-
-// std::string get_datamove_string(){
-//   std::string targetJson = "\"target\": [\n";
-
-//   for (auto it = trm->begin(); it != trm->end(); ++it) {
-//     targetRegion &tr = *it;
-//     std::vector<DataMove> dmv = tr.dmv;
-//     targetJson += "{\n";
-//     targetJson += "\"begin_node\": " + std::to_string(tr.begin_node) + ",\n";
-//     targetJson += "\"end_node\": " + std::to_string(tr.end_node) + ",\n";
-//     targetJson += "\"datamove\": [\n";
-
-//     for(DataMove dm : dmv){
-//       std::stringstream ss;
-//       ss << std::hex << dm.orig_addr;
-//       std::string orig_address = ss.str();
-
-//       ss.str("");
-//       ss.clear();
-
-//       ss << std::hex << dm.dest_addr;
-//       std::string dest_address = ss.str();
-
-//       targetJson += "{\n";
-//       targetJson += "\"orig_address\": \"" + orig_address + "\",\n";
-//       targetJson += "\"dest_address\": \"" + dest_address + "\",\n";
-//       targetJson += "\"bytes\": " + std::to_string(dm.bytes) + ",\n";
-//       targetJson += "\"flag\": " + std::to_string(dm.device_mem_flag) + "\n";
-//       targetJson += "},\n";
-//     }
-
-//     if(dmv.size() > 0){
-//       targetJson.pop_back();
-//       targetJson.pop_back();
-//     }
-//     targetJson += "\n";
-//     targetJson += "]\n";
-//     targetJson += "},\n";
-//   }
-
-//   if(trm->size() > 0){
-//     targetJson.pop_back();
-//     targetJson.pop_back();
-//   }
-//   targetJson += "\n";
-//   targetJson += "]\n";
-
-//   return targetJson;
-// }
-
-
-// void print_graph(){
-// #ifdef GRAPH_MACRO
-//   const char* env_p = std::getenv("PRINT_GRAPHML");
-//   if(!env_p || (strcmp(env_p, "TRUE") != 0)){
-//     return;
-//   }
-
-//   for(int i=0; i < savedEdges->size(); i++){
-//     EdgeFull edge = (*savedEdges)[i];
-//     addEdge(edge.source, edge.target, edge.type);
-//   }
-
-//   std::string jsonOutput = "{\n";
-//   std::string nodeJson = "\"nodes\": [\n";
-//   std::string edgeJson = "\"edges\": [\n";
-//   std::string fileJson = "";
-//   std::set<std::string> fileSet;
-
-//   for (int i = 1; i < savedVertex->size(); i++)
-//   {
-//     Vertex_new v = (*savedVertex)[i];
-//     if (v.id == 0)
-//       break;
-    
-//     if(v.has_race == true && v.stack != ""){
-//       unsigned int lineNumber = 0;
-//       std::string filePath = extractInfo(v.stack, lineNumber);
-      
-//       if(fileSet.find(filePath) == fileSet.end()){
-//         fileSet.insert(filePath);
-//         std::string fileString = get_file_string(filePath);
-//         fileJson += "\"" + filePath + "\": \"" + fileString + "\",\n";
-//       }
-//     }
-
-//     nodeJson += "{\n";
-
-//     nodeJson += "\"id\": " + std::to_string(v.id) + ",\n";
-//     nodeJson += "\"end_event\": " + std::to_string(v.end_event) + ",\n";
-//     nodeJson += "\"has_race\": " + std::to_string(v.has_race) + ",\n";
-//     nodeJson += "\"ontarget\": " + std::to_string(v.ontarget) + ",\n";
-//     nodeJson += "\"stack\": \"" + v.stack + "\",\n";
-//     nodeJson += "\"active\": " + std::to_string(1) + ",\n";
-//     nodeJson += "\"hidden\": " + std::to_string(0) + "\n";
-
-//     nodeJson += "         },\n";
-
-//     // printf("vertex %u, outgoing edges: ", v.id);
-//     vertex_t source = v.id;
-//     for (int j = 0; j < v.out_edges.size(); j++)
-//     {
-//       Edge_new e = v.out_edges[j];
-//       edgeJson += "{\n";
-
-//       edgeJson += "\"source\": " + std::to_string(source) + ",\n";
-//       edgeJson += "\"target\": " + std::to_string(e.target) + ",\n";
-//       edgeJson += "\"edge_type\": " + std::to_string(e.type) + ",\n";
-//       edgeJson += "\"hidden\": " + std::to_string(0) + "\n";
-
-//       edgeJson += "         },\n";
-//     }
-//   }
-
-//   nodeJson.pop_back(); 
-//   nodeJson.pop_back(); // Remove the trailing comma for the last object
-//   nodeJson += "\n";
-//   nodeJson += "]\n";
-//   jsonOutput += nodeJson;
-//   jsonOutput += ",\n";
-  
-//   edgeJson.pop_back();
-//   edgeJson.pop_back();
-//   edgeJson += "\n";
-//   edgeJson += "]\n";
-//   jsonOutput += edgeJson;
-//   jsonOutput += ",\n";
-
-//   std::string raceJson = get_race_string();
-//   jsonOutput += raceJson;
-//   jsonOutput += ",\n";
-
-//   std::string targetJson = get_datamove_string();
-//   jsonOutput += targetJson;
-
-
-//   if(fileJson.size() > 1){
-//     fileJson.pop_back();
-//     fileJson.pop_back();
-//   }
-//   fileJson += "\n";
-//   jsonOutput += ",\n";
-//   jsonOutput += fileJson;
-//   jsonOutput += "}\n";
-
-
-//   std::ofstream outputFile("data/rawgraphml.json");
-//   if (outputFile.is_open()) {
-//     outputFile << jsonOutput;
-//     outputFile.close();
-//     std::cout << "JSON data written to 'data/rawgraphml.json'" << std::endl;
-//   } 
-//   else 
-//   {
-//     std::cerr << "Unable to open file for writing" << std::endl;
-//   }
-// #endif 
-// }
