@@ -15,6 +15,7 @@
 #include "taskdep_predefined.h"
 
 #define GRAPH_MACRO
+// #define STACK_INFO
 // #define DEBUG_INFO
 
 #ifdef GRAPH_MACRO
@@ -214,6 +215,7 @@ public:
 #ifdef GRAPH_MACRO
   vertex_t start_cg_node;
   std::vector<vertex_t> end_nodes_to_join;
+  std::mutex pr_mutex;
 #endif
 public:
   parallel_t(int parallelism, task_t *task)
@@ -343,7 +345,7 @@ void ompt_report_race_stack_func(char* s, bool first, unsigned int current_step,
   std::pair<vertex_t, vertex_t> key = std::make_pair(prev_step, current_step);
   race_info& ri = race_map->find(key)->second;
 
-  if(first){
+  if(!first){
     ri.prev_stack = s;
   }
   else{
@@ -441,6 +443,7 @@ static void ompt_ta_parallel_begin
 
   addEdge(cg_parent, step_id, edge_type::CONT);
 
+  #ifdef STACK_INFO
   if (codeptr_ra != nullptr)
   {
     unsigned int line;
@@ -453,6 +456,7 @@ static void ompt_ta_parallel_begin
 
     printf("[parallel_begin] %s \n", stack.c_str());
   }
+  #endif
 #else
   parallel_data->ptr = new parallel_t(requested_parallelism, current_task);
   insert_leaf(new_finish_node, current_task);
@@ -499,7 +503,7 @@ static void ompt_ta_parallel_end
   addEdge(cg_parent, step_id, edge_type::CONT);
 
   // 2. insert join edges from last step nodes in implicit tasks to the continuation node
-  printf("[parallel_end] current node is %u, requested parallelsim is %lu, ", cg_parent, parallel->end_nodes_to_join.size());
+  printf("[parallel_end] current node is %u, joining size is %lu, ", cg_parent, parallel->end_nodes_to_join.size());
 
   for(int joining_node : parallel->end_nodes_to_join){
     if(joining_node == 0){
@@ -509,6 +513,7 @@ static void ompt_ta_parallel_end
     addEdge(joining_node, step_id, edge_type::JOIN);
   }
 
+  #ifdef STACK_INFO
   if (codeptr_ra != nullptr)
   {
     unsigned int line;
@@ -519,8 +524,9 @@ static void ompt_ta_parallel_end
     std::string stack = "file: " + std::string(file) + ", line: " + std::to_string(line) + ", col: " + std::to_string(col);
     addStack(cg_parent, stack);
 
-    printf("[parallel_end] %s \n", stack.c_str());
+    // printf("[parallel_end] %s \n", stack.c_str());
   }
+  #endif
 #else
   insert_leaf(parent, current_task);
   printf("[parallel_end] \n");
@@ -719,6 +725,7 @@ static void ompt_ta_sync_region(
         new_finish->corresponding_pr = pr;
         pr->end_nodes_to_join.reserve(5);
 
+        #ifdef STACK_INFO
         if (codeptr_ra != nullptr)
         {
           unsigned int line;
@@ -729,6 +736,7 @@ static void ompt_ta_sync_region(
           std::string stack = "file: " + std::string(file) + ", line: " + std::to_string(line) + ", col: " + std::to_string(col);
           addStack(current_step, stack);
         }
+        #endif
 
         addVertex(next_step);
         addEvent(current_step, event_type::taskgroup_begin);
@@ -777,17 +785,6 @@ static void ompt_ta_sync_region(
       int current_step = current_task->current_step_id;
       int new_step = insert_leaf(parent, current_task);
 
-      if (codeptr_ra != nullptr)
-      {
-        unsigned int line;
-        unsigned int col;
-        const char* pc = (const char*) codeptr_ra - 1;
-        char* file = __tsan_symbolize_pc( (void*) pc, line, col);
-
-        std::string stack = "file: " + std::string(file) + ", line: " + std::to_string(line) + ", col: " + std::to_string(col);
-        addStack(current_step, stack);
-      }
-
       #ifdef GRAPH_MACRO
         addEvent(current_step, event_type::taskwait_end);
         addVertex(new_step);
@@ -802,6 +799,19 @@ static void ompt_ta_sync_region(
           }
           left_node = left_node->next_sibling;
         }
+
+        #ifdef STACK_INFO
+        if (codeptr_ra != nullptr)
+        {
+          unsigned int line;
+          unsigned int col;
+          const char* pc = (const char*) codeptr_ra - 1;
+          char* file = __tsan_symbolize_pc( (void*) pc, line, col);
+
+          std::string stack = "file: " + std::string(file) + ", line: " + std::to_string(line) + ", col: " + std::to_string(col);
+          addStack(current_step, stack);
+        }
+        #endif
       #endif
     }
   } else if (kind == ompt_sync_region_reduction) {
@@ -895,6 +905,9 @@ static void ompt_ta_sync_region(
           return;
         }
 
+        #ifdef DEBUG_INFO
+          printf("[sync_region_end] joining size %lu \n", parallel->end_nodes_to_join.size()); 
+        #endif
         for(vertex_t node : parallel->end_nodes_to_join){
           // if node == 0, we can directly break, because
           // we assume all threads hit the barrier or not
@@ -902,6 +915,9 @@ static void ompt_ta_sync_region(
             break;
           }
 
+          #ifdef DEBUG_INFO
+            printf("[sync_region_end] join edge from %u to %u \n", node, current_step);
+          #endif
           if(node == current_step){
             continue;
           }
@@ -961,6 +977,7 @@ static void ompt_ta_task_create(ompt_data_t *encountering_task_data,
 
   addEdge(cg_parent, continuation_node, edge_type::CONT);
 
+  #ifdef STACK_INFO
   if (codeptr_ra != nullptr)
   {
     unsigned int line;
@@ -975,6 +992,7 @@ static void ompt_ta_task_create(ompt_data_t *encountering_task_data,
       printf("[task_create] %s \n", stack.c_str());
     #endif
   }
+  #endif
 #else
   insert_leaf(new_task_node,ti);
   insert_leaf(parent, current_task);
@@ -1055,6 +1073,7 @@ static void ompt_ta_task_schedule(
         vertex_t prior_ti_end_node = prior_ti->node_in_dpst->children_list_tail->corresponding_id;
 
         if(team_index > previous_task_parallel_region->parallelism){
+          std::lock_guard<std::mutex> lock(previous_task_parallel_region->pr_mutex);
           previous_task_parallel_region->end_nodes_to_join.push_back(prior_ti_end_node);
         }
         else{
@@ -1111,6 +1130,7 @@ static void ompt_ta_target(ompt_target_t kind, ompt_scope_endpoint_t endpoint,
   }
 
   std::string stack;
+  #ifdef STACK_INFO
   if (codeptr_ra != nullptr)
   {
     unsigned int line;
@@ -1120,6 +1140,7 @@ static void ompt_ta_target(ompt_target_t kind, ompt_scope_endpoint_t endpoint,
 
     stack = "file: " + std::string(file) + ", line: " + std::to_string(line) + ", col: " + std::to_string(col);
   }
+  #endif
 
   printf("[target] ");
 

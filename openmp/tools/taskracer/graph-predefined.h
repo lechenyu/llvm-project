@@ -74,7 +74,7 @@ struct race_info{
 };
 
 //Instanciate a graph
-unsigned int vertex_size = 10000;
+unsigned int vertex_size = 80000000;
 
 struct EdgeFull{
   edge_type type;

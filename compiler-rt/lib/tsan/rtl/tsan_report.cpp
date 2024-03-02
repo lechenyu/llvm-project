@@ -144,8 +144,8 @@ void PrintStack(const ReportStack *ent, bool first, u32 current_step=0, u32 prev
                 common_flags()->strip_path_prefix, kInterposedFunctionPrefix);
     if(i == 0){
       ompt_report_race_stack(res.data(), first, current_step, prev_step);
-      Printf("%s\n", res.data());
-    } 
+    }
+    Printf("%s\n", res.data());
   }
   Printf("\n");
 }
