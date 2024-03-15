@@ -55,14 +55,12 @@ struct Vertex_new{
     bool ontarget;
     event_type end_event;
     std::string stack;
-    std::vector<Edge_new> out_edges;
-
+    Edge_new out_edges[10];
+    unsigned int index;
+    
     Vertex_new()
-    : id(0), has_race(false),ontarget(false), end_event(implicit_task), stack("")
-    {
-        out_edges = std::vector<Edge_new>();
-        out_edges.reserve(5);
-    }
+    : id(0), has_race(false),ontarget(false), end_event(implicit_task), stack(""), index(0)
+    {}
 };
 
 struct race_info{
@@ -74,7 +72,7 @@ struct race_info{
 };
 
 //Instanciate a graph
-unsigned int vertex_size = 80000000;
+const int vertex_size = 130000000;
 
 struct EdgeFull{
   edge_type type;
@@ -230,7 +228,10 @@ void addStack(vertex_t id, std::string stack){
 
 void addEdge(vertex_t source, vertex_t target, edge_type type){
     Edge_new e = {target, type};
-    (*savedVertex)[source].out_edges.push_back(e);
+    // (*savedVertex)[source].out_edges.push_back(e);
+    // (*savedVertex)[source].out_edges[0] = e;
+    (*savedVertex)[source].out_edges[(*savedVertex)[source].index] = e;
+    (*savedVertex)[source].index++;
 }
 
 #endif

@@ -15,6 +15,7 @@
 #include "taskdep_predefined.h"
 
 #define GRAPH_MACRO
+#define DPST_MACRO
 // #define STACK_INFO
 // #define DEBUG_INFO
 
@@ -26,6 +27,10 @@
   json get_datamove_json();
 
   std::mutex race_map_mutex;
+
+  #ifdef DPST_MACRO
+  std::atomic_uint step_id_counter(1);
+  #endif
 #endif
 
 enum NodeType {
@@ -240,13 +245,115 @@ public:
   }
 };
 
+#ifdef DPST_MACRO
+TreeNode dpst_root;
+#endif
+
 extern "C" {
+
+#ifdef DPST_MACRO
+void __tsan_reset_step_in_tls(){
+  return;
+}
+
+void __tsan_set_step_in_tls(int step_id){
+  return;
+}
+
+TreeNode *__tsan_init_DPST() {
+  // ThreadState *thr = cur_thread();
+  dpst_root.corresponding_id = 0;
+  dpst_root.node_type = ASYNC_I;
+  dpst_root.depth = 0;
+  dpst_root.number_of_child = 0;
+  dpst_root.is_parent_nth_child = 0;
+  dpst_root.preceeding_taskwait = kNullStepId;
+  // dpst_root.sid = nullptr;
+  // dpst_root.ev = nullptr;
+  dpst_root.parent = nullptr;
+  dpst_root.children_list_head = nullptr;
+  dpst_root.children_list_tail = nullptr;
+  dpst_root.next_sibling = nullptr;
+  return &dpst_root;
+}
+
+
+TreeNode *__tsan_alloc_internal_node(int internal_node_id, NodeType node_type, TreeNode *parent, int preceeding_taskwait)
+{
+  // Allocate memory for new node
+  // tree_node* node = new tree_node();
+  // TreeNode *node = (TreeNode *)InternalAlloc(sizeof(TreeNode));
+  TreeNode *node = new TreeNode();
+  node->corresponding_id = internal_node_id;
+  node->node_type = node_type;
+  node->depth = parent->depth + 1;
+  node->number_of_child = 0;
+  node->is_parent_nth_child = parent->number_of_child;
+  node->preceeding_taskwait = preceeding_taskwait;
+  node->parent = parent;
+  node->children_list_head = nullptr;
+  node->children_list_tail = nullptr;
+  node->next_sibling = nullptr;
+  // Printf("new %p internal id %d, type %d, parent %p\n", node, internal_node_id, node_type, parent);
+  return node;
+}
+
+TreeNode *__tsan_insert_internal_node(TreeNode *node, TreeNode *parent) {  
+  parent->number_of_child += 1; 
+  if (parent->children_list_head) {
+    parent->children_list_tail->next_sibling = node;
+    parent->children_list_tail = node;
+  } else {
+    parent->children_list_head = node;
+    parent->children_list_tail = node;
+  }
+  return node;
+}
+
+TreeNode *__tsan_alloc_insert_internal_node(int internal_node_id, NodeType node_type, TreeNode *parent, int preceeding_taskwait) {
+  TreeNode *node = __tsan_alloc_internal_node(internal_node_id, node_type, parent, preceeding_taskwait);
+  __tsan_insert_internal_node(node, parent);
+  return node;
+}
+
+
+TreeNode *__tsan_insert_leaf(TreeNode *parent, int preceeding_taskwait) {
+  // ThreadState *thr = cur_thread();
+  // TreeNode &n = step_nodes->EmplaceBack(
+  //     STEP, preceeding_taskwait,
+  //     thr->fast_state.sid(), thr->fast_state.epoch(), parent);
+
+  unsigned int step_index = step_id_counter.fetch_add(1, std::memory_order_relaxed);
+  TreeNode *new_step = new TreeNode();
+  new_step->corresponding_id = step_index;
+  new_step->node_type = STEP;
+  new_step->depth = parent->depth + 1;
+  new_step->number_of_child = 0;
+  new_step->is_parent_nth_child = parent->number_of_child;
+  new_step->preceeding_taskwait = preceeding_taskwait;
+  new_step->parent = parent;
+  new_step->children_list_head = nullptr;
+  new_step->children_list_tail = nullptr;
+  new_step->next_sibling = nullptr;
+
+  parent->number_of_child += 1;
+
+  if (parent->children_list_head == nullptr) {
+    parent->children_list_head = new_step;
+    parent->children_list_tail = new_step;
+  } else {
+    parent->children_list_tail->next_sibling = new_step;
+    parent->children_list_tail = new_step;
+  }
+
+  return new_step;
+}
+#else // DPST_MACRO
+
+
 void __attribute__((weak)) __tsan_print();
 
 TreeNode __attribute__((weak)) *__tsan_init_DPST();
-
-// TreeNode *__attribute__((weak))
-// __tsan_alloc_internal_node(int internal_node_id, NodeType node_type, TreeNode *parent, int preceeding_taskwait);
 
 TreeNode *__attribute__((weak))
 __tsan_insert_internal_node(TreeNode *node, TreeNode *parent);
@@ -275,6 +382,8 @@ void __attribute__((weak)) __tsan_set_report_race_stack_function(void (*f)(char*
 void __attribute__((weak)) __tsan_set_report_current_racy_stack_function(void (*f)(char*, unsigned int, unsigned int, unsigned int));
 
 char* __attribute__((weak)) __tsan_symbolize_pc(void* codeptr_ra, unsigned int &line, unsigned int &col);
+
+#endif // DPST_MACRO  
 } // extern "C"
 
 
@@ -503,7 +612,7 @@ static void ompt_ta_parallel_end
   addEdge(cg_parent, step_id, edge_type::CONT);
 
   // 2. insert join edges from last step nodes in implicit tasks to the continuation node
-  printf("[parallel_end] current node is %u, joining size is %lu, ", cg_parent, parallel->end_nodes_to_join.size());
+  // printf("[parallel_end] current node is %u, joining size is %lu, ", cg_parent, parallel->end_nodes_to_join.size());
 
   for(int joining_node : parallel->end_nodes_to_join){
     if(joining_node == 0){
@@ -548,7 +657,7 @@ static void ompt_ta_implicit_task(
 {
   if (flags & ompt_task_initial) {
     if (endpoint == ompt_scope_begin) {
-      printf("[implicit_task] initial task begin \n");
+      // printf("[implicit_task] initial task begin \n");
 
       if(root){
         // This condition means this initial task is a task on target,
@@ -622,7 +731,7 @@ static void ompt_ta_implicit_task(
     } 
     else if (endpoint == ompt_scope_end) {
       task_t *ti = (task_t *)task_data->ptr;
-      printf("[implicit_task] initial task end, parallel region is %p, current step is %d \n", ti->parallel_region, ti->current_step_id);
+      // printf("[implicit_task] initial task end, parallel region is %p, current step is %d \n", ti->parallel_region, ti->current_step_id);
 
       #ifdef GRAPH_MACRO
         if(ti->added_to_others_join == false && ti->parallel_region != nullptr){
@@ -816,7 +925,7 @@ static void ompt_ta_sync_region(
     }
   } else if (kind == ompt_sync_region_reduction) {
     task_t *current_task = (task_t *)task_data->ptr;
-    printf("[SYNC] task current step id is %d \n", current_task->current_step_id);
+    // printf("[SYNC] task current step id is %d \n", current_task->current_step_id);
     return;
   } else {
     // For all kinds of barriers, split parallel region
@@ -1046,7 +1155,9 @@ static void ompt_ta_task_schedule(
   ompt_task_status_t prior_task_status,
   ompt_data_t *next_task_data
 ){
+  #ifndef DPST_MACRO
   TsanNewMemory(static_cast<char *>(__builtin_frame_address(0)) - kDefaultStackSize, kDefaultStackSize);
+  #endif
 
   if (prior_task_status == ompt_task_complete || prior_task_status == ompt_task_late_fulfill) {
 
@@ -1056,9 +1167,13 @@ static void ompt_ta_task_schedule(
       int ret_task_memory = 1, block = 0;
       while (ret_task_memory) {
         ret_task_memory = ompt_get_task_memory(&addr, &size, block);
+
+        #ifndef DPST_MACRO
         if (size > 0) {
           TsanNewMemory(((void**)addr), size+8);
         }
+        #endif
+
         block++;
       }
     }
@@ -1252,11 +1367,13 @@ static void ompt_ta_device_mem(ompt_data_t *target_task_data,
 
 static int ompt_tsan_initialize(ompt_function_lookup_t lookup, int device_num,
                                 ompt_data_t *tool_data) {
-  __tsan_print();
-  __tsan_set_ompt_print_function(&ompt_print_func);
+  #ifndef DPST_MACRO
+  // __tsan_print();
+  // __tsan_set_ompt_print_function(&ompt_print_func);
   __tsan_set_report_race_steps_function(&ompt_report_race_steps_func);
   __tsan_set_report_race_stack_function(&ompt_report_race_stack_func);
   __tsan_set_report_current_racy_stack_function(&ompt_report_current_racy_stack_func);
+  #endif
 
   GET_ENTRY_POINT(set_callback);
   GET_ENTRY_POINT(get_task_info);
@@ -1277,7 +1394,9 @@ static int ompt_tsan_initialize(ompt_function_lookup_t lookup, int device_num,
   SET_CALLBACK(device_mem);
 
   #ifdef GRAPH_MACRO
-    savedEdges = new ConcurrentVector<EdgeFull>(10);
+    savedEdges = new ConcurrentVector<EdgeFull>();
+    savedEdges->reserve(10000000);
+
     savedVertex = new std::vector<Vertex_new>(vertex_size);
 
     trm = new std::vector<targetRegion>();
@@ -1296,6 +1415,44 @@ static void ompt_tsan_finalize(ompt_data_t *tool_data) {
 
   #ifdef GRAPH_MACRO
     print_graph_json();
+
+    // unsigned int vertex_count = 0;
+    // unsigned int edge_count = 0;
+    // unsigned int fork_edge_count = 0;
+    // unsigned int join_edge_count = 0;
+
+    // for(int i=0; i < savedEdges->size(); i++){
+    //   edge_count++;
+    //   fork_edge_count ++;
+    // }
+
+    // for (int i = 1; i < savedVertex->size(); i++)
+    // {
+    //   Vertex_new v = (*savedVertex)[i];
+    //   if (v.id == 0)
+    //     break;
+
+    //   vertex_count++;
+
+    //   edge_count += v.index;
+
+    //   for(int i=0; i < v.index; i++){
+    //     if(v.out_edges[i].type == edge_type::JOIN || v.out_edges[i].type == edge_type::BARRIER || v.out_edges[i].type == edge_type::JOIN_E){
+    //       join_edge_count++;
+    //     }
+    //     else if(v.out_edges[i].type == edge_type::FORK_E || v.out_edges[i].type == edge_type::FORK_I){
+    //       fork_edge_count++;
+    //     }
+    //   }
+    // }
+
+    // printf("number of nodes: %u \n", vertex_count);
+    // printf("number of edges: %u \n", edge_count);
+    // printf("number of synchronized edges: %lu \n", savedEdges->size());
+    // printf("number of fork edges: %u \n", fork_edge_count);
+    // printf("number of join edges: %u \n", join_edge_count);
+
+
     delete savedEdges;
     delete savedVertex;
 
@@ -1314,10 +1471,10 @@ extern "C" ompt_start_tool_result_t *
 ompt_start_tool(unsigned int omp_version, const char *runtime_version) {
   static ompt_start_tool_result_t ompt_start_tool_result = {
       &ompt_tsan_initialize, &ompt_tsan_finalize, {0}};
-  if (!scan_tsan_runtime()) {
-    std::cout << "Taskracer does not detect TSAN runtime, stopping operation" << std::endl;
-    return nullptr;
-  }
+  // if (!scan_tsan_runtime()) {
+  //   std::cout << "Taskracer does not detect TSAN runtime, stopping operation" << std::endl;
+  //   return nullptr;
+  // }
   std::cout << "Taskracer detects TSAN runtime, carrying out race detection using DPST" << std::endl;
 
 #ifdef GRAPH_MACRO
@@ -1377,7 +1534,7 @@ void print_graph_json(){
     nodes.push_back(node);
 
     vertex_t source = v.id;
-    for (int j = 0; j < v.out_edges.size(); j++)
+    for (int j = 0; j < v.index; j++)
     {
       Edge_new e = v.out_edges[j];
       json edge;
