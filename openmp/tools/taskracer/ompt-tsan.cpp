@@ -1327,9 +1327,10 @@ static void ompt_ta_device_mem(ompt_data_t *target_task_data,
                                 void *orig_base_addr, void *orig_addr,
                                 int orig_device_num, void *dest_addr,
                                 int dest_device_num, size_t bytes,
-                                const void *codeptr_ra)
+                                const void *codeptr_ra, char *var_name)
 {
-  printf("[device_mem] original addr %p, destination address %p, size %lu, ", orig_addr, dest_addr, bytes);
+  printf("[device_mem] var name %s, original addr %p, destination address %p, size %lu, ", (var_name ? var_name : "unknown")
+         , orig_addr, dest_addr, bytes);
 
   #ifdef GRAPH_MACRO
     DataMove dm(orig_addr, dest_addr, bytes, device_mem_flag);

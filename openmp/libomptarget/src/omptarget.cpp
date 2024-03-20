@@ -190,7 +190,7 @@ static int initLibrary(DeviceTy &Device) {
                             CurrDeviceEntry->addr,
                             DeviceId,
                             CurrDeviceEntry->size,
-                            nullptr};
+                            nullptr, CurrHostEntry->name};
           Mem.addTargetDataOp(ompt_device_mem_flag_alloc |
                               ompt_device_mem_flag_associate |
                               ompt_device_mem_flag_to);
@@ -583,7 +583,7 @@ int targetDataBegin(ident_t *Loc, DeviceTy &Device, int32_t ArgNum,
     OmptDeviceMem Mem{ArgsBase[I],     Args[I],
                       HostDeviceNum,   (char *)TgtPtrBegin + Padding,
                       Device.DeviceID, (size_t)ArgSizes[I],
-                      CodePtr};
+                      CodePtr, reinterpret_cast<char *>(HstPtrName)};
     bool IsNew = TPR.Flags.IsNewEntry;
     if (IsNew) {
       Mem.addTargetDataOp(ompt_device_mem_flag_alloc |
@@ -854,10 +854,11 @@ int targetDataEnd(ident_t *Loc, DeviceTy &Device, int32_t ArgNum,
       Mapping.addMapping(Args[I], (char *)TgtPtrBegin + Padding, ArgSizes[I],
                          ArgTypes[I]);
     }
+    map_var_info_t HstPtrName = (!ArgNames) ? nullptr : ArgNames[I];
     OmptDeviceMem Mem{ArgBases[I],     Args[I],
                       HostDeviceNum,   (char *)TgtPtrBegin + Padding,
                       Device.DeviceID, (size_t)ArgSizes[I],
-                      CodePtr};
+                      CodePtr, reinterpret_cast<char *>(HstPtrName)};
     if (DelEntry) {
       Mem.addTargetDataOp(ompt_device_mem_flag_disassociate |
                           ompt_device_mem_flag_release);
@@ -999,7 +1000,7 @@ int targetDataEnd(ident_t *Loc, DeviceTy &Device, int32_t ArgNum,
 static int targetDataContiguous(ident_t *Loc, DeviceTy &Device, void *ArgsBase,
                                 void *HstPtrBegin, int64_t ArgSize,
                                 int64_t ArgType, AsyncInfoTy &AsyncInfo,
-                                void *CodePtr) {
+                                void *CodePtr, map_var_info_t ArgName) {
   TIMESCOPE_WITH_IDENT(Loc);
   bool IsLast, IsHostPtr;
   TargetPointerResultTy TPR = Device.getTgtPtrBegin(
@@ -1037,7 +1038,7 @@ static int targetDataContiguous(ident_t *Loc, DeviceTy &Device, void *ArgsBase,
     OmptDeviceMem Mem{ArgsBase, HstPtrBegin,
                       HostDeviceNum,   TgtPtrBegin,
                       Device.DeviceID, (size_t)ArgSize,
-                      CodePtr};
+                      CodePtr, reinterpret_cast<char *>(ArgName)};
     Mem.addTargetDataOp(ompt_device_mem_flag_from);
 #endif
 
@@ -1071,7 +1072,7 @@ static int targetDataContiguous(ident_t *Loc, DeviceTy &Device, void *ArgsBase,
     OmptDeviceMem Mem{ArgsBase, HstPtrBegin,
                       HostDeviceNum,   TgtPtrBegin,
                       Device.DeviceID, (size_t)ArgSize,
-                      CodePtr};
+                      CodePtr, reinterpret_cast<char *>(ArgName)};
     Mem.addTargetDataOp(ompt_device_mem_flag_to);
 #endif
 
@@ -1096,7 +1097,7 @@ static int targetDataNonContiguous(ident_t *Loc, DeviceTy &Device,
                                    __tgt_target_non_contig *NonContig,
                                    uint64_t Size, int64_t ArgType,
                                    int CurrentDim, int DimSize, uint64_t Offset,
-                                   AsyncInfoTy &AsyncInfo, void *CodePtr) {
+                                   AsyncInfoTy &AsyncInfo, void *CodePtr, map_var_info_t ArgName) {
   TIMESCOPE_WITH_IDENT(Loc);
   int Ret = OFFLOAD_SUCCESS;
   if (CurrentDim < DimSize) {
@@ -1108,7 +1109,7 @@ static int targetDataNonContiguous(ident_t *Loc, DeviceTy &Device,
       if (CurrentDim != DimSize - 1 || I == 0) {
         Ret = targetDataNonContiguous(Loc, Device, ArgsBase, NonContig, Size,
                                       ArgType, CurrentDim + 1, DimSize,
-                                      Offset + CurOffset, AsyncInfo, CodePtr);
+                                      Offset + CurOffset, AsyncInfo, CodePtr, ArgName);
         // Stop the whole process if any contiguous piece returns anything
         // other than OFFLOAD_SUCCESS.
         if (Ret != OFFLOAD_SUCCESS)
@@ -1121,7 +1122,7 @@ static int targetDataNonContiguous(ident_t *Loc, DeviceTy &Device,
        " len %" PRIu64 "\n",
        DPxPTR(Ptr), Offset, Size);
     Ret = targetDataContiguous(Loc, Device, ArgsBase, Ptr, Size, ArgType,
-                               AsyncInfo, CodePtr);
+                               AsyncInfo, CodePtr, ArgName);
   }
   return Ret;
 }
@@ -1170,7 +1171,7 @@ int targetDataUpdate(ident_t *Loc, DeviceTy &Device, int32_t ArgNum,
     }
 
     int Ret = OFFLOAD_SUCCESS;
-
+    map_var_info_t HstPtrName = (!ArgNames) ? nullptr : ArgNames[I];
     if (ArgTypes[I] & OMP_TGT_MAPTYPE_NON_CONTIG) {
       __tgt_target_non_contig *NonContig = (__tgt_target_non_contig *)Args[I];
       int32_t DimSize = ArgSizes[I];
@@ -1180,10 +1181,10 @@ int targetDataUpdate(ident_t *Loc, DeviceTy &Device, int32_t ArgNum,
       Ret = targetDataNonContiguous(Loc, Device, ArgsBase[I], NonContig, Size,
                                     ArgTypes[I],
                                     /*current_dim=*/0, DimSize - MergedDim,
-                                    /*offset=*/0, AsyncInfo, CodePtr);
+                                    /*offset=*/0, AsyncInfo, CodePtr, HstPtrName);
     } else {
       Ret = targetDataContiguous(Loc, Device, ArgsBase[I], Args[I], ArgSizes[I],
-                                 ArgTypes[I], AsyncInfo, CodePtr);
+                                 ArgTypes[I], AsyncInfo, CodePtr, HstPtrName);
     }
     if (Ret == OFFLOAD_FAIL)
       return OFFLOAD_FAIL;

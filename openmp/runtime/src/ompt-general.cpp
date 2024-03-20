@@ -1155,11 +1155,11 @@ _OMP_EXTERN void libomp_ompt_callback_target_map_emi(
 _OMP_EXTERN void libomp_ompt_callback_device_mem(
     unsigned int device_mem_flag, void *orig_base_addr, void *orig_addr,
     int orig_device_num, void *dest_addr, int dest_device_num, size_t bytes,
-    void *codeptr) {
+    void *codeptr, char *var_name) {
   ompt_data_t *target_task_data, *target_data;
   __ompt_get_target_data_info(nullptr, &target_task_data, &target_data,
                               nullptr);
   ompt_target_callbacks.ompt_callback(ompt_callback_device_mem)(
       target_task_data, target_data, device_mem_flag, orig_base_addr, orig_addr,
-      orig_device_num, dest_addr, dest_device_num, bytes, codeptr);
+      orig_device_num, dest_addr, dest_device_num, bytes, codeptr, var_name);
 }
