@@ -1191,7 +1191,7 @@ static void ompt_tsan_device_mem(ompt_data_t *target_task_data,
                                 void *orig_base_addr, void *orig_addr,
                                 int orig_device_num, void *dest_addr,
                                 int dest_device_num, size_t bytes,
-                                const void *codeptr_ra) {                              
+                                const void *codeptr_ra, const char *var_name) {                              
   if (archer_flags->verbose) {
     char buf[200];
     int offset = 0;
@@ -1206,8 +1206,9 @@ static void ompt_tsan_device_mem(ompt_data_t *target_task_data,
       }
       bit <<= 1;
     }
-    VPrintf("ompt tsan device mem, orig_addr is %p, dev_addr is %p, size is "
+    VPrintf("ompt tsan device mem, variable %s, orig_addr is %p, dev_addr is %p, size is "
             "%lu, mapping type (%#03x) is %s\n",
+            (var_name ? var_name : "unknown"), 
             orig_addr, dest_addr, bytes, device_mem_flag, buf);
   }
   AnnotateMapping(orig_addr, dest_addr, bytes, device_mem_flag);
