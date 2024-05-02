@@ -90,11 +90,13 @@ private:
   int DestDeviceNum;
   size_t Bytes;
   void *CodePtr;
+  char *VarName;
   bool Active;
 
 public:
   OmptDeviceMem(void *OrigBaseAddr, void *OrigAddr, int OrigDeviceNum,
-                void *DestAddr, int DestDeviceNum, size_t Bytes, void *CodePtr);
+                void *DestAddr, int DestDeviceNum, size_t Bytes, void *CodePtr,
+                char *VarName);
   ~OmptDeviceMem();
   void addTargetDataOp(unsigned int Flag);
 };
