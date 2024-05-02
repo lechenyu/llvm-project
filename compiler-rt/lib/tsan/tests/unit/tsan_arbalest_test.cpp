@@ -9,7 +9,11 @@ using namespace std;
 
 namespace __tsan {
 
+u32 LoadVsm4(RawVsm *vp);
 void StoreVsm4(RawVsm *vp, RawVsm val);
+void VsmSet(RawVsm* p, RawVsm* end, RawVsm val);
+void VsmUpdateMapTo(RawVsm* p, RawVsm* end);
+void VsmUpdateMapFrom(RawVsm* p, RawVsm* end);
 
 void init(IntervalTree &tree, vector<Interval> &iv) {
   for (auto &i : iv) {
@@ -175,12 +179,74 @@ TEST(Arbalest, AvlIterator) {
   }
 }
 
-TEST(Arbalest, ShadowSet) {
-  
+TEST(Arbalest, AvlEmptyIterator) {
+  IntervalTree tree{};
+  int count = 0;
+  for (Node *n : tree) {
+    count++;
+  }
+  EXPECT_EQ(count, 0);
 }
 
-TEST(Arbalest, ShadowGet) {
-  
+TEST(Arbalest, VsmSet) {
+  RawVsm state[4]{};
+  u8 val = static_cast<u8>(VariableStateMachine::kDeviceMask) | static_cast<u8>(VariableStateMachine::kHostMask);
+  RawVsm rv = static_cast<RawVsm>(val);
+  VsmSet(state, state + 4, rv);
+  for (int i = 0; i < 4; i++) {
+    RawVsm rv2 = LoadVsm(&state[i]);
+    VariableStateMachine vsm(rv2);
+    EXPECT_TRUE(vsm.IsDeviceInit());
+    EXPECT_TRUE(vsm.IsDeviceLatest());
+    EXPECT_TRUE(vsm.IsHostInit());
+    EXPECT_TRUE(vsm.IsHostLatest());
+  }
+}
+
+TEST(Arbalest, VsmMapTo) {
+  RawVsm state[8]{};
+  RawVsm rv = VariableStateMachine::kHostMask;
+  VsmSet(state, state + 8, rv);
+  for (int i = 0; i < 8; i++) {
+    RawVsm rv2 = LoadVsm(&state[i]);
+    VariableStateMachine vsm(rv2);
+    EXPECT_FALSE(vsm.IsDeviceInit());
+    EXPECT_FALSE(vsm.IsDeviceLatest());
+    EXPECT_TRUE(vsm.IsHostInit());
+    EXPECT_TRUE(vsm.IsHostLatest());
+  }
+  VsmUpdateMapTo(state, state + 8);
+  for (int i = 0; i < 8; i++) {
+    RawVsm rv2 = LoadVsm(&state[i]);
+    VariableStateMachine vsm(rv2);
+    EXPECT_TRUE(vsm.IsDeviceInit());
+    EXPECT_TRUE(vsm.IsDeviceLatest());
+    EXPECT_TRUE(vsm.IsHostInit());
+    EXPECT_TRUE(vsm.IsHostLatest());
+  }
+}
+
+TEST(Arbalest, VsmMapFrom) {
+  RawVsm state[8]{};
+  RawVsm rv = VariableStateMachine::kDeviceMask;
+  VsmSet(state, state + 8, rv);
+  for (int i = 0; i < 8; i++) {
+    RawVsm rv2 = LoadVsm(&state[i]);
+    VariableStateMachine vsm(rv2);
+    EXPECT_TRUE(vsm.IsDeviceInit());
+    EXPECT_TRUE(vsm.IsDeviceLatest());
+    EXPECT_FALSE(vsm.IsHostInit());
+    EXPECT_FALSE(vsm.IsHostLatest());
+  }
+  VsmUpdateMapFrom(state, state + 8);
+  for (int i = 0; i < 8; i++) {
+    RawVsm rv2 = LoadVsm(&state[i]);
+    VariableStateMachine vsm(rv2);
+    EXPECT_TRUE(vsm.IsDeviceInit());
+    EXPECT_TRUE(vsm.IsDeviceLatest());
+    EXPECT_TRUE(vsm.IsHostInit());
+    EXPECT_TRUE(vsm.IsHostLatest());
+  }  
 }
 
 }  // namespace __tsan
