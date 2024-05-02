@@ -269,6 +269,7 @@ ALWAYS_INLINE USED bool CheckVsm(ThreadState *thr, uptr pc, uptr addr,
       VariableStateMachine v{*MemToVsm(error_start_addr)};
       if (!TryTraceMemoryAccess(thr, pc, addr, size, kAccessRead)) {
         TraceSwitchPart(thr);
+        TryTraceMemoryAccess(thr, pc, addr, size, kAccessRead);
       }
       ReportDMI(thr, addr, size, kAccessRead, v.IsDeviceInit() ? USE_OF_STALE_DATA : USE_OF_UNINITIALIZED_MEMORY);
       return true;
@@ -285,6 +286,7 @@ ALWAYS_INLINE USED bool CheckVsm(ThreadState *thr, uptr pc, uptr addr,
       VariableStateMachine v{*MemToVsm(error_start_addr)};
       if (!TryTraceMemoryAccess(thr, pc, addr, size, kAccessRead)) {
         TraceSwitchPart(thr);
+        TryTraceMemoryAccess(thr, pc, addr, size, kAccessRead);
       }
       ReportDMI(thr, addr, size, kAccessRead, v.IsHostInit() ? USE_OF_STALE_DATA : USE_OF_UNINITIALIZED_MEMORY);
       return true;
@@ -349,8 +351,8 @@ ALWAYS_INLINE USED void CheckVsmForMemoryRange(ThreadState *thr, uptr pc,
   }
 }
 
-ALWAYS_INLINE USED void UpdateVsmUtil(uptr addr, uptr size, u64 set_mask) {
-  u64 range_mask = kVsmCellValueBitMap >> ((kVsmCell - size) * kMemToVsmRatioInBit);
+ALWAYS_INLINE USED void UpdateVsmUtil(uptr addr, uptr size, u64 value_bit_map, u64 set_mask) {
+  u64 range_mask = value_bit_map >> ((kVsmCell - size) * kMemToVsmRatioInBit);
   uptr cell_start = RoundDown(addr, kVsmCell);
   uptr offset =  addr - cell_start;
   range_mask <<= (offset * kMemToVsmRatioInBit);
@@ -368,10 +370,10 @@ ALWAYS_INLINE USED void UpdateVsm(ThreadState *thr, uptr addr, uptr size) {
       return;
     }
     uptr corr_host_addr = n->info.start + (addr - n->interval.left_end);
-    UpdateVsmUtil(corr_host_addr, size, VariableStateMachine::kDeviceMask8);
+    UpdateVsmUtil(corr_host_addr, size, kVsmCellValueBitMapDevice, VariableStateMachine::kDeviceMask8);
   } else {
-    UpdateVsmUtil(addr, size, VariableStateMachine::kHostMask8);
-  }                                   
+    UpdateVsmUtil(addr, size, kVsmCellValueBitMapHost, VariableStateMachine::kHostMask8);
+  }                         
 }
 
 ALWAYS_INLINE USED void UnalignedUpdateVsm(ThreadState *thr, uptr addr, uptr size) {
