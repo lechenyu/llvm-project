@@ -13,6 +13,12 @@
 #ifndef _OMPTARGET_PRIVATE_H
 #define _OMPTARGET_PRIVATE_H
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
+#include <dlfcn.h>
+
 #include "device.h"
 #include <Debug.h>
 #include <SourceInfo.h>
@@ -58,9 +64,20 @@ class TsanAnnotate {
 public:
   static void (*AnnotateEnterRuntime)();
   static void (*AnnotateExitRuntime)();
+  static std::atomic<bool> Initialized;
 
 public:
+  static void Init() {
+    if (Initialized) {
+      return;
+    }
+    Initialized = true;
+    AnnotateEnterRuntime = (void (*)(void))dlsym(RTLD_DEFAULT, "AnnotateEnterRuntime");
+    AnnotateExitRuntime = (void (*)(void))dlsym(RTLD_DEFAULT, "AnnotateExitRuntime");
+  }
+
   TsanAnnotate() {
+    Init();
     if (AnnotateEnterRuntime) {
       AnnotateEnterRuntime();
     }
