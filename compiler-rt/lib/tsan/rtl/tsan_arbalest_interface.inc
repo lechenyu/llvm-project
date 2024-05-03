@@ -79,3 +79,7 @@ void __arbalest_unaligned_write8(void *addr) {
 void __arbalest_unaligned_write16(void *addr) {
   UnalignedUpdateVsm16(cur_thread(), (uptr)addr);
 }
+
+void __arbalest_check_bound(void *base, void *start, unsigned size) {
+  CheckBound(cur_thread(), CALLERPC, (uptr)base, (uptr)start, size);
+}

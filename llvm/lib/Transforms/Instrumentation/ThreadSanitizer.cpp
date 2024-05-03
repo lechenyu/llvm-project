@@ -141,11 +141,13 @@ private:
     void initialize(Module &M);
     void chooseInstructionsToInstrument(SmallVectorImpl<Instruction *> &Local, SmallVectorImpl<Instruction *> &All);
     bool instrumentLoadOrStore(Instruction *I, const DataLayout &DL);
+    bool instrumentGEP(GetElementPtrInst *GEP, const DataLayout &DL);
     static const size_t kNumberOfAccessSizes = 5;
     FunctionCallee ArbalestRead[kNumberOfAccessSizes];
     FunctionCallee ArbalestWrite[kNumberOfAccessSizes];
     FunctionCallee ArbalestUnalignedRead[kNumberOfAccessSizes];
     FunctionCallee ArbalestUnalignedWrite[kNumberOfAccessSizes];
+    FunctionCallee ArbalestCheckBound;
   };
 
   void initialize(Module &M);
@@ -617,6 +619,16 @@ bool ThreadSanitizer::sanitizeFunction(Function &F,
     for (auto Inst : AllLoadsAndStoresForArbalest) {
       Arb.instrumentLoadOrStore(Inst, DL);
     }
+
+    if (F.getName().startswith(".omp_outlined._debug__")) {
+      for (auto &BB : F) {
+        for (auto &Inst : BB) {
+          if (isa<GetElementPtrInst>(Inst)) {
+            Arb.instrumentGEP(cast<GetElementPtrInst>(&Inst), DL);
+          }
+        }
+      }
+    }
   }
 
   // Instrument function entry/exit points if there were instrumented accesses.
@@ -881,6 +893,17 @@ int ThreadSanitizer::getMemoryAccessFuncIndex(Type *OrigTy, Value *Addr,
   return Idx;
 }
 
+static int getMemoryAccessSize(Type *OrigTy, const DataLayout &DL) {
+  assert(OrigTy->isSized());
+  uint32_t TypeSize = DL.getTypeStoreSizeInBits(OrigTy);
+  if (TypeSize != 8  && TypeSize != 16 && TypeSize != 32 && 
+      TypeSize != 64 && TypeSize != 128) {
+    // Ignore all unusual sizes.
+    return -1;
+  }
+  return TypeSize / 8;
+}
+
 void ThreadSanitizer::Arbalest::initialize(Module &M) {
   IRBuilder<> IRB(M.getContext());
   AttributeList Attr;
@@ -908,6 +931,10 @@ void ThreadSanitizer::Arbalest::initialize(Module &M) {
     ArbalestUnalignedWrite[i] = M.getOrInsertFunction(
         UnalignedWriteName, Attr, IRB.getVoidTy(), IRB.getInt8PtrTy());
   }
+  SmallString<64> CheckBoundName("__arbalest_check_bound");
+  ArbalestCheckBound = M.getOrInsertFunction(
+      CheckBoundName, Attr, IRB.getVoidTy(), IRB.getInt8PtrTy(),
+      IRB.getInt8PtrTy(), IRB.getInt32Ty());
 }
 
 void ThreadSanitizer::Arbalest::chooseInstructionsToInstrument(
@@ -965,5 +992,21 @@ bool ThreadSanitizer::Arbalest::instrumentLoadOrStore(Instruction *I, const Data
       OnAccessFunc = IsWrite ? ArbalestUnalignedWrite[Idx] : ArbalestUnalignedRead[Idx];
   }
   IRB.CreateCall(OnAccessFunc, IRB.CreatePointerCast(Addr, IRB.getInt8PtrTy()));
+  return true;
+}
+
+bool ThreadSanitizer::Arbalest::instrumentGEP(GetElementPtrInst *GEP, const DataLayout &DL) {
+  Value *BasePtr = GEP->getOperand(0);
+  for (auto UIt = GEP->use_begin(), UEnd = GEP->use_end(); UIt != UEnd; UIt++) {
+    User *U = UIt->getUser();
+    if (isa<LoadInst>(U)) {
+      LoadInst *LI = cast<LoadInst>(U);
+      InstrumentationIRBuilder IRB(LI);
+      Type *OrigTy = getLoadStoreType(LI);
+      int Size = getMemoryAccessSize(OrigTy, DL);
+      assert(size > 0);
+      IRB.CreateCall(ArbalestCheckBound, {IRB.CreatePointerCast(BasePtr, IRB.getInt8PtrTy()), IRB.CreatePointerCast(GEP, IRB.getInt8PtrTy()), IRB.getInt32(Size)});
+    }
+  }
   return true;
 }

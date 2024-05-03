@@ -420,6 +420,16 @@ ALWAYS_INLINE USED void UpdateVsmForMemoryRange(ThreadState *thr, uptr addr,
 
 }
 
+ALWAYS_INLINE USED void CheckBound(ThreadState *thr, uptr pc, uptr base, uptr start, uptr size) {
+  if (ctx->t_to_h.isOverflow(base, start)) {
+    if (!TryTraceMemoryAccess(thr, pc, start, size, kAccessRead)) {
+      TraceSwitchPart(thr);
+      TryTraceMemoryAccess(thr, pc, start, size, kAccessRead);
+    }
+    ReportDMI(thr, start, size, kAccessRead, BUFFER_OVERFLOW);
+  }
+}
+
 } // namespace __tsan
 
 #if !SANITIZER_GO

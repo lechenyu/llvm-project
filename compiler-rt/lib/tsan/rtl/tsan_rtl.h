@@ -832,6 +832,7 @@ void UpdateVsm(ThreadState *thr, uptr addr, uptr size);
 void UnalignedUpdateVsm(ThreadState *thr, uptr addr, uptr size);
 void UnalignedUpdateVsm16(ThreadState *thr, uptr addr);
 void UpdateVsmForMemoryRange(ThreadState *thr, uptr addr, uptr size);
+void CheckBound(ThreadState *thr, uptr pc, uptr base, uptr start, uptr size);
 
 #if !SANITIZER_GO
 extern void (*on_initialize)(void);

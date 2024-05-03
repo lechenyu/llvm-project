@@ -50,6 +50,8 @@ SANITIZER_INTERFACE_ATTRIBUTE void __arbalest_unaligned_write4(void *addr);
 SANITIZER_INTERFACE_ATTRIBUTE void __arbalest_unaligned_write8(void *addr);
 SANITIZER_INTERFACE_ATTRIBUTE void __arbalest_unaligned_write16(void *addr);
 
+SANITIZER_INTERFACE_ATTRIBUTE void __arbalest_check_bound(void *base, void *start, unsigned size);
+
 // This function should be called at the very beginning of the process,
 // before any instrumented code is executed and before any call to malloc.
 SANITIZER_INTERFACE_ATTRIBUTE void __tsan_init(__sanitizer::u8 enable_arbalest = 0);
