@@ -82,7 +82,7 @@ std::atomic<bool> TsanAnnotate::Initialized{false};
 
 /// Map global data and execute pending ctors
 static int initLibrary(DeviceTy &Device) {
-    /*
+  /*
    * Look up TSan annotate functions
   */
   TsanAnnotate::Init();
