@@ -86,6 +86,9 @@ static cl::opt<bool> ClCompoundReadBeforeWrite(
 static cl::opt<bool> ClEnableArbalest(
     "tsan-arbalest", cl::init(false),
     cl::desc("Run Arbalest data inconsistency detector with TSan"), cl::Hidden);
+static cl::opt<bool> ClOMPDebugMode(
+    "tsan-debug-info", cl::init(false),
+    cl::desc("Instrument OpenMP outlined functions with debug info"), cl::Hidden);
 
 STATISTIC(NumInstrumentedReads, "Number of instrumented reads");
 STATISTIC(NumInstrumentedWrites, "Number of instrumented writes");
@@ -148,6 +151,7 @@ private:
     FunctionCallee ArbalestUnalignedRead[kNumberOfAccessSizes];
     FunctionCallee ArbalestUnalignedWrite[kNumberOfAccessSizes];
     FunctionCallee ArbalestCheckBound;
+    std::string OutlinedFuncPrefix;
   };
 
   void initialize(Module &M);
@@ -193,7 +197,7 @@ private:
 
 void insertModuleCtor(Module &M) {
   if (ClEnableArbalest) {
-    errs() << "Turn on Arbalest-related instrumentation\n";
+    errs() << "Turn on Arbalest-related instrumentation" << (ClOMPDebugMode ? " with" : " without") << " debug info\n";
   } else {
     errs() << "Turn off Arbalest-related instrumentation\n";
   }
@@ -620,7 +624,7 @@ bool ThreadSanitizer::sanitizeFunction(Function &F,
       Arb.instrumentLoadOrStore(Inst, DL);
     }
 
-    if (F.getName().startswith(".omp_outlined._debug__")) {
+    if (F.getName().startswith(Arb.OutlinedFuncPrefix)) {
       for (auto &BB : F) {
         for (auto &Inst : BB) {
           if (isa<GetElementPtrInst>(Inst)) {
@@ -908,6 +912,11 @@ void ThreadSanitizer::Arbalest::initialize(Module &M) {
   IRBuilder<> IRB(M.getContext());
   AttributeList Attr;
   Attr = Attr.addFnAttribute(M.getContext(), Attribute::NoUnwind);
+  if (ClOMPDebugMode) {
+    OutlinedFuncPrefix = ".omp_outlined._debug__";
+  } else {
+    OutlinedFuncPrefix = ".omp_outlined";
+  }
   for (size_t i = 0; i < Arbalest::kNumberOfAccessSizes; ++i) {
     const unsigned ByteSize = 1U << i;
     const unsigned BitSize = ByteSize * 8;

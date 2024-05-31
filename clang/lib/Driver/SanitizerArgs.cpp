@@ -1167,6 +1167,10 @@ void SanitizerArgs::addArgs(const ToolChain &TC, const llvm::opt::ArgList &Args,
   if (TsanArbalest) {
     CmdArgs.push_back("-mllvm");
     CmdArgs.push_back("-tsan-arbalest=1");
+    if (Args.hasArg(options::OPT_g_Group)) {
+      CmdArgs.push_back("-mllvm");
+      CmdArgs.push_back("-tsan-debug-info=1");
+    }
   }
 
   if (HwasanUseAliases) {

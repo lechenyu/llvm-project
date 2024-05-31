@@ -2160,7 +2160,7 @@ static void SetRISCVSmallDataLimit(const ToolChain &TC, const ArgList &Args,
              (Triple.getArch() == llvm::Triple::riscv64)) {
     // Not support linker relaxation for RV64 with large code model.
     SmallDataLimit = "0";
-    if (Args.hasArg(options::OPT_G)) {
+    if (Args.hasArg(options::OPT_g_Group)) {
       D.Diag(diag::warn_drv_unsupported_sdata);
     }
   } else if (Arg *A = Args.getLastArg(options::OPT_G)) {
