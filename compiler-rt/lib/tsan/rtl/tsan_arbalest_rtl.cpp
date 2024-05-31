@@ -271,13 +271,14 @@ ALWAYS_INLINE USED bool CheckVsm(ThreadState *thr, uptr pc, uptr addr,
         TraceSwitchPart(thr);
         TryTraceMemoryAccess(thr, pc, addr, size, kAccessRead);
       }
-      ReportDMI(thr, addr, size, kAccessRead, v.IsDeviceInit() ? USE_OF_STALE_DATA : USE_OF_UNINITIALIZED_MEMORY);
+      ReportDMI(thr, addr, size, n, kAccessRead, v.IsDeviceInit() ? USE_OF_STALE_DATA : USE_OF_UNINITIALIZED_MEMORY);
       return true;
     } else {
       return false;
     }
   } else {
-    if (!ctx->h_to_t.find({addr, addr + size})) {
+    Node *n = ctx->h_to_t.find({addr, addr + size});
+    if (!n) {
       return false;
     }
     int error_bytes = CheckVsmUtil(addr, size, VariableStateMachine::kHostMask8);
@@ -288,7 +289,7 @@ ALWAYS_INLINE USED bool CheckVsm(ThreadState *thr, uptr pc, uptr addr,
         TraceSwitchPart(thr);
         TryTraceMemoryAccess(thr, pc, addr, size, kAccessRead);
       }
-      ReportDMI(thr, addr, size, kAccessRead, v.IsHostInit() ? USE_OF_STALE_DATA : USE_OF_UNINITIALIZED_MEMORY);
+      ReportDMI(thr, addr, size, n, kAccessRead, v.IsHostInit() ? USE_OF_STALE_DATA : USE_OF_UNINITIALIZED_MEMORY);
       return true;
     } else {
       return false;
@@ -426,7 +427,8 @@ ALWAYS_INLINE USED void CheckBound(ThreadState *thr, uptr pc, uptr base, uptr st
       TraceSwitchPart(thr);
       TryTraceMemoryAccess(thr, pc, start, size, kAccessRead);
     }
-    ReportDMI(thr, start, size, kAccessRead, BUFFER_OVERFLOW);
+    Node *n = ctx->t_to_h.find({base, base + size});
+    ReportDMI(thr, start, size, n, kAccessRead, BUFFER_OVERFLOW);
   }
 }
 

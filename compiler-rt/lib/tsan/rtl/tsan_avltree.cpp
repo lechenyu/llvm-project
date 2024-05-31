@@ -307,18 +307,21 @@ void IntervalTree::searchRangeHelper(Node *head, Vector<Interval> &result,
 void IntervalTree::removeAllNodesWithinRange(const Interval &range) {
   Vector<Interval> result{};
   searchRange(result, range);
-  for (uptr i = 0; i < result.Size(); i++) {
-    remove(result[i]);
-  }
+
   if (result.Size()) {
+    const char *var_info_first = searchUtil(root, result[0])->info.var_info;
+    const char *var_info_last = searchUtil(root, result.Back())->info.var_info;
+    for (uptr i = 0; i < result.Size(); i++) {
+      remove(result[i]);
+    }
     if (result[0].left_end < range.left_end) {
       insert({result[0].left_end, range.left_end},
-             {result[0].left_end, range.left_end - result[0].left_end});
+             {result[0].left_end, range.left_end - result[0].left_end, var_info_first});
     }
     Interval &last = result.Back();
     if (last.right_end > range.right_end) {
       insert({range.right_end, last.right_end},
-             {range.right_end, last.right_end - range.right_end});
+             {range.right_end, last.right_end - range.right_end, var_info_last});
     }
   }
 }

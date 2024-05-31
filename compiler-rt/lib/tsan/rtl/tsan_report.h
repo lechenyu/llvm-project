@@ -109,6 +109,7 @@ class ReportDesc {
   Vector<ReportMutex*> mutexes;
   Vector<ReportThread*> threads;
   Vector<Tid> unique_tids;
+  const char *loc_desc;
   ReportStack *sleep;
   int count;
   int signum = 0;

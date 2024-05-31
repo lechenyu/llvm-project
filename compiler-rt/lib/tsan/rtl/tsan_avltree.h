@@ -60,6 +60,7 @@ struct Interval {
 struct MapInfo {
   uptr start;
   uptr size;
+  const char *var_info;
 };
 
 struct Node {

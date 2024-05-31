@@ -355,14 +355,14 @@ void INTERFACE_ATTRIBUTE
 AnnotateMemoryIsUninitialized(char *f, int l, uptr mem, uptr sz) {}
 
 void INTERFACE_ATTRIBUTE
-AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 optype) {
+AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 optype, const char *var_name) {
   SCOPED_ANNOTATION(AnnotateMapping);
 
   // FIXME: Shall we always assume src is host?
   const Interval host = {reinterpret_cast<uptr>(src_addr), reinterpret_cast<uptr>(src_addr) + bytes};
   const Interval target = {reinterpret_cast<uptr>(dest_addr), reinterpret_cast<uptr>(dest_addr) + bytes};
-  const MapInfo mh = {reinterpret_cast<uptr>(src_addr), bytes};
-  const MapInfo mt = {reinterpret_cast<uptr>(dest_addr), bytes};
+  const MapInfo mh = {reinterpret_cast<uptr>(src_addr), bytes, var_name};
+  const MapInfo mt = {reinterpret_cast<uptr>(dest_addr), bytes, var_name};
   ASSERT(IsAppMem(host.left_end) && IsAppMem(host.right_end - 1),
          "[%p, %p] does not fall into app mem section \n",
          reinterpret_cast<char *>(host.left_end),

@@ -31,6 +31,20 @@ using namespace __sanitizer;
 
 static ReportStack *SymbolizeStack(StackTrace trace);
 
+static void AnalyzeVarInfo(const char *var_info, const char **var_name_end, bool *is_array) {
+  char sep = ';';
+  char array_sym = '[';
+  const char *pos = var_info;
+  while (*pos != sep) {
+    if (*pos == array_sym) {
+      *is_array = true;
+      break;
+    }
+    pos++;
+  }
+  *var_name_end = pos;
+}
+
 // Can be overriden by an application/test to intercept reports.
 #ifdef TSAN_EXTERNAL_HOOKS
 bool OnReport(const ReportDesc *rep, bool suppressed);
@@ -330,6 +344,10 @@ void ScopedReportBase::AddLocation(uptr addr, uptr size) {
     rep_->locs.PushBack(loc);
     return;
   }
+}
+
+void ScopedReportBase::AddLocationDesc(char *desc_str) {
+  rep_->loc_desc = desc_str;
 }
 
 #if !SANITIZER_GO
@@ -854,7 +872,7 @@ void ReportRace(ThreadState *thr, RawShadow *shadow_mem, Shadow cur, Shadow old,
   OutputReport(thr, rep);
 }
 
-void ReportDMI(ThreadState *thr, uptr addr, uptr size, AccessType typ, DMIType dmi_typ) {
+void ReportDMI(ThreadState *thr, uptr addr, uptr size, Node *mapping, AccessType typ, DMIType dmi_typ) {
   CheckedMutex::CheckNoLocks();
 
   // Symbolizer makes lots of intercepted calls. If we try to process them,
@@ -915,7 +933,29 @@ void ReportDMI(ThreadState *thr, uptr addr, uptr size, AccessType typ, DMIType d
 
   rep.AddLocation(addr, size);
 
+  // data layout ";name;filename;row;col;;\0" from clang.
+  if (mapping->info.var_info) {
+    const char *var_name_start = mapping->info.var_info + 1;
+    const char *var_name_end;
+    bool is_array = false;
+    AnalyzeVarInfo(var_name_start, &var_name_end, &is_array);
+    uptr var_name_size = var_name_end - var_name_start;
+    internal_memcpy(thr->str_buffer, var_name_start, var_name_size);
+    char *next_start = thr->str_buffer + var_name_size;
+    if (dmi_typ == BUFFER_OVERFLOW) {
+      int max_len = mapping->info.size / size;
+      int offset = (addr - mapping->interval.left_end) / size;
+      internal_snprintf(next_start, kStrBufferSize - var_name_size, ", max mapped elements: %d, element to be accessed: %d", max_len, offset);
+    } else {
+      if (is_array) {
+        int offset = (addr - mapping->interval.left_end) / size;
+        internal_snprintf(next_start, kStrBufferSize - var_name_size, "[%d]", offset);
+      }
+    }
+    rep.AddLocationDesc(thr->str_buffer);
+  }
 
+  
   if (flags()->print_full_thread_history) {
     const ReportDesc *rep_desc = rep.GetReport();
     for (uptr i = 0; i < rep_desc->threads.Size(); i++) {

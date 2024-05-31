@@ -236,6 +236,8 @@ struct ThreadState {
 
   bool is_in_runtime;
 
+  char str_buffer[kStrBufferSize];
+
   explicit ThreadState(Tid tid);
 } ALIGNED(SANITIZER_CACHE_LINE_SIZE);
 
@@ -428,6 +430,7 @@ class ScopedReportBase {
   int AddMutex(uptr addr, StackID creation_stack_id);
   void AddLocation(uptr addr, uptr size);
   void AddSleep(StackID stack_id);
+  void AddLocationDesc(char *desc_str);
   void SetCount(int count);
   void SetSigNum(int sig);
 
@@ -513,7 +516,7 @@ void ForkChildAfter(ThreadState *thr, uptr pc, bool start_thread);
 
 void ReportRace(ThreadState *thr, RawShadow *shadow_mem, Shadow cur, Shadow old,
                 AccessType typ);
-void ReportDMI(ThreadState *thr, uptr addr, uptr size, AccessType typ,
+void ReportDMI(ThreadState *thr, uptr addr, uptr size, Node *mapping, AccessType typ,
                DMIType dmi_typ);
 bool OutputReport(ThreadState *thr, const ScopedReport &srep);
 bool IsFiredSuppression(Context *ctx, ReportType type, StackTrace trace);

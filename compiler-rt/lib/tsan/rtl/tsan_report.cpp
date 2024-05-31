@@ -37,6 +37,7 @@ ReportDesc::ReportDesc()
     , mutexes()
     , threads()
     , unique_tids()
+    , loc_desc()
     , sleep()
     , count() {
 }
@@ -362,6 +363,15 @@ void PrintReport(const ThreadState *thr, const ReportDesc *rep) {
 
   for (uptr i = 0; i < rep->locs.Size(); i++)
     PrintLocation(rep->locs[i]);
+
+  if (rep->typ == ReportTypeStaleAccess || rep->typ == ReportTypeUninitializedAccess ||
+      rep->typ == ReportTypeBufferOverflow) {
+    if (rep->loc_desc) {
+      Printf("%s", d.Location());
+      Printf("  Variable/array involved in data inconsistency: %s\n\n", rep->loc_desc);
+      Printf("%s", d.Default());
+    }
+  }
 
   if (rep->typ != ReportTypeDeadlock) {
     for (uptr i = 0; i < rep->mutexes.Size(); i++)

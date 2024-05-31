@@ -181,7 +181,7 @@ AnnotateNewMemory(const char *file, int line, const volatile void *cv,
                   size_t size) {}
 void __attribute__((weak))
 AnnotateMapping(const void *src_addr, const void *dest_addr, uintptr_t bytes,
-                uint8_t optype) {
+                uint8_t optype, const char *var_name) {
   assert(false && "Fail to invoke AnnotateMapping in tsan");
 }
 void __attribute__((weak)) AnnotateEnterTargetRegion() {
@@ -1211,7 +1211,7 @@ static void ompt_tsan_device_mem(ompt_data_t *target_task_data,
             (var_name ? var_name : "unknown"), 
             orig_addr, dest_addr, bytes, device_mem_flag, buf);
   }
-  AnnotateMapping(orig_addr, dest_addr, bytes, device_mem_flag);
+  AnnotateMapping(orig_addr, dest_addr, bytes, device_mem_flag, var_name);
 }
 
 static const char *target_kind_str[] = {nullptr,
