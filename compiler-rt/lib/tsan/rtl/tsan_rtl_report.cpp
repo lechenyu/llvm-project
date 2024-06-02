@@ -945,7 +945,10 @@ void ReportDMI(ThreadState *thr, uptr addr, uptr size, Node *mapping, AccessType
     if (dmi_typ == BUFFER_OVERFLOW) {
       int max_len = mapping->info.size / size;
       int offset = (addr - mapping->interval.left_end) / size;
-      internal_snprintf(next_start, kStrBufferSize - var_name_size, ", max mapped elements: %d, element to be accessed: %d", max_len, offset);
+      internal_snprintf(next_start, kStrBufferSize - var_name_size,
+                        ", max mapped elements (%lu-byte element): %d, "
+                        "element to be accessed: %d",
+                        size, max_len, offset);
     } else {
       if (is_array) {
         int offset = (addr - mapping->interval.left_end) / size;

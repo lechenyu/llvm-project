@@ -151,7 +151,7 @@ private:
     FunctionCallee ArbalestUnalignedRead[kNumberOfAccessSizes];
     FunctionCallee ArbalestUnalignedWrite[kNumberOfAccessSizes];
     FunctionCallee ArbalestCheckBound;
-    std::string OutlinedFuncPrefix;
+    StringRef OutlinedFuncPrefix;
   };
 
   void initialize(Module &M);
@@ -209,6 +209,23 @@ void insertModuleCtor(Module &M) {
       // time. Hook them into the global ctors list in that case:
       [&](Function *Ctor, FunctionCallee) { appendToGlobalCtors(M, Ctor, 0); });
 }
+
+void setOmpOutlinedFuncPrefix(Module &M) {
+  StringRef OptPrefix = ".omp_outlined";
+  StringRef DebugPrefix = ".omp_outlined._debug__";
+  bool UseOptPrefix = true;
+  if (ClOMPDebugMode) {
+    for (auto &Func : M) {
+      if (Func.getName().startswith(DebugPrefix)) {
+        UseOptPrefix = false;
+        break;
+      }
+    }
+  }
+  M.addModuleFlag(Module::Error, "OmpOutlinedFuncPrefix", 
+                  MDString::get(M.getContext(), UseOptPrefix ? OptPrefix : DebugPrefix));
+}
+
 }  // namespace
 
 PreservedAnalyses ThreadSanitizerPass::run(Function &F,
@@ -222,6 +239,9 @@ PreservedAnalyses ThreadSanitizerPass::run(Function &F,
 PreservedAnalyses ModuleThreadSanitizerPass::run(Module &M,
                                                  ModuleAnalysisManager &MAM) {
   insertModuleCtor(M);
+  if (ClEnableArbalest) {
+    setOmpOutlinedFuncPrefix(M);
+  }
   return PreservedAnalyses::none();
 }
 void ThreadSanitizer::initialize(Module &M) {
@@ -912,11 +932,7 @@ void ThreadSanitizer::Arbalest::initialize(Module &M) {
   IRBuilder<> IRB(M.getContext());
   AttributeList Attr;
   Attr = Attr.addFnAttribute(M.getContext(), Attribute::NoUnwind);
-  if (ClOMPDebugMode) {
-    OutlinedFuncPrefix = ".omp_outlined._debug__";
-  } else {
-    OutlinedFuncPrefix = ".omp_outlined";
-  }
+  OutlinedFuncPrefix = cast<MDString>(M.getModuleFlag("OmpOutlinedFuncPrefix"))->getString();
   for (size_t i = 0; i < Arbalest::kNumberOfAccessSizes; ++i) {
     const unsigned ByteSize = 1U << i;
     const unsigned BitSize = ByteSize * 8;
