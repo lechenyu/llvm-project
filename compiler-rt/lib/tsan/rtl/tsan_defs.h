@@ -103,10 +103,6 @@ const uptr kVsmMultiplier = kVsmSize * kVsmCnt / kVsmCell;
 
 const int kVsmCellBitMap = (1 << kVsmCell) - 1;
 
-const u64 kVsmCellValueBitMapHost = 0x0D0D0D0D0D0D0D0D;
-
-const u64 kVsmCellValueBitMapDevice = 0x0E0E0E0E0E0E0E0E;
-
 constexpr uptr kStrBufferSize = 200;
 
 // That many user bytes are mapped onto a single meta shadow cell.

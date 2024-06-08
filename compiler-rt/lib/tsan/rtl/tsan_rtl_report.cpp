@@ -952,7 +952,7 @@ void ReportDMI(ThreadState *thr, uptr addr, uptr size, Node *mapping, AccessType
     } else {
       if (is_array) {
         int offset = (addr - mapping->interval.left_end) / size;
-        internal_snprintf(next_start, kStrBufferSize - var_name_size, "[%d]", offset);
+        internal_snprintf(next_start, kStrBufferSize - var_name_size, "[%d] (%lu-byte element)", offset, size);
       }
     }
     rep.AddLocationDesc(thr->str_buffer);

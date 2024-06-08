@@ -185,6 +185,10 @@ class VariableStateMachine {
   static constexpr RawVsm kDeviceMask = static_cast<RawVsm>(0xa);
   static constexpr u32 kDeviceMask4 = 0x0a0a0a0a;
   static constexpr u64 kDeviceMask8 = 0x0a0a0a0a0a0a0a0a;
+  static constexpr RawVsm kHostValueBitMap = static_cast<RawVsm>(0xd);
+  static constexpr u64 kHostValueBitMap8 = 0x0d0d0d0d0d0d0d0d;
+  static constexpr RawVsm kDeviceValueBitMap = static_cast<RawVsm>(0xe);
+  static constexpr u64 kDeviceValueBitMap8 = 0x0e0e0e0e0e0e0e0e;
 
  public:
   explicit VariableStateMachine(RawVsm x = VariableStateMachine::kEmpty) {

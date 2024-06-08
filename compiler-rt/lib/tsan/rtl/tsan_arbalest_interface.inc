@@ -21,10 +21,7 @@ void __arbalest_read8(void *addr) {
 }
 
 void __arbalest_read16(void *addr) {
-  if (UNLIKELY(CheckVsm(cur_thread(), CALLERPC, (uptr)addr, 8))) {
-    return;
-  }
-  CheckVsm(cur_thread(), CALLERPC, (uptr)addr + 8, 8);
+  CheckVsm16(cur_thread(), CALLERPC, (uptr)addr);
 }
 
 void __arbalest_write1(void *addr) {
@@ -44,8 +41,7 @@ void __arbalest_write8(void *addr) {
 }
 
 void __arbalest_write16(void *addr) {
-  UpdateVsm(cur_thread(), (uptr)addr, 8);
-  UpdateVsm(cur_thread(), (uptr)addr + 8, 8);
+  UpdateVsm16(cur_thread(), (uptr)addr);
 }
 
 void __arbalest_unaligned_read2(const void *addr) {

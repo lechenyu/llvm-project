@@ -17,7 +17,7 @@ void VsmUpdateMapFrom(RawVsm* p, RawVsm* end);
 
 void init(IntervalTree &tree, vector<Interval> &iv) {
   for (auto &i : iv) {
-    tree.insert(i, {i.left_end, i.right_end - i.left_end});
+    tree.insert(i, {i.left_end, i.right_end - i.left_end, nullptr});
   }
 }
 
