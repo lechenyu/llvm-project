@@ -592,21 +592,7 @@ int targetDataBegin(ident_t *Loc, DeviceTy &Device, int32_t ArgNum,
 // Adjust the start address of data mapping on the target when padding is
 // non-zero.
 #if OMPTARGET_OMPT_SUPPORT
-    Mapping.addMapping(Args[I], (char *)TgtPtrBegin + Padding, ArgSizes[I],
-                       ArgTypes[I]);
-    OmptDeviceMem Mem{ArgsBase[I],     Args[I],
-                      HostDeviceNum,   (char *)TgtPtrBegin + Padding,
-                      Device.DeviceID, (size_t)ArgSizes[I],
-                      CodePtr, reinterpret_cast<char *>(HstPtrName)};
-    bool IsNew = TPR.Flags.IsNewEntry;
-    if (IsNew) {
-      Mem.addTargetDataOp(ompt_device_mem_flag_alloc |
-                          ompt_device_mem_flag_associate);
-    }
-
-    if (!IsHostPtr && HasFlagTo && (IsNew || HasFlagAlways)) {
-      Mem.addTargetDataOp(ompt_device_mem_flag_to);
-    }
+    Mapping.addMapping(HstPtrBegin, TgtPtrBegin, DataSize, ArgTypes[I]);
 #endif
 
     if (ArgTypes[I] & OMP_TGT_MAPTYPE_RETURN_PARAM) {
@@ -865,18 +851,13 @@ int targetDataEnd(ident_t *Loc, DeviceTy &Device, int32_t ArgNum,
 // non-zero.
 #if OMPTARGET_OMPT_SUPPORT
     if (!ForTarget) {
-      Mapping.addMapping(Args[I], (char *)TgtPtrBegin + Padding, ArgSizes[I],
-                         ArgTypes[I]);
+      Mapping.addMapping(HstPtrBegin, TgtPtrBegin, DataSize, ArgTypes[I]);
     }
     map_var_info_t HstPtrName = (!ArgNames) ? nullptr : ArgNames[I];
-    OmptDeviceMem Mem{ArgBases[I],     Args[I],
-                      HostDeviceNum,   (char *)TgtPtrBegin + Padding,
-                      Device.DeviceID, (size_t)ArgSizes[I],
+    OmptDeviceMem Mem{ArgBases[I],     HstPtrBegin,
+                      HostDeviceNum,   TgtPtrBegin,
+                      Device.DeviceID, (size_t)DataSize,
                       CodePtr, reinterpret_cast<char *>(HstPtrName)};
-    if (DelEntry) {
-      Mem.addTargetDataOp(ompt_device_mem_flag_disassociate |
-                          ompt_device_mem_flag_release);
-    }
 #endif
 
     // If the last element from the mapper (for end transfer args comes in
@@ -994,8 +975,22 @@ int targetDataEnd(ident_t *Loc, DeviceTy &Device, int32_t ArgNum,
     // If we are deleting the entry the DataMapMtx is locked and we own the
     // entry.
     if (Info.DelEntry) {
-      if (!FromMapperBase || FromMapperBase != Info.HstPtrBegin)
+      if (!FromMapperBase || FromMapperBase != Info.HstPtrBegin) {
+#if OMPTARGET_OMPT_SUPPORT
+        OmptDeviceMem Mem{(void *)LR.Entry->HstPtrBase,
+                          (void *)LR.Entry->HstPtrBegin,
+                          HostDeviceNum,
+                          (void *)LR.Entry->TgtPtrBegin,
+                          Device.DeviceID,
+                          (size_t)Info.DataSize,
+                          CodePtr,
+                          reinterpret_cast<char *>(LR.Entry->HstPtrName)};
+        Mem.addTargetDataOp(ompt_device_mem_flag_disassociate |
+                            ompt_device_mem_flag_release);
+#endif
+
         Ret = Device.deallocTgtPtr(HDTTMap, LR, Info.DataSize, CodePtr);
+      }
 
       if (Ret != OFFLOAD_SUCCESS) {
         REPORT("Deallocating data from device failed.\n");
@@ -1041,12 +1036,6 @@ static int targetDataContiguous(ident_t *Loc, DeviceTy &Device, void *ArgsBase,
   if (ArgType & OMP_TGT_MAPTYPE_FROM) {
     DP("Moving %" PRId64 " bytes (tgt:" DPxMOD ") -> (hst:" DPxMOD ")\n",
        ArgSize, DPxPTR(TgtPtrBegin), DPxPTR(HstPtrBegin));
-    int Ret = Device.retrieveData(HstPtrBegin, TgtPtrBegin, ArgSize, AsyncInfo,
-                                  false, CodePtr);
-    if (Ret != OFFLOAD_SUCCESS) {
-      REPORT("Copying data from device failed.\n");
-      return OFFLOAD_FAIL;
-    }
 
 #if OMPTARGET_OMPT_SUPPORT
     OmptDeviceMem Mem{ArgsBase, HstPtrBegin,
@@ -1055,6 +1044,13 @@ static int targetDataContiguous(ident_t *Loc, DeviceTy &Device, void *ArgsBase,
                       CodePtr, reinterpret_cast<char *>(ArgName)};
     Mem.addTargetDataOp(ompt_device_mem_flag_from);
 #endif
+
+    int Ret = Device.retrieveData(HstPtrBegin, TgtPtrBegin, ArgSize, AsyncInfo,
+                                  false, CodePtr);
+    if (Ret != OFFLOAD_SUCCESS) {
+      REPORT("Copying data from device failed.\n");
+      return OFFLOAD_FAIL;
+    }
 
     auto CB = [&](ShadowPtrListTy::iterator &Itr) {
       void **ShadowHstPtrAddr = (void **)Itr->first;
@@ -1075,12 +1071,6 @@ static int targetDataContiguous(ident_t *Loc, DeviceTy &Device, void *ArgsBase,
   if (ArgType & OMP_TGT_MAPTYPE_TO) {
     DP("Moving %" PRId64 " bytes (hst:" DPxMOD ") -> (tgt:" DPxMOD ")\n",
        ArgSize, DPxPTR(HstPtrBegin), DPxPTR(TgtPtrBegin));
-    int Ret = Device.submitData(TgtPtrBegin, HstPtrBegin, ArgSize, AsyncInfo,
-                                false, CodePtr);
-    if (Ret != OFFLOAD_SUCCESS) {
-      REPORT("Copying data to device failed.\n");
-      return OFFLOAD_FAIL;
-    }
 
 #if OMPTARGET_OMPT_SUPPORT
     OmptDeviceMem Mem{ArgsBase, HstPtrBegin,
@@ -1089,6 +1079,13 @@ static int targetDataContiguous(ident_t *Loc, DeviceTy &Device, void *ArgsBase,
                       CodePtr, reinterpret_cast<char *>(ArgName)};
     Mem.addTargetDataOp(ompt_device_mem_flag_to);
 #endif
+
+    int Ret = Device.submitData(TgtPtrBegin, HstPtrBegin, ArgSize, AsyncInfo,
+                                false, CodePtr);
+    if (Ret != OFFLOAD_SUCCESS) {
+      REPORT("Copying data to device failed.\n");
+      return OFFLOAD_FAIL;
+    }
 
     auto CB = [&](ShadowPtrListTy::iterator &Itr) {
       DP("Restoring original target pointer value " DPxMOD " for target "

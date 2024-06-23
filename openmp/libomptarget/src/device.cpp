@@ -237,7 +237,12 @@ DeviceTy::getTargetPointer(void *HstPtrBegin, void *HstPtrBase, int64_t Size,
                            bool HasPresentModifier, bool HasHoldModifier,
                            AsyncInfoTy &AsyncInfo, void *CodePtr) {
   HDTTMapAccessorTy HDTTMap = HostDataToTargetMap.getExclusiveAccessor();
-
+#if OMPTARGET_OMPT_SUPPORT
+  OmptDeviceMem Mem{HstPtrBase,    HstPtrBegin,
+                    HostDeviceNum, nullptr,
+                    DeviceID,      (size_t)Size,
+                    CodePtr,       reinterpret_cast<char *>(HstPtrName)};
+#endif
   void *TargetPointer = nullptr;
   bool IsHostPtr = false;
   bool IsNew = false;
@@ -327,19 +332,37 @@ DeviceTy::getTargetPointer(void *HstPtrBegin, void *HstPtrBase, int64_t Size,
          Entry->dynRefCountToStr().c_str(), Entry->holdRefCountToStr().c_str(),
          (HstPtrName) ? getNameFromMapping(HstPtrName).c_str() : "unknown");
     TargetPointer = (void *)Ptr;
+
+#if OMPTARGET_OMPT_SUPPORT
+    Mem.addTargetDataOp(ompt_device_mem_flag_alloc |
+                        ompt_device_mem_flag_associate);
+#endif
+
   }
 
+#if OMPTARGET_OMPT_SUPPORT
+  Mem.setDestAddr(TargetPointer);
+#endif 
+ 
   // If the target pointer is valid, and we need to transfer data, issue the
   // data transfer.
   if (TargetPointer && !IsHostPtr && HasFlagTo && (IsNew || HasFlagAlways)) {
     // Lock the entry before releasing the mapping table lock such that another
     // thread that could issue data movement will get the right result.
     std::lock_guard<decltype(*Entry)> LG(*Entry);
+
+#if OMPTARGET_OMPT_SUPPORT
+    Mem.invokeCallback();
+#endif
     // Release the mapping table lock right after the entry is locked.
     HDTTMap.destroy();
 
     DP("Moving %" PRId64 " bytes (hst:" DPxMOD ") -> (tgt:" DPxMOD ")\n", Size,
        DPxPTR(HstPtrBegin), DPxPTR(TargetPointer));
+
+#if OMPTARGET_OMPT_SUPPORT
+    Mem.addTargetDataOp(ompt_device_mem_flag_to);
+#endif
 
     int Ret =
         submitData(TargetPointer, HstPtrBegin, Size, AsyncInfo, false, CodePtr);
@@ -354,6 +377,9 @@ DeviceTy::getTargetPointer(void *HstPtrBegin, void *HstPtrBase, int64_t Size,
               nullptr /* Entry */,
               nullptr /* TargetPointer */};
   } else {
+#if OMPTARGET_OMPT_SUPPORT
+    Mem.invokeCallback();
+#endif
     // Release the mapping table lock directly.
     HDTTMap.destroy();
     // If not a host pointer and no present modifier, we need to wait for the

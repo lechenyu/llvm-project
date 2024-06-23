@@ -206,6 +206,19 @@ void OmptDeviceMem::addTargetDataOp(unsigned int Flag) {
   }
 }
 
+void OmptDeviceMem::setDestAddr(void *DestAddr) {
+  this->DestAddr = DestAddr;
+}
+
+void OmptDeviceMem::invokeCallback() {
+  if (Active && DeviceMemFlag) {
+    libomp_ompt_callback_device_mem(DeviceMemFlag, OrigBaseAddr, OrigAddr,
+                                    OrigDeviceNum, DestAddr, DestDeviceNum,
+                                    Bytes, CodePtr, VarName);
+    DeviceMemFlag = 0;
+  }
+}
+
 OmptDeviceMem::~OmptDeviceMem() {
   if (Active && DeviceMemFlag) {
     libomp_ompt_callback_device_mem(DeviceMemFlag, OrigBaseAddr, OrigAddr,

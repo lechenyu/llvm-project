@@ -99,5 +99,7 @@ public:
                 char *VarName);
   ~OmptDeviceMem();
   void addTargetDataOp(unsigned int Flag);
+  void setDestAddr(void *DestAddr);
+  void invokeCallback();
 };
 #endif // LIBOMPTARGET_OMPT_TARGET_H
