@@ -825,6 +825,7 @@ void VsmUpdateMapTo(RawVsm* p, RawVsm* end);
 void VsmUpdateMapFrom(RawVsm* p, RawVsm* end);
 void VsmSetZero(uptr addr, uptr size);
 void VsmRangeSet(uptr addr, uptr size, RawVsm val);
+void VsmRangeDeviceReset(uptr addr, uptr size);
 void VsmRangeUpdateMapTo(uptr addr, uptr size);
 void VsmRangeUpdateMapFrom(uptr addr, uptr size);
 bool CheckVsm(ThreadState *thr, uptr pc, uptr addr, uptr size);

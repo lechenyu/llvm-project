@@ -387,7 +387,7 @@ AnnotateMapping(const void *src_addr, const void *dest_addr, uptr bytes, u8 opty
     ASSERT(b, "[associate] Device address %p is already involved in a mapping \n",
            dest_addr);
     if (!(optype & ompt_device_mem_flag_to)) {
-      VsmRangeSet(host.left_end, bytes, VariableStateMachine::kEmpty);
+      VsmRangeDeviceReset(host.left_end, bytes);
     }
   }
 

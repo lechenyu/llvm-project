@@ -69,9 +69,23 @@ static ALWAYS_INLINE void MapFrom8(RawVsm *vp) {
   StoreVsm8(vp, new_vsm8);
 }
 
+static ALWAYS_INLINE void DeviceReset4(RawVsm *vp) {
+  u32 origin = LoadVsm4(vp);
+  u32 mask = VariableStateMachine::kDeviceMask4;
+  u32 reset_dev_bits = origin & (~mask);
+  StoreVsm4(vp, reset_dev_bits);
+}
+
+static ALWAYS_INLINE void DeviceReset8(RawVsm *vp) {
+  m64 origin = _m_from_int64(LoadVsm8(vp));
+  m64 mask = _m_from_int64(~VariableStateMachine::kDeviceMask8);
+  m64 reset_dev_bits = _mm_and_si64(origin, mask);
+  StoreVsm8(vp, reset_dev_bits);
+}
+
 static ALWAYS_INLINE void VsmCellSet(uptr addr, uptr size, RawVsm val) {
   uptr cell_begin = RoundDown(addr, kVsmCell);
-  RawVsm *begin = MemToVsm(addr) + (addr - cell_begin) * kMemToVsmRatio;
+  RawVsm *begin = MemToVsm(cell_begin) + (addr - cell_begin) * kMemToVsmRatio;
   if (size == 4) {
     StoreVsm4(begin, val);
   } else {
@@ -84,7 +98,7 @@ static ALWAYS_INLINE void VsmCellSet(uptr addr, uptr size, RawVsm val) {
 
 static ALWAYS_INLINE void VsmCellUpdateMapTo(uptr addr, uptr size) {
   uptr cell_begin = RoundDown(addr, kVsmCell);
-  RawVsm *begin = MemToVsm(addr) + (addr - cell_begin) * kMemToVsmRatio;
+  RawVsm *begin = MemToVsm(cell_begin) + (addr - cell_begin) * kMemToVsmRatio;
   if (size == 4) {
     MapTo4(begin);
   } else {
@@ -102,7 +116,7 @@ static ALWAYS_INLINE void VsmCellUpdateMapTo(uptr addr, uptr size) {
 
 static ALWAYS_INLINE void VsmCellUpdateMapFrom(uptr addr, uptr size) {
   uptr cell_begin = RoundDown(addr, kVsmCell);
-  RawVsm *begin = MemToVsm(addr) + (addr - cell_begin) * kMemToVsmRatio;
+  RawVsm *begin = MemToVsm(cell_begin) + (addr - cell_begin) * kMemToVsmRatio;
   if (size == 4) {
     MapFrom4(begin);
   } else {
@@ -118,24 +132,46 @@ static ALWAYS_INLINE void VsmCellUpdateMapFrom(uptr addr, uptr size) {
   }
 }
 
+static ALWAYS_INLINE void VsmCellDeviceReset(uptr addr, uptr size) {
+  uptr cell_begin = RoundDown(addr, kVsmCell);
+  RawVsm *begin = MemToVsm(cell_begin) + (addr - cell_begin) * kMemToVsmRatio;
+  if (size == 4) {
+    DeviceReset4(begin);
+  } else {
+    RawVsm *end = begin + size * kMemToVsmRatio;
+    u8 mask = static_cast<u8>(VariableStateMachine::kDeviceMask);
+    for (RawVsm *p = begin; p < end; p++) {
+      u8 origin = static_cast<u8>(LoadVsm(p));
+      u8 reset_dev_bits = origin & (~mask);
+      StoreVsm(p, static_cast<RawVsm>(reset_dev_bits));
+    }
+  }
+}
+
 // the following three functions assume 'p' and 'end' are
 // aligned with kVsmCnt
 
-void VsmSet(RawVsm* p, RawVsm* end, RawVsm val) {
+void VsmSet(RawVsm *p, RawVsm *end, RawVsm val) {
   for (; p < end; p += kVsmCnt) {
     StoreVsm8(p, val);
   }
 }
 
-void VsmUpdateMapTo(RawVsm* p, RawVsm* end) {
+void VsmUpdateMapTo(RawVsm *p, RawVsm *end) {
   for (; p < end; p += kVsmCnt) {
     MapTo8(p);
   }
 }
 
-void VsmUpdateMapFrom(RawVsm* p, RawVsm* end) {
+void VsmUpdateMapFrom(RawVsm *p, RawVsm *end) {
   for (; p < end; p += kVsmCnt) {
     MapFrom8(p);
+  }
+}
+
+void VsmDeviceReset(RawVsm *p, RawVsm *end) {
+  for (; p < end; p += kVsmCnt) {
+    DeviceReset8(p);
   }
 }
 
@@ -237,6 +273,28 @@ void VsmRangeUpdateMapFrom(uptr addr, uptr size) {
 
   if (end_aligned_cell >= addr && end_aligned_cell < addr + size) {
     VsmCellUpdateMapFrom(end_aligned_cell, addr + size - end_aligned_cell);
+  }
+}
+
+void VsmRangeDeviceReset(uptr addr, uptr size) {
+  if (size == 0)
+    return;
+
+  if (!IsAppMem(addr) || !IsAppMem(addr + size - 1))
+    return;
+
+  uptr first_aligned_cell = RoundUp(addr, kVsmCell);
+  uptr end_aligned_cell = RoundDown(addr + size, kVsmCell);
+  if (first_aligned_cell > addr) {
+    VsmCellDeviceReset(addr, Min((first_aligned_cell - addr), size));
+  }
+  
+  if (first_aligned_cell < end_aligned_cell) {
+    VsmDeviceReset(MemToVsm(first_aligned_cell), MemToVsm(end_aligned_cell));
+  }
+
+  if (end_aligned_cell >= addr && end_aligned_cell < addr + size) {
+    VsmCellDeviceReset(end_aligned_cell, addr + size - end_aligned_cell);
   }
 }
 
