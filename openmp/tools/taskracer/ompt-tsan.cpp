@@ -15,8 +15,8 @@
 #include "taskdep_predefined.h"
 
 #define GRAPH_MACRO
-#define DPST_MACRO
-// #define STACK_INFO
+// #define DPST_MACRO
+#define STACK_INFO
 // #define DEBUG_INFO
 
 #ifdef GRAPH_MACRO
@@ -1329,11 +1329,11 @@ static void ompt_ta_device_mem(ompt_data_t *target_task_data,
                                 int dest_device_num, size_t bytes,
                                 const void *codeptr_ra, char *var_name)
 {
-  printf("[device_mem] var name %s, original addr %p, destination address %p, size %lu, ", (var_name ? var_name : "unknown")
+  printf("[device_mem] var name %s, original addr %p, destination address %p, size %lu \n ", (var_name ? var_name : "unknown")
          , orig_addr, dest_addr, bytes);
 
   #ifdef GRAPH_MACRO
-    DataMove dm(orig_addr, dest_addr, bytes, device_mem_flag);
+    DataMove dm(orig_addr, dest_addr, bytes, device_mem_flag, var_name ? var_name : "unknown");
     if(trm->size() == 0){
       temp_dmv->push_back(dm);
     }
@@ -1631,7 +1631,8 @@ json get_datamove_json(){
         {"orig_address", orig_address},
         {"dest_address", dest_address},
         {"bytes", dm.bytes},
-        {"flag", dm.device_mem_flag}
+        {"flag", dm.device_mem_flag},
+        {"stack", dm.stack}
       });
     }
 

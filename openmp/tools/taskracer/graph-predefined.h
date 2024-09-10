@@ -181,9 +181,10 @@ struct DataMove{
     void *dest_addr;
     size_t bytes;
     unsigned int device_mem_flag;
+    std::string stack;
 
-    DataMove(void *oa, void *da, size_t bytes, unsigned int flag) :
-    orig_addr(oa), dest_addr(da), bytes(bytes), device_mem_flag(flag) {}
+    DataMove(void *oa, void *da, size_t bytes, unsigned int flag, std::string stack) :
+    orig_addr(oa), dest_addr(da), bytes(bytes), device_mem_flag(flag), stack(stack) {}
 };
 
 struct targetRegion{
