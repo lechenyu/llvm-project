@@ -229,8 +229,6 @@ void addStack(vertex_t id, std::string stack){
 
 void addEdge(vertex_t source, vertex_t target, edge_type type){
     Edge_new e = {target, type};
-    // (*savedVertex)[source].out_edges.push_back(e);
-    // (*savedVertex)[source].out_edges[0] = e;
     (*savedVertex)[source].out_edges[(*savedVertex)[source].index] = e;
     (*savedVertex)[source].index++;
 }

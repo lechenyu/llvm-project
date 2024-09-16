@@ -14,11 +14,6 @@
 #include "dlfcn.h"
 #include "taskdep_predefined.h"
 
-#define GRAPH_MACRO
-// #define DPST_MACRO
-#define STACK_INFO
-// #define DEBUG_INFO
-
 #ifdef GRAPH_MACRO
   #include "graph-predefined.h"
 
@@ -1369,8 +1364,6 @@ static void ompt_ta_device_mem(ompt_data_t *target_task_data,
 static int ompt_tsan_initialize(ompt_function_lookup_t lookup, int device_num,
                                 ompt_data_t *tool_data) {
   #ifndef DPST_MACRO
-  // __tsan_print();
-  // __tsan_set_ompt_print_function(&ompt_print_func);
   __tsan_set_report_race_steps_function(&ompt_report_race_steps_func);
   __tsan_set_report_race_stack_function(&ompt_report_race_stack_func);
   __tsan_set_report_current_racy_stack_function(&ompt_report_current_racy_stack_func);
@@ -1412,48 +1405,9 @@ static int ompt_tsan_initialize(ompt_function_lookup_t lookup, int device_num,
 }
 
 static void ompt_tsan_finalize(ompt_data_t *tool_data) {
-  //__tsan_print_DPST_info(true);
 
   #ifdef GRAPH_MACRO
     print_graph_json();
-
-    // unsigned int vertex_count = 0;
-    // unsigned int edge_count = 0;
-    // unsigned int fork_edge_count = 0;
-    // unsigned int join_edge_count = 0;
-
-    // for(int i=0; i < savedEdges->size(); i++){
-    //   edge_count++;
-    //   fork_edge_count ++;
-    // }
-
-    // for (int i = 1; i < savedVertex->size(); i++)
-    // {
-    //   Vertex_new v = (*savedVertex)[i];
-    //   if (v.id == 0)
-    //     break;
-
-    //   vertex_count++;
-
-    //   edge_count += v.index;
-
-    //   for(int i=0; i < v.index; i++){
-    //     if(v.out_edges[i].type == edge_type::JOIN || v.out_edges[i].type == edge_type::BARRIER || v.out_edges[i].type == edge_type::JOIN_E){
-    //       join_edge_count++;
-    //     }
-    //     else if(v.out_edges[i].type == edge_type::FORK_E || v.out_edges[i].type == edge_type::FORK_I){
-    //       fork_edge_count++;
-    //     }
-    //   }
-    // }
-
-    // printf("number of nodes: %u \n", vertex_count);
-    // printf("number of edges: %u \n", edge_count);
-    // printf("number of synchronized edges: %lu \n", savedEdges->size());
-    // printf("number of fork edges: %u \n", fork_edge_count);
-    // printf("number of join edges: %u \n", join_edge_count);
-
-
     delete savedEdges;
     delete savedVertex;
 
@@ -1472,11 +1426,13 @@ extern "C" ompt_start_tool_result_t *
 ompt_start_tool(unsigned int omp_version, const char *runtime_version) {
   static ompt_start_tool_result_t ompt_start_tool_result = {
       &ompt_tsan_initialize, &ompt_tsan_finalize, {0}};
-  // if (!scan_tsan_runtime()) {
-  //   std::cout << "Taskracer does not detect TSAN runtime, stopping operation" << std::endl;
-  //   return nullptr;
-  // }
+#ifndef DPST_MACRO
+  if (!scan_tsan_runtime()) {
+    std::cout << "Taskracer does not detect TSAN runtime, stopping operation" << std::endl;
+    return nullptr;
+  }
   std::cout << "Taskracer detects TSAN runtime, carrying out race detection using DPST" << std::endl;
+#endif
 
 #ifdef GRAPH_MACRO
   std::cout << "Computation Graph recording enabled" << std::endl;

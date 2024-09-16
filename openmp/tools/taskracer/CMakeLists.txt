@@ -1,6 +1,9 @@
 if(LIBOMP_OMPT_SUPPORT)
   include_directories(${LIBOMP_INCLUDE_DIR})
 
+  add_definitions(-DGRAPH_MACRO -DSTACK_INFO)
+  # add_definitions(-DDPST_MACRO -DDEBUG_INFO)
+
   add_library(taskracer SHARED ompt-tsan.cpp)
   add_library(taskracer_static STATIC ompt-tsan.cpp)
 
