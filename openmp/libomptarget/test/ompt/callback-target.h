@@ -157,7 +157,7 @@ static void on_ompt_callback_device_mem(ompt_data_t *target_task_data,
                                         void *orig_base_addr, void *orig_addr,
                                         int orig_device_num, void *dest_addr,
                                         int dest_device_num, size_t bytes,
-                                        const void *codeptr_ra) {
+                                        const void *codeptr_ra, const char *var_name) {
   char buffer[2048];
   format_device_mem_flag(device_mem_flag, buffer);
   printf("%" PRIu64 ":" _TOOL_PREFIX

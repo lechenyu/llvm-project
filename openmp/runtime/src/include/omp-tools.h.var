@@ -1152,7 +1152,8 @@ typedef void (*ompt_callback_device_mem_t) (
   void *dest_addr,
   int dest_device_num,
   size_t bytes,
-  const void *codeptr_ra
+  const void *codeptr_ra,
+  const char *var_name
 );
 
 typedef void (*ompt_callback_error_t) (
